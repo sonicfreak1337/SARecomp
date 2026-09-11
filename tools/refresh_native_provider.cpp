@@ -305,6 +305,125 @@ struct TemporaryArtifacts final {
     }
 };
 
+// Sonic-local extension: these two retail rendering leaves already exist in
+// the sealed AOT archive. Admit only their reviewed, byte-bound hooks. This is
+// not a general structural refresh or permission to change the frozen pack.
+struct RenderHookExtension {
+    katana::runtime::NativePortDefinition before;
+    std::vector<katana::runtime::NativePortHookBinding> hooks;
+    std::vector<katana::runtime::NativePortHookBinding> added;
+};
+RenderHookExtension render_hook_extension(
+    const katana::runtime::NativePortDefinition& before,
+    const katana::runtime::NativePortDefinition& after) {
+    using namespace katana::runtime;
+    RenderHookExtension result{before, {}, {}};
+    std::size_t old = 0;
+    for (const auto& hook : after.hooks) {
+        if (old < before.hooks.size() &&
+            before.hooks[old].guest_address == hook.guest_address) {
+            result.hooks.push_back(before.hooks[old++]);
+            continue;
+        }
+        const bool model = hook.guest_address == 0x8C03718Cu &&
+            hook.covered_size == 0x108u &&
+            hook.symbol == "sonic_native_widescreen_model_cull" &&
+            hook.code_identity == "sha256:df39afabfbfdce25d7c3bd0cd59008959ec7e365320dd19a9603857401e67137";
+        const bool sphere = hook.guest_address == 0x8C038D00u &&
+            hook.covered_size == 0xA0u &&
+            hook.symbol == "sonic_native_widescreen_draw_sphere_cull" &&
+            hook.code_identity == "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551";
+        if ((!model && !sphere) ||
+            hook.kind != NativePortHookKind::FunctionEntry ||
+            hook.requirement != NativePortHookRequirement::Required ||
+            hook.original_policy != NativePortHookOriginalPolicy::MayContinueOriginal ||
+            hook.code_source != NativePortHookCodeSource::StaticImage ||
+            !hook.code_source_identity.empty() ||
+            !valid_native_port_sha256_identity(hook.provider_implementation_identity) ||
+            std::ranges::any_of(before.hooks, [&](const auto& h) {
+                return h.guest_address == hook.guest_address; }) ||
+            std::ranges::any_of(result.added, [&](const auto& h) {
+                return h.guest_address == hook.guest_address; }))
+            fail("sonic-render-hook-unreviewed-structural-delta");
+        result.hooks.push_back(hook);
+        result.added.push_back(hook);
+    }
+    if (old != before.hooks.size() ||
+        (!result.added.empty() && result.added.size() != 2u))
+        fail("sonic-render-hook-incomplete-extension");
+    result.before.hooks = result.hooks;
+    return result;
+}
+
+void insert_render_hooks(std::string& dispatch, std::string& audit,
+                         const RenderHookExtension& extension) {
+    if (extension.added.empty()) return;
+    const auto region = array_region(dispatch, "native_hooks{{");
+    // Permit transactional replay after a prior successful refresh.
+    if (region.entries.size() == extension.hooks.size()) return;
+    if (region.entries.size() + extension.added.size() != extension.hooks.size())
+        fail("sonic-render-hook-old-cardinality");
+    const std::string newline = dispatch.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::string body = newline;
+    std::size_t old = 0;
+    for (const auto& hook : extension.hooks) {
+        const bool added = std::ranges::any_of(extension.added, [&](const auto& h) {
+            return h.guest_address == hook.guest_address; });
+        if (added) {
+            body += "    " + hook_prefix(hook) + "\"" +
+                std::string(hook.provider_implementation_identity) + "\"" +
+                hook_suffix(hook) + "," + newline;
+        } else {
+            const auto [begin, end] = region.entries.at(old++);
+            body += "    " + dispatch.substr(begin, end-begin) + "," + newline;
+        }
+    }
+    dispatch.replace(region.begin, region.end-region.begin, body);
+    const auto change = [](std::string& text, const std::string& from, const std::string& to) {
+        const auto at = unique_marker(text, from);
+        text.replace(at, from.size(), to);
+    };
+    const std::string type = "constexpr std::array<katana::runtime::NativePortHookBinding, ";
+    change(dispatch, type + std::to_string(old) + "u> native_hooks{{",
+        type + std::to_string(extension.hooks.size()) + "u> native_hooks{{");
+    std::string declarations, cases, tokens;
+    for (const auto& hook : extension.added) {
+        const auto hex = hex_u32(hook.guest_address);
+        // The exact block witness must already be in this generated pack.
+        const auto witness = "{{0x" + hex + "u, 0x" +
+            hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
+        // Physical addresses in the emitter have a leading zero.
+        const auto padded = "{{0x" + hex + "u, 0x0" +
+            hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
+        if (dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
+            fail("sonic-render-hook-missing-frozen-block");
+        declarations += "extern \"C\" katana::runtime::NativePortHookResult " +
+            std::string(hook.symbol) + "(katana::runtime::NativePortContext&) noexcept;" + newline;
+        cases += "        case 0x" + hex + "u: return HookDispatch{true, HookKind::FunctionEntry, HookRequirement::Required, katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal, &" +
+            std::string(hook.symbol) + ", 0x" + hex + "u, " +
+            std::to_string(hook.covered_size) + "u};" + newline;
+        tokens += "    std::string_view{\"" + std::string(hook.symbol) + "\"}," + newline;
+    }
+    const std::string declaration_marker = "extern \"C\" katana::runtime::NativePortHookResult sonic_native_ninja_model_transform";
+    change(dispatch, declaration_marker, declarations + declaration_marker);
+    const std::string switch_marker = "        case 0x8C037294u: return HookDispatch{";
+    change(dispatch, switch_marker, cases + switch_marker);
+    // Direct AOT calls consult this chain query. The frozen shard marked the
+    // two old leaves chainable, so intercept them before that cached index.
+    const std::string chain_marker = "        if (static_chainable_source_address(source)) return true;";
+    const std::string gate = "        if ((source | 0x20000000u) == 0xAC03718Cu ||" + newline +
+        "            (source | 0x20000000u) == 0xAC038D00u) return false;" + newline;
+    change(dispatch, chain_marker, gate + chain_marker);
+    const std::string hook_marker = "bool native_hook_source_address(std::uint32_t source) noexcept {";
+    change(dispatch, hook_marker, hook_marker + newline +
+        "    if ((source | 0x20000000u) == 0xAC03718Cu ||" + newline +
+        "        (source | 0x20000000u) == 0xAC038D00u) return true;");
+    const std::string audit_marker = "    std::string_view{\"sonic_native_ninja_model_transform\"},";
+    change(audit, audit_marker, tokens + audit_marker);
+    change(audit, "constexpr std::array<std::string_view, 196> required_tokens{",
+        "constexpr std::array<std::string_view, 198> required_tokens{");
+}
+
 [[nodiscard]] std::string neutral_definition_identity(
     const katana::runtime::NativePortDefinition& definition,
     const std::filesystem::path& directory,
@@ -781,16 +900,17 @@ int main(const int argc, char* argv[]) {
         const auto after =
             katana::runtime::NativePortArtifact::load(argv[3]);
 
+        const auto render_extension = render_hook_extension(before->definition(), after->definition());
         TemporaryArtifacts temporary;
         const auto scratch = generated_root.parent_path();
         const auto before_neutral = neutral_definition_identity(
-            before->definition(), scratch, "before", temporary);
+            render_extension.before, scratch, "before", temporary);
         const auto after_neutral = neutral_definition_identity(
             after->definition(), scratch, "after", temporary);
         if (before_neutral != after_neutral)
             fail("provider-refresh-non-provider-delta");
         const auto mappings = provider_mappings(
-            before->definition(), after->definition());
+            render_extension.before, after->definition());
 
         const auto before_native_identity =
             katana::runtime::native_port_definition_export_identity(
@@ -817,6 +937,7 @@ int main(const int argc, char* argv[]) {
             "sha256:" + katana::io::sha256_bytes(dispatch);
         const auto audit_before_sha =
             "sha256:" + katana::io::sha256_bytes(audit);
+        insert_render_hooks(dispatch, audit, render_extension);
 
         std::string old_key;
         std::string new_key;
@@ -849,7 +970,7 @@ int main(const int argc, char* argv[]) {
             resident_generation(old_generation_identity),
             resident_generation(new_generation_identity));
         const auto provider_references = rewrite_provider_fields(
-            dispatch, before->definition(), after->definition());
+            dispatch, render_extension.before, after->definition());
         rewrite_audit_marker(
             audit, before_artifact_identity, after_artifact_identity);
 

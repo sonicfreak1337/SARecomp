@@ -144,7 +144,7 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:211168c342525e9106b0548d35ec6e83b5fefc74cf91c2d15f788d09ee82ccd8"};
+        "sha256:01577ff51fb72acfd491ad83b1e065c66a8b820a656648328dabfe82b5a000e3"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -1433,6 +1433,22 @@ int main(const int argc, char* argv[]) {
                 katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
                 "sonic_native_texture_number_observe",
                 "sha256:6fb9dfa405a952edbeef64e9c43e0b2244f8bdeaee9f0a7c1ac15ecb6a6abd3e"},
+            katana::runtime::NativePortHookBinding{
+                0x8C03718Cu, 0x108u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_widescreen_model_cull",
+                "sha256:df39afabfbfdce25d7c3bd0cd59008959ec7e365320dd19a9603857401e67137",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C038D00u, 0xA0u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_widescreen_draw_sphere_cull",
+                "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551",
+                sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C037294u,
                 0xA4u,

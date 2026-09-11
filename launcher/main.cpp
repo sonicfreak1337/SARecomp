@@ -955,6 +955,22 @@ int main(int argc, char** argv) {
         }
         capture_product_state();
         emit_terminal_runtime_telemetry();
+        // Controlled AOT/hook failures need the same durable evidence as a
+        // thrown exception. Capture it before cleanup changes task memory.
+        if (context.stop_reason != katana::runtime::NativePortStopReason::None &&
+            context.stop_reason != katana::runtime::NativePortStopReason::HostRequested &&
+            context.stop_reason != katana::runtime::NativePortStopReason::HostDeadline) {
+            native_product_emit_crash(
+                0u, "controlled-runtime-stop",
+                static_cast<std::uint32_t>(context.stop_reason),
+                "native-port-stop-reason");
+        }
+        native_product_write_fault_bytes("KATANA_SESSION_STOP reason=");
+        native_product_write_fault_u64(static_cast<std::uint32_t>(context.stop_reason));
+        native_product_write_fault_bytes(" frame=");
+        native_product_write_fault_u64(context.frame_index);
+        native_product_write_fault_bytes("\n");
+        native_product_flush_fault_file();
         title_state_cleanup.release_now();
         const bool normal_stop =
             context.stop_reason ==

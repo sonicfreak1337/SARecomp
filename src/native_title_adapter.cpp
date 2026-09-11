@@ -37372,6 +37372,12 @@ enum class SonicNativeSpriteProfile : std::uint8_t {
         return Role::HudLeft;
     if (carrier == 0x8C5901D8u && texlist == 0x8C590158u && frames == 0x8C590160u && has(boss))
         return Role::HudRight;
+    // Adventure Fields (stage IDs 26..34) select the animated ring carrier
+    // at 08A30E, then share 08A32E/PR08A332 with the action-stage ring icon.
+    // Keep that icon in the same left-anchored group as its counter digits.
+    if (cpu.pr == 0x8C08A332u && carrier == 0x8C1BF4F4u &&
+        texlist == 0x8C1C3250u && frames == 0x8C1BF4E0u)
+        return Role::HudLeft;
     // EXTRA: both animated owners draw the animal row from x603 toward the
     // left. Bind the shared carrier and exact returns, not general sprite X.
     if (carrier == 0x8C195F44u && texlist == 0x8C195E10u && frames == 0x8C195E18u &&

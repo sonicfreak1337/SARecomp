@@ -84,6 +84,13 @@ been independently checked. Captures and logs are local under
 Personal saves and original disc images are excluded from Git and the remote
 development archive.
 
+The Adventure Field ring icon now shares its counter's left anchor; the user
+confirmed this correction. Widescreen visibility also reaches the retail
+BasicAttach pre-cull and 16 reviewed object display callers, including the
+hint monitor. A reported station-hall monitor crash is still under
+investigation; this experimental build is not a replacement baseline.
+See `docs/widescreen-culling.md` for the scope, evidence and remaining limits.
+
 ## CPU performance work
 
 The performance batch found no reliable reduction in total CPU work. All
