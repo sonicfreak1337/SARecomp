@@ -1,0 +1,7 @@
+#pragma once
+
+#include <string_view>
+
+inline constexpr std::string_view
+    sonic_native_spg_status_provider_source_identity{
+        "sha256:@sonic_native_spg_status_provider_sha256@"};

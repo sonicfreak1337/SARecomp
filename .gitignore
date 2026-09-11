@@ -1,0 +1,21 @@
+# Original disc images are never part of this project.
+*.gdi
+*.cdi
+*.chd
+*.iso
+track*.bin
+track*.raw
+# Local frozen product/SDK, generated AOT and personal save backups.
+.local/
+build/
+build-*/
+out/
+runs/
+user-data/
+*.obj
+*.pdb
+*.ilk
+*.ksave
+*.ksave.bak
+__pycache__/
+

@@ -1,0 +1,3 @@
+# Provider identities bind actual source bytes, including line endings.
+* -text
+*.gdi -diff -merge

@@ -1,0 +1,11 @@
+#pragma once
+
+#include <string_view>
+
+inline constexpr std::string_view
+    sonic_native_latent_texture_dispatch_provider_source_identity{
+        "sha256:@sonic_native_latent_texture_dispatch_provider_composed_sha256@"};
+
+inline constexpr std::string_view
+    sonic_native_latent_texture_dispatch_dependency_source_identity{
+        "sha256:@sonic_native_title_adapter_sha256@"};
