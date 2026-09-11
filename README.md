@@ -122,7 +122,48 @@ includes all game threads and is not CPU temperature or a single-core duration.
 The local logs live under `runs/`; the compact measurement report is in
 `docs/performance-2026-09-11.md`.
 
-Vulkan is the next planned renderer option alongside D3D11 for the move toward
-Linux. It is not included in this build. The measurements currently identify
-translated game execution as the main CPU cost, so renderer work alone must
-not be assumed to deliver stable 30 simulation FPS.
+## Experimental Vulkan
+
+Open **Optionen > Renderer (Neustart)** and select **Vulkan (experimentell)**,
+then restart. Direct3D 11 remains the default and selectable fallback. Both
+backends support the existing widescreen modes. The selection persists in
+`sonic-display.ini`; builds preserve the user's current configuration.
+Vulkan also supports **Alt+Enter** for borderless fullscreen and return to the
+previous window size and position.
+
+This is a native Vulkan backend using the same scene and shader contracts as
+D3D11. It requires a compatible Vulkan 1.3 driver; the SDK/compiler are not
+needed to play. Linux host support and the replacement ingame Options screen
+are subsequent work. See `docs/vulkan-renderer.md` for implementation,
+requirements, source provenance and bounded validation results.
+
+The benchmark helper accepts `--renderer d3d11` or `--renderer vulkan`.
+The earlier measurements identify translated game execution as the main CPU
+cost, so a new GPU backend alone does not establish a simulation-FPS gain.
+The matched D3D11/Vulkan probes found no consistent CPU or simulation gain;
+both maintained roughly 144 output FPS. See `docs/vulkan-performance-2026-09-12.md`.
+
+## First-start configuration
+
+The first interactive launch opens the English **`sonic-config.exe`** beside
+`game.exe`. Save & start continues into the game; Cancel exits before starting
+the game. Run `sonic-config.exe` again whenever settings should change.
+
+Choose Direct3D 11 or Vulkan; windowed, borderless or exclusive fullscreen;
+resolution; original 4:3 or widescreen; render scale; 30–144 output FPS;
+text language, voice language and subtitles. The original game cadence is
+independent of output FPS. Exclusive fullscreen falls back to borderless when
+the driver cannot acquire it. Alt+Enter returns to the saved window rectangle.
+Settings apply on the next launch and builds preserve an existing INI.
+
+Text supports Japanese, English, French, Spanish and German. Voices support
+Japanese and English. **Use game setting** leaves that original setting alone.
+Explicit choices are applied when loading a save and merged into its language
+options on the next normal game save, using the original checksum and existing
+VMU persistence. Loading does not undo the configuration. The config program
+does not edit save files or force a story-progress save during loading.
+
+Direct launches use `out/experimental/sonic-display.ini`; `tools/start.ps1`
+retains separate settings per run profile. `SARECOMP_DISPLAY_CONFIG` selects
+an explicit config file (also understood by `sonic-config.exe`). Background
+tests skip the popup and use their own settings and copied saves.

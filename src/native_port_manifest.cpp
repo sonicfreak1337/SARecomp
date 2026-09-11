@@ -144,7 +144,7 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:4d2adb6d96391d6e762b19b18e3057d8925d108fbb4014a7b2c4f09bf8901068"};
+        "sha256:c255f50a668d9ad4da36f9e01f9e37ed6ee5d9f5440982d81084a619b482b661"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -246,6 +246,68 @@ int main(const int argc, char* argv[]) {
                 6'735'296u,
                 true}};
         constexpr std::array static_hooks{
+            katana::runtime::NativePortHookBinding{
+                0x8C0884A0u, 0xA8u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_save",
+                "sha256:bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C0885C0u, 0x74u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_loaded",
+                "sha256:77a9ef8bf117b7ba4048071acecd6d6705ec1e334f30ba4154eb46c37cda3446",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C0544E2u, 0x11Au,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_initial",
+                "sha256:b0cd74b8c534c9e18ff099e03ff17e1db8616a5bf35a950726dda6153aa26552",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C08A4B2u, 6u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_subtitles_loaded",
+                "sha256:1c9358b9d3149b6cd8d3d5fec7dd9b76a182525e015b858b985720eed6ee6098",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8088CA94u, 0x28u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_subtitles",
+                "sha256:4e3875cafc64b9e68ffcfe9f991da55405e9ca14632293ffb923234e959c1410",
+                sonic_native_title_adapter_provider_implementation_identity,
+                katana::runtime::NativePortHookCodeSource::LatentAotModule,
+                "sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5"},
+            katana::runtime::NativePortHookBinding{
+                0x8088CAF8u, 0x50u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_voice",
+                "sha256:d3c2ba0cf8c234b9d1bfdb967d78242e328b23d71111869aecb33746a32d2eeb",
+                sonic_native_title_adapter_provider_implementation_identity,
+                katana::runtime::NativePortHookCodeSource::LatentAotModule,
+                "sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5"},
+            katana::runtime::NativePortHookBinding{
+                0x8088CBC0u, 0x44u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_language_text",
+                "sha256:356d2b2811becea7dc9372eaaed12bee6dd766a160b11004425a5bb01468d3a1",
+                sonic_native_title_adapter_provider_implementation_identity,
+                katana::runtime::NativePortHookCodeSource::LatentAotModule,
+                "sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5"},
             katana::runtime::NativePortHookBinding{
                 0x8088C060u, 126u,
                 katana::runtime::NativePortHookKind::FunctionEntry,

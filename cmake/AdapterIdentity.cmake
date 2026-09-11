@@ -6,7 +6,8 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_qsound_reverb_medium_program.inc sonic_native_sdk_texture_release_plan.hpp
     sonic_native_texture_catalog.hpp sonic_native_texture_catalog.cpp
     sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp
-    sonic_render_culling.hpp sonic_render_culling.cpp sonic_sdk_color.hpp)
+    sonic_render_culling.hpp sonic_render_culling.cpp sonic_sdk_color.hpp
+    sonic_language.hpp sonic_language.cpp renderer/renderer_selection.hpp)
 set(hashes)
 foreach(component IN LISTS components)
     set(path "${PROJECT_SOURCE_DIR}/src/${component}")

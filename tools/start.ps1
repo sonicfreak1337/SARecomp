@@ -4,7 +4,8 @@ param([ValidateSet('baseline','experimental')][string] $Mode = 'experimental',
       [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Profile = 'development',
       [ValidateSet('original','widescreen')][string] $Aspect = 'original',
       [ValidateRange(640,7680)][int] $Width = 1920,
-      [ValidateRange(480,4320)][int] $Height = 1080)
+      [ValidateRange(480,4320)][int] $Height = 1080,
+      [ValidateSet('d3d11','vulkan')][string] $Renderer = 'd3d11')
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $base = Join-Path $root '.local/baseline/r354'
@@ -40,8 +41,10 @@ $start.WorkingDirectory = $product
 $start.ArgumentList.Add('--bringup-incomplete-hardware-closure')
 $start.ArgumentList.Add('--content-root')
 $start.ArgumentList.Add((Join-Path $base 'native-content'))
-$start.ArgumentList.Add('--presentation-fps')
-$start.ArgumentList.Add('144')
+if ($Mode -eq 'baseline') {
+    $start.ArgumentList.Add('--presentation-fps')
+    $start.ArgumentList.Add('144')
+}
 # Do not inherit an earlier probe or replay session from another task.
 foreach ($key in @($start.Environment.Keys)) {
     if ($key -like 'KATANA_*') { [void]$start.Environment.Remove($key) }
@@ -51,11 +54,13 @@ if ($Mode -eq 'experimental') {
     $display = Join-Path $run 'sonic-display.ini'
     # Menu choices persist across starts. Explicit command-line choices alone
     # replace the corresponding settings in an existing profile.
-    $values=@{mode=$Aspect;width=$Width;height=$Height;render_percent=100}
+    $values=[ordered]@{mode=$Aspect;width=$Width;height=$Height;render_percent=100;renderer=$Renderer;
+        presentation_fps=144;window_mode='windowed';text_language='game';voice_language='game';
+        subtitles='game';setup_complete=0}
     $exists=Test-Path -LiteralPath $display
     if ($exists) {
         foreach ($line in Get-Content -LiteralPath $display) {
-            if ($line -match '^\s*(mode|width|height|render_percent)\s*=\s*(.*?)\s*$') {
+            if ($line -match '^\s*(mode|width|height|render_percent|renderer|presentation_fps|window_mode|text_language|voice_language|subtitles|setup_complete)\s*=\s*(.*?)\s*$') {
                 $values[$Matches[1]]=$Matches[2]
             }
         }
@@ -63,9 +68,11 @@ if ($Mode -eq 'experimental') {
     if ($PSBoundParameters.ContainsKey('Aspect')) {$values.mode=$Aspect}
     if ($PSBoundParameters.ContainsKey('Width')) {$values.width=$Width}
     if ($PSBoundParameters.ContainsKey('Height')) {$values.height=$Height}
+    if ($PSBoundParameters.ContainsKey('Renderer')) {$values.renderer=$Renderer}
     if (-not $exists -or $PSBoundParameters.ContainsKey('Aspect') -or
-        $PSBoundParameters.ContainsKey('Width') -or $PSBoundParameters.ContainsKey('Height')) {
-        "mode=$($values.mode)`nwidth=$($values.width)`nheight=$($values.height)`nrender_percent=$($values.render_percent)" |
+        $PSBoundParameters.ContainsKey('Width') -or $PSBoundParameters.ContainsKey('Height') -or
+        $PSBoundParameters.ContainsKey('Renderer')) {
+        $values.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } |
             Set-Content -LiteralPath $display -Encoding utf8NoBOM
     }
     $start.Environment['SARECOMP_DISPLAY_CONFIG'] = $display

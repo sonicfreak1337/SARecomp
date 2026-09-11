@@ -6,6 +6,7 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [ValidateRange(10,60)][int] $Seconds=20,
       [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Tag='wide-16x9',
       [string] $Executable='',
+      [ValidateSet('d3d11','vulkan')][string] $Renderer='d3d11',
       [switch] $CheckOptions,
       [switch] $TraceFade)
 $ErrorActionPreference='Stop'
@@ -29,7 +30,7 @@ foreach ($directory in Get-ChildItem -LiteralPath (Join-Path $root '.local/basel
 }
 Get-ChildItem -LiteralPath $saves -File -Recurse | ForEach-Object {$_.IsReadOnly=$false}
 $display=Join-Path $run 'sonic-display.ini'
-"mode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
+"mode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
 $envs=@{
     KATANA_PORT_BACKGROUND_TEST='1'; KATANA_PORT_IGNORE_FOCUS='1'
     KATANA_USER_DATA_ROOT=$saves; KATANA_PORT_FINAL_PROGRESS='1'

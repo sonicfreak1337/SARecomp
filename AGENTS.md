@@ -33,10 +33,17 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 
 ## Work and verification
 
-- The next enhancement is an optional Vulkan renderer alongside D3D11, moving
-  toward Linux support. Keep D3D11 and the accepted baseline available. Vulkan
-  is not implemented by the CPU profiling batch; do not claim it fixes the
-  measured guest-execution bottleneck without measurements.
+- The optional native Vulkan renderer lives in `src/renderer/` alongside the
+  retained D3D11 path. Selection is in the native Options menu and requires a
+  restart. Keep D3D11 and the accepted baseline available. See
+  `docs/vulkan-renderer.md`; this does not yet provide a Linux host. Never
+  claim that Vulkan fixes the measured guest-execution bottleneck without
+  matched measurements.
+- `sonic-config.exe` is the English first-start settings dialog. Keep display
+  and output FPS independent of original game cadence. Explicit language
+  choices merge into the loaded record and the original normal-save path;
+  Use game setting leaves original semantics untouched. See
+  `docs/configuration-language.md`. Never patch personal VMU files directly.
 
 - Work autonomously within the user's authorization; no repeated permissions.
 - Prefer incremental performance builds; retain the r354 compiled AOT pack

@@ -35,6 +35,7 @@
 #endif
 #include <windows.h>
 #include "sonic_options.hpp"
+#include "sonic_configuration.hpp"
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -596,6 +597,7 @@ int main(int argc, char** argv) {
             std::filesystem::path(argv[0]), executable_error);
         if (executable_error || executable_path.empty())
             executable_path = std::filesystem::absolute(argv[0]);
+        if (!sonic::configuration::first_start(executable_path)) return 0;
         if (explicit_bringup)
             native_product_crash_session.arm(executable_path);
         sonic::presentation::initialize(executable_path);
@@ -687,8 +689,7 @@ int main(int argc, char** argv) {
         native_product_crash_capsule.note_v2_source_module(
             definition.executable.content_identity, 1u, 0u);
         if (presentation_fps == 0u)
-            presentation_fps = definition.frame_timing
-                .default_presentation_rate_hz;
+            presentation_fps = sonic::presentation::settings().presentation_fps;
         if (presentation_fps < definition.frame_timing
                                    .simulation_rate_hz ||
             presentation_fps > definition.frame_timing

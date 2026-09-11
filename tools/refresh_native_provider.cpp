@@ -305,8 +305,8 @@ struct TemporaryArtifacts final {
     }
 };
 
-// Sonic-local extension: these two retail rendering leaves already exist in
-// the sealed AOT archive. Admit only their reviewed, byte-bound hooks. This is
+// Sonic-local extensions: the rendering leaves and language/save boundaries
+// already exist in the sealed AOT archive. Admit only reviewed byte-bound hooks. This is
 // not a general structural refresh or permission to change the frozen pack.
 struct RenderHookExtension {
     katana::runtime::NativePortDefinition before;
@@ -319,6 +319,16 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
+    unsigned rendering_added=0,language_added=0;
+    struct ReviewedLanguage {std::uint32_t address,size;std::string_view symbol,sha;bool latent;};
+    constexpr std::array languages{
+        ReviewedLanguage{0x8C0884A0u,0xA8u,"sonic_language_save","bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",false},
+        ReviewedLanguage{0x8C0885C0u,0x74u,"sonic_language_loaded","77a9ef8bf117b7ba4048071acecd6d6705ec1e334f30ba4154eb46c37cda3446",false},
+        ReviewedLanguage{0x8C0544E2u,0x11Au,"sonic_language_initial","b0cd74b8c534c9e18ff099e03ff17e1db8616a5bf35a950726dda6153aa26552",false},
+        ReviewedLanguage{0x8C08A4B2u,6u,"sonic_language_subtitles_loaded","1c9358b9d3149b6cd8d3d5fec7dd9b76a182525e015b858b985720eed6ee6098",false},
+        ReviewedLanguage{0x8088CA94u,0x28u,"sonic_language_subtitles","4e3875cafc64b9e68ffcfe9f991da55405e9ca14632293ffb923234e959c1410",true},
+        ReviewedLanguage{0x8088CAF8u,0x50u,"sonic_language_voice","d3c2ba0cf8c234b9d1bfdb967d78242e328b23d71111869aecb33746a32d2eeb",true},
+        ReviewedLanguage{0x8088CBC0u,0x44u,"sonic_language_text","356d2b2811becea7dc9372eaaed12bee6dd766a160b11004425a5bb01468d3a1",true}};
     for (const auto& hook : after.hooks) {
         if (old < before.hooks.size() &&
             before.hooks[old].guest_address == hook.guest_address) {
@@ -333,12 +343,18 @@ RenderHookExtension render_hook_extension(
             hook.covered_size == 0xA0u &&
             hook.symbol == "sonic_native_widescreen_draw_sphere_cull" &&
             hook.code_identity == "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551";
-        if ((!model && !sphere) ||
+        const bool language=std::ranges::any_of(languages,[&](const auto& row) {
+            return hook.guest_address==row.address && hook.covered_size==row.size &&
+                hook.symbol==row.symbol && hook.code_identity=="sha256:"+std::string(row.sha) &&
+                hook.code_source==(row.latent?NativePortHookCodeSource::LatentAotModule:NativePortHookCodeSource::StaticImage) &&
+                hook.code_source_identity==(row.latent?"sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5":"");
+        });
+        if ((!model && !sphere && !language) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != NativePortHookOriginalPolicy::MayContinueOriginal ||
-            hook.code_source != NativePortHookCodeSource::StaticImage ||
-            !hook.code_source_identity.empty() ||
+            (!language && (hook.code_source != NativePortHookCodeSource::StaticImage ||
+                !hook.code_source_identity.empty())) ||
             !valid_native_port_sha256_identity(hook.provider_implementation_identity) ||
             std::ranges::any_of(before.hooks, [&](const auto& h) {
                 return h.guest_address == hook.guest_address; }) ||
@@ -347,16 +363,19 @@ RenderHookExtension render_hook_extension(
             fail("sonic-render-hook-unreviewed-structural-delta");
         result.hooks.push_back(hook);
         result.added.push_back(hook);
+        if(language) ++language_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
-        (!result.added.empty() && result.added.size() != 2u))
+        (rendering_added!=0u && rendering_added!=2u) ||
+        (language_added!=0u && language_added!=7u))
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;
 }
 
 void insert_render_hooks(std::string& dispatch, std::string& audit,
-                         const RenderHookExtension& extension) {
+                         const RenderHookExtension& extension,
+                         const std::filesystem::path& generated_root) {
     if (extension.added.empty()) return;
     const auto region = array_region(dispatch, "native_hooks{{");
     // Permit transactional replay after a prior successful refresh.
@@ -395,7 +414,11 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
         // Physical addresses in the emitter have a leading zero.
         const auto padded = "{{0x" + hex + "u, 0x0" +
             hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
-        if (dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
+        if(hook.code_source==katana::runtime::NativePortHookCodeSource::LatentAotModule) {
+            const auto shard=read_regular_file(generated_root/"code/native-port-dispatch-shard-98440.cpp");
+            if(shard.find("{0x"+hex+"u, &fn_"+hex+"_runtime_entry, false, false}")==std::string::npos)
+                fail("sonic-language-hook-missing-frozen-entry");
+        } else if (dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
             fail("sonic-render-hook-missing-frozen-block");
         declarations += "extern \"C\" katana::runtime::NativePortHookResult " +
             std::string(hook.symbol) + "(katana::runtime::NativePortContext&) noexcept;" + newline;
@@ -408,20 +431,29 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
     change(dispatch, declaration_marker, declarations + declaration_marker);
     const std::string switch_marker = "        case 0x8C037294u: return HookDispatch{";
     change(dispatch, switch_marker, cases + switch_marker);
-    // Direct AOT calls consult this chain query. The frozen shard marked the
-    // two old leaves chainable, so intercept them before that cached index.
+    // Direct AOT calls consult this chain query. Intercept the added entries
+    // before the immutable shard's pre-enhancement chainability index.
     const std::string chain_marker = "        if (static_chainable_source_address(source)) return true;";
-    const std::string gate = "        if ((source | 0x20000000u) == 0xAC03718Cu ||" + newline +
-        "            (source | 0x20000000u) == 0xAC038D00u) return false;" + newline;
+    std::string condition;
+    for(const auto& hook:extension.added) {
+        if(!condition.empty()) condition+=" || ";
+        condition+="(source | 0x20000000u) == 0x"+hex_u32(hook.guest_address|0x20000000u)+"u";
+    }
+    const std::string gate="        if ("+condition+") return false;"+newline;
     change(dispatch, chain_marker, gate + chain_marker);
     const std::string hook_marker = "bool native_hook_source_address(std::uint32_t source) noexcept {";
     change(dispatch, hook_marker, hook_marker + newline +
-        "    if ((source | 0x20000000u) == 0xAC03718Cu ||" + newline +
-        "        (source | 0x20000000u) == 0xAC038D00u) return true;");
+        "    if ("+condition+") return true;");
     const std::string audit_marker = "    std::string_view{\"sonic_native_ninja_model_transform\"},";
     change(audit, audit_marker, tokens + audit_marker);
-    change(audit, "constexpr std::array<std::string_view, 196> required_tokens{",
-        "constexpr std::array<std::string_view, 198> required_tokens{");
+    const std::string audit_type="constexpr std::array<std::string_view, ";
+    const auto count_end=unique_marker(audit,"> required_tokens{");
+    const auto count_begin=audit.rfind(audit_type,count_end)+audit_type.size();
+    unsigned count=0;
+    const auto parsed=std::from_chars(audit.data()+count_begin,audit.data()+count_end,count);
+    if(parsed.ec!=std::errc{} || parsed.ptr!=audit.data()+count_end)
+        fail("sonic-hook-audit-cardinality");
+    audit.replace(count_begin,count_end-count_begin,std::to_string(count+extension.added.size()));
 }
 
 [[nodiscard]] std::string neutral_definition_identity(
@@ -937,7 +969,7 @@ int main(const int argc, char* argv[]) {
             "sha256:" + katana::io::sha256_bytes(dispatch);
         const auto audit_before_sha =
             "sha256:" + katana::io::sha256_bytes(audit);
-        insert_render_hooks(dispatch, audit, render_extension);
+        insert_render_hooks(dispatch, audit, render_extension, generated_root);
 
         std::string old_key;
         std::string new_key;

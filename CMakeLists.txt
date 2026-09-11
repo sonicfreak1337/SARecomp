@@ -49,7 +49,7 @@ add_library(katana_native_title_adapter STATIC
     src/sonic_native_texture_catalog.cpp
     src/sonic_native_transform_stream.cpp
     src/sonic_private_scenario_launcher.cpp)
-target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
 target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime)
@@ -67,6 +67,17 @@ target_include_directories(sonic_dispatch PRIVATE "${SONIC_WORKING}/generated/in
 target_compile_options(sonic_dispatch PRIVATE /EHsc /utf-8)
 target_link_libraries(sonic_dispatch PRIVATE KatanaRecomp::native_port_runtime)
 add_executable(game launcher/main.cpp)
+add_executable(sonic_config WIN32 launcher/config.cpp src/sonic_presentation.cpp)
+set_target_properties(sonic_config PROPERTIES OUTPUT_NAME sonic-config
+    RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
+target_include_directories(sonic_config PRIVATE "${SONIC_ROOT}/src"
+    "${SONIC_BASE}/sdk/include" "${SONIC_BASE}/sdk/generated/include")
+target_compile_options(sonic_config PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_config PRIVATE user32 gdi32 shell32)
+add_dependencies(game sonic_config)
+include(cmake/SonicVulkan.cmake)
+target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_graphics>)
+target_link_libraries(game PRIVATE sonic_vulkan)
 target_include_directories(game BEFORE PRIVATE "${SONIC_WORKING}/generated/include")
 target_include_directories(game PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(game PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -76,8 +87,14 @@ target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native
 set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
 target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
     /threads:3 "/lldltocache:${CMAKE_BINARY_DIR}/thinlto-cache")
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
+        "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp"
+        "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
+        "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp" VERBATIM)
 add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL
-    "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp")
+    "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp")
 add_dependencies(game katana_native_port_link_audit)
 add_custom_command(TARGET game POST_BUILD
     COMMAND "$<TARGET_FILE:katana_native_port_link_audit>"
@@ -89,6 +106,18 @@ add_custom_command(TARGET game POST_BUILD
         "${SONIC_BASE}/product/FFmpeg-NOTICE.txt"
         "${SONIC_BASE}/product/FFmpeg-BUILD-CONFIGURATION.txt"
         "$<TARGET_FILE_DIR:game>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:game>/licenses/volk"
+        "$<TARGET_FILE_DIR:game>/licenses/vulkan-headers"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SONIC_ROOT}/third_party/README.md" "$<TARGET_FILE_DIR:game>/THIRD-PARTY-NOTICES.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SONIC_ROOT}/third_party/volk/LICENSE.md" "$<TARGET_FILE_DIR:game>/licenses/volk/LICENSE.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SONIC_ROOT}/third_party/vulkan-headers/LICENSE.md"
+        "${SONIC_ROOT}/third_party/vulkan-headers/LICENSES/Apache-2.0.txt"
+        "${SONIC_ROOT}/third_party/vulkan-headers/LICENSES/MIT.txt"
+        "$<TARGET_FILE_DIR:game>/licenses/vulkan-headers"
     COMMAND_EXPAND_LISTS VERBATIM)
 file(GENERATE OUTPUT "${SONIC_ROOT}/out/experimental/katana-content-root.txt"
     CONTENT "../../.local/baseline/r354/native-content\n")
@@ -121,6 +150,17 @@ target_include_directories(sonic_sdk_color_tests PRIVATE "${SONIC_ROOT}/src"
     "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
 target_compile_options(sonic_sdk_color_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_sdk_color_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_language_tests EXCLUDE_FROM_ALL tools/test_language.cpp
+    src/sonic_language.cpp src/sonic_presentation.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_language_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_language_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_language_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)

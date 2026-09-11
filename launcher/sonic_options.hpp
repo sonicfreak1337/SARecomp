@@ -2,6 +2,7 @@
 // Port-owned extension of the pinned SDK's native Options menu. No SDK ABI
 // changes or guest state writes. Attach on the window's own thread.
 #include "sonic_presentation.hpp"
+#include "renderer/window_fullscreen.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -11,11 +12,13 @@
 
 namespace sonic::options {
 inline constexpr UINT first_command=0x7350, last_command=first_command+3;
+inline constexpr UINT renderer_command=0x7360;
 inline constexpr UINT install_message=WM_APP+0x351;
 inline constexpr UINT restore_message=WM_APP+0x352;
 struct MenuState {
     HWND window=nullptr;
     HMENU format=nullptr;
+    HMENU renderer=nullptr;
     WNDPROC previous=nullptr;
     HHOOK hook=nullptr;
     std::filesystem::path config;
@@ -31,18 +34,13 @@ inline unsigned choice(const presentation::Settings& value) {
     return value.width*9u==value.height*16u ? 1 : 2;
 }
 inline void save(const presentation::Settings& value) {
-    auto temporary=state.config;
-    temporary+=L".pending";
-    {
-        std::ofstream output(temporary,std::ios::binary|std::ios::trunc);
-        output<<"# Experimental Sonic presentation. Applied on next launch.\nmode="
-              <<(value.widescreen?"widescreen":"original")<<"\nwidth="<<value.width
-              <<"\nheight="<<value.height<<"\nrender_percent="<<value.render_percent<<'\n';
-        output.flush();
-        if (!output) throw std::runtime_error("Display settings could not be written");
-    }
-    if (!MoveFileExW(temporary.c_str(),state.config.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
-        throw std::runtime_error("Display settings could not be published");
+    // Read pending external choices so this menu does not erase configuration
+    // changes made in sonic-config.exe while the game is running.
+    auto pending=presentation::read_settings(state.config);
+    pending.width=value.width; pending.height=value.height;
+    pending.widescreen=value.widescreen; pending.render_percent=value.render_percent;
+    pending.renderer=value.renderer;
+    presentation::save_settings(state.config,pending);
 }
 inline void select(const UINT command) {
     auto value=state.selected;
@@ -81,19 +79,34 @@ inline void select(const UINT command) {
     std::cerr<<"SONIC_OPTIONS_SAVED width="<<value.width<<" height="<<value.height
              <<" widescreen="<<value.widescreen<<" applies=restart\n";
 }
+inline void select_renderer(UINT command) {
+    auto value=state.selected;
+    value.renderer=command==renderer_command ? rendering::Renderer::D3D11 : rendering::Renderer::Vulkan;
+    save(value);
+    state.selected=value;
+    CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,command,MF_BYCOMMAND);
+    std::cerr<<"SONIC_OPTIONS_SAVED renderer="<<rendering::name(value.renderer)<<" applies=restart\n";
+}
 inline LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM word,LPARAM data) {
     if (message==restore_message) {
         try {
             state.selected=presentation::settings();
             save(state.selected);
             CheckMenuRadioItem(state.format,first_command,last_command,first_command+choice(state.selected),MF_BYCOMMAND);
+            CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,
+                renderer_command+(state.selected.renderer==rendering::Renderer::Vulkan),MF_BYCOMMAND);
             ModifyMenuW(state.format,last_command+2,MF_BYCOMMAND|MF_STRING|MF_GRAYED,last_command+2,
                         L"Aenderungen gelten nach Neustart");
         } catch (...) {return 0;}
         return 1;
     }
-    if (message==WM_COMMAND && HIWORD(word)==0 && LOWORD(word)>=first_command && LOWORD(word)<=last_command) {
-        try {select(LOWORD(word));}
+    if (message==WM_COMMAND && HIWORD(word)==0 &&
+        ((LOWORD(word)>=first_command && LOWORD(word)<=last_command) ||
+         LOWORD(word)==renderer_command || LOWORD(word)==renderer_command+1)) {
+        try {
+            if (LOWORD(word)>=renderer_command) select_renderer(LOWORD(word));
+            else select(LOWORD(word));
+        }
         catch (const std::exception& error) {
             std::cerr<<"SONIC_OPTIONS_ERROR "<<error.what()<<'\n';
             ModifyMenuW(state.format,last_command+2,MF_BYCOMMAND|MF_STRING|MF_GRAYED,last_command+2,
@@ -107,7 +120,7 @@ inline LRESULT CALLBACK install_hook(int code,WPARAM word,LPARAM data) {
     if (code>=0) {
         const auto& message=*reinterpret_cast<const CWPSTRUCT*>(data);
         if (message.hwnd==state.window && message.message==install_message && !state.ready) {
-            auto menu=GetSubMenu(GetMenu(state.window),0);
+            auto menu=GetSubMenu(rendering::window_menu(state.window),0);
             auto format=CreatePopupMenu();
             if (menu && format) {
                 AppendMenuW(format,MF_STRING,first_command,L"Original (4:3)");
@@ -121,6 +134,18 @@ inline LRESULT CALLBACK install_hook(int code,WPARAM word,LPARAM data) {
                 AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
                 if (AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(format),L"Bildformat (Neustart)")) {
                     state.format=format;
+                    state.renderer=CreatePopupMenu();
+                    if (!state.renderer) return CallNextHookEx(state.hook,code,word,data);
+                    AppendMenuW(state.renderer,MF_STRING,renderer_command,L"Direct3D 11");
+                    AppendMenuW(state.renderer,MF_STRING,renderer_command+1,L"Vulkan (experimentell)");
+                    AppendMenuW(state.renderer,MF_SEPARATOR,0,nullptr);
+                    const auto renderer_active=state.selected.renderer==rendering::Renderer::Vulkan ? L"Aktiv: Vulkan" : L"Aktiv: Direct3D 11";
+                    AppendMenuW(state.renderer,MF_STRING|MF_GRAYED,renderer_command+2,renderer_active);
+                    AppendMenuW(state.renderer,MF_STRING|MF_GRAYED,renderer_command+3,L"Aenderungen gelten nach Neustart");
+                    if (!AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(state.renderer),L"Renderer (Neustart)"))
+                        return CallNextHookEx(state.hook,code,word,data);
+                    CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,
+                        renderer_command+(state.selected.renderer==rendering::Renderer::Vulkan),MF_BYCOMMAND);
                     state.previous=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(state.window,GWLP_WNDPROC,
                         reinterpret_cast<LONG_PTR>(&window_proc)));
                     state.ready=state.previous!=nullptr;
@@ -148,27 +173,46 @@ inline void install(const std::filesystem::path& executable) {
     state.selected=presentation::settings();
     EnumWindows(&own_window,0);
     if (!state.window) throw std::runtime_error("Sonic Options window unavailable");
+    const auto* test=std::getenv("SARECOMP_OPTIONS_SELF_TEST");
+    const auto* hidden=std::getenv("KATANA_PORT_BACKGROUND_TEST");
+    const bool testing=test && std::string_view(test)=="1" && hidden && std::string_view(hidden)=="1";
+    const bool detached_test=testing && state.selected.window_mode!=rendering::WindowMode::Windowed;
+    if(detached_test) {
+        SendMessageW(state.window,WM_SYSKEYDOWN,VK_RETURN,LPARAM(1)<<29);
+        if(GetMenu(state.window) || !rendering::window_menu(state.window))
+            throw std::runtime_error("Fullscreen menu fixture failed");
+    }
     state.hook=SetWindowsHookExW(WH_CALLWNDPROC,&install_hook,nullptr,GetWindowThreadProcessId(state.window,nullptr));
     if (!state.hook) throw std::runtime_error("Sonic Options attachment failed");
     SendMessageW(state.window,install_message,0,0);
     UnhookWindowsHookEx(state.hook);
     state.hook=nullptr;
     if (!state.ready) throw std::runtime_error("Sonic Options menu unavailable");
-    std::cerr<<"SONIC_OPTIONS_READY choices=original,16:9,21:9,monitor applies=restart\n";
+    std::cerr<<"SONIC_OPTIONS_READY choices=original,16:9,21:9,monitor renderers=d3d11,vulkan applies=restart\n";
     // A bounded in-process menu integration check, only in hidden captures.
-    const auto* test=std::getenv("SARECOMP_OPTIONS_SELF_TEST");
-    const auto* hidden=std::getenv("KATANA_PORT_BACKGROUND_TEST");
-    if (test && std::string_view(test)=="1" && hidden && std::string_view(hidden)=="1") {
+    if (testing) {
         for (unsigned index : {3u,2u,1u,0u}) {
             SendMessageW(state.window,WM_COMMAND,first_command+index,0);
             if ((GetMenuState(state.format,first_command+index,MF_BYCOMMAND)&MF_CHECKED)==0)
                 throw std::runtime_error("Sonic Options command failed");
+        }
+        for (unsigned index : {1u,0u}) {
+            SendMessageW(state.window,WM_COMMAND,renderer_command+index,0);
+            if ((GetMenuState(state.renderer,renderer_command+index,MF_BYCOMMAND)&MF_CHECKED)==0)
+                throw std::runtime_error("Sonic renderer selection failed");
         }
         // Return the pending selection to the active configuration through
         // the owning thread, preserving the exact custom capture resolution.
         if (SendMessageW(state.window,restore_message,0,0)!=1)
             throw std::runtime_error("Sonic Options settings restore failed");
         std::cerr<<"SONIC_OPTIONS_SELF_TEST_OK settings_restored=1\n";
+        if(detached_test) {
+            const auto menu=rendering::window_menu(state.window);
+            SendMessageW(state.window,WM_SYSKEYDOWN,VK_RETURN,LPARAM(1)<<29);
+            if(GetMenu(state.window)!=menu || !IsMenu(state.format) || !IsMenu(state.renderer))
+                throw std::runtime_error("Fullscreen menu restoration failed");
+            std::cerr<<"SONIC_FULLSCREEN_OPTIONS_TEST_OK detached_install=1 restored=1\n";
+        }
     }
 }
 }
