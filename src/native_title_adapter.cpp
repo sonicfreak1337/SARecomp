@@ -27,6 +27,7 @@
 #include "sonic_native_sdk_texture_release_plan.hpp"
 #include "sonic_private_scenario_launcher.hpp"
 #include "sonic_presentation.hpp"
+#include "sonic_sdk_color.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33621,7 +33622,7 @@ sonic_native_ninja_model_draw_impl(
 
         std::array<std::uint32_t, 3u> constant_attributes{};
         std::uint32_t sdk_material_control = 0u;
-        std::array<float, 4u> sdk_constant_color{};
+        sonic::color::ArgbWords sdk_constant_color{};
         if (material_owner != SonicNativeBasicMaterialOwner::TitleBasic) {
             // The three SDK composite owners use 88F56C bit 2 and the
             // 88F5A0/A4 AND/OR pair (61099E, 6209A2, 6384B2). They do not
@@ -33635,11 +33636,9 @@ sonic_native_ninja_model_draw_impl(
                  !reader.u32(0x8C88F5A4u, constant_attributes[2])))
                 return graphics_abort(context, sonic_native_graphics_error_range);
             if (material_owner == SonicNativeBasicMaterialOwner::ResidentSdk &&
-                (sdk_material_control & 0x30u) != 0u)
-                for (std::size_t index = 0u; index < sdk_constant_color.size(); ++index)
-                    if (!reader.f32(0x8C88F5A8u + static_cast<std::uint32_t>(index * 4u),
-                                    sdk_constant_color[index]))
-                        return graphics_abort(context, sonic_native_graphics_error_range);
+                !sonic::color::read_constant_argb(reader, sdk_material_control,
+                                                 sdk_constant_color))
+                return graphics_abort(context, sonic_native_graphics_error_range);
         } else {
             for (std::size_t index = 0u; index < constant_attributes.size(); ++index)
                 if (!reader.u32(sonic_ninja_constant_attribute_state +
@@ -34603,6 +34602,14 @@ sonic_native_ninja_model_draw_impl(
         std::optional<katana::runtime::CpuState> sdk_color_fpu;
         auto& sdk_intensities = sonic_native_title_state.model_sdk_intensity_scratch;
         std::array<std::uint32_t, 4u> sdk_light{};
+        if (model_has_sdk_float_colors ||
+            (material_owner == SonicNativeBasicMaterialOwner::ResidentSdk &&
+             (sdk_material_control & 0x30u) != 0u)) {
+            sdk_color_fpu.emplace(katana::runtime::CpuState{
+                .memory = katana::runtime::Memory{0u,
+                    katana::runtime::MemoryAlignmentPolicy::Permissive}});
+            sdk_color_fpu->fpscr = cpu.fpscr;
+        }
         if (model_has_sdk_float_colors) {
             if (model_normal_scratch.size() != point_count ||
                 !reader.u32(0x8C890188u, sdk_light[0u]) ||
@@ -34610,10 +34617,6 @@ sonic_native_ninja_model_draw_impl(
                 !reader.u32(0x8C890190u, sdk_light[2u]) ||
                 !reader.u32(0x8C890198u, sdk_light[3u]))
                 return graphics_abort(context, sonic_native_graphics_error_range);
-            sdk_color_fpu.emplace(katana::runtime::CpuState{
-                .memory = katana::runtime::Memory{0u,
-                    katana::runtime::MemoryAlignmentPolicy::Permissive}});
-            sdk_color_fpu->fpscr = cpu.fpscr;
             const katana::runtime::HostFpuExecutionEpoch epoch(*sdk_color_fpu);
             sdk_intensities.resize(point_count);
             for (std::size_t point = 0u; point < point_count; ++point)
@@ -35193,23 +35196,35 @@ sonic_native_ninja_model_draw_impl(
                 native_material.diffuse[1u] = 1.0f;
                 native_material.diffuse[2u] = 1.0f;
             }
-            if (material_owner == SonicNativeBasicMaterialOwner::ResidentSdk) {
+            if (material_owner == SonicNativeBasicMaterialOwner::ResidentSdk &&
+                (sdk_material_control & 0x30u) != 0u) {
                 // SDK material colour is independent of IgnoreLight. In
                 // particular, the monitor owner clears 0x200 before drawing
                 // its cloned material, whose RGB animates between black/white.
                 // 6385F0 gives replacement (0x10) precedence over addition
                 // (0x20); the source constant is laid out A,R,G,B.
-                for (std::size_t component = 0u; component < 4u; ++component) {
-                    const auto source = (component + 1u) % 4u;
-                    if ((sdk_material_control & 0x10u) != 0u)
-                        native_material.diffuse[component] = sdk_constant_color[source];
-                    else if ((sdk_material_control & 0x20u) != 0u)
-                        native_material.diffuse[component] += sdk_constant_color[source];
-                }
+                const katana::runtime::HostFpuExecutionEpoch epoch(*sdk_color_fpu);
+                native_material.diffuse = sonic::color::apply_constant_argb(
+                    *sdk_color_fpu, sdk_material_control, sdk_constant_color,
+                    native_material.diffuse);
             }
             const auto sdk_face_color = native_material.diffuse;
+            const bool sdk_nonfinite_face =
+                material_owner == SonicNativeBasicMaterialOwner::ResidentSdk &&
+                sonic::color::has_nonfinite(sdk_face_color);
+            // 620B6C/76 -> 6064F0/6063F0 copies raw Face ARGB into the
+            // intensity header. In particular 61CEDC (textured IgnoreLight,
+            // including the Speed Highway 2 crash) supplies intensity 1.
+            // Saturate header and intensity separately, as the TA does.
+            // Other nonfinite SDK colors are converted after vertex lighting.
+            // Keep the established finite material path unchanged here.
+            const bool sdk_exceptional_header_color = sdk_nonfinite_face &&
+                sdk_writer == SonicNativeSdkModelWriter::Sdk620 &&
+                sonic_ninja_material_uses_texture(material_control_flags);
             const bool sdk_constant_colors =
                 sdk_writer == SonicNativeSdkModelWriter::Sdk638 && ignore_lighting;
+            const bool sdk_exceptional_vertex_color = sdk_nonfinite_face &&
+                !sdk_exceptional_header_color && !sdk_constant_colors && !sdk_float_colors;
             auto sdk_constant_face_color = sdk_face_color;
             if (sdk_constant_colors)
                 for (auto& value : sdk_constant_face_color)
@@ -35218,7 +35233,8 @@ sonic_native_ninja_model_draw_impl(
             // 637634/633C7C take constant Base ARGB from SDK scratch for
             // IgnoreLight, bypassing normals and the title palette. Quantize
             // before texture interpolation, just like the original writer.
-            if (sdk_float_colors || sdk_constant_colors)
+            if (sdk_float_colors || sdk_constant_colors ||
+                sdk_exceptional_header_color || sdk_exceptional_vertex_color)
                 native_material.diffuse = {1.0f, 1.0f, 1.0f, 1.0f};
             native_material.specular = {0.0f, 0.0f, 0.0f, 1.0f};
             native_material.specular_power = exponent;
@@ -35282,7 +35298,7 @@ sonic_native_ninja_model_draw_impl(
                                 << std::dec << " ignore_light=" << ignore_lighting
                                 << " constant_argb=";
                         for (const auto value : sdk_constant_color)
-                            witness << value << ',';
+                            witness << std::bit_cast<float>(value) << ',';
                         witness << " output_rgba=";
                         for (const auto value : sdk_face_color)
                             witness << value << ',';
@@ -35383,12 +35399,19 @@ sonic_native_ninja_model_draw_impl(
                             : transformed_primary_colors[point_index] &
                                   0x00FFFFFFu;
                     vertex.color = argb_color(packed_rgb | 0xFF000000u);
-                    if (sdk_constant_colors) {
+                    if (sdk_exceptional_header_color) {
+                        vertex.color = sonic::color::intensity_header_color(
+                            sdk_face_color, packed_rgb);
+                    } else if (sdk_constant_colors) {
                         vertex.color = sdk_constant_face_color;
                     } else if (sdk_float_colors) {
                         const katana::runtime::HostFpuExecutionEpoch epoch(*sdk_color_fpu);
                         vertex.color = sonic_sdk_float_vertex_color(
                             *sdk_color_fpu, sdk_intensities[point_index], sdk_face_color);
+                    } else if (sdk_exceptional_vertex_color) {
+                        const katana::runtime::HostFpuExecutionEpoch epoch(*sdk_color_fpu);
+                        vertex.color = sonic::color::lit_vertex_color(
+                            *sdk_color_fpu, sdk_face_color, vertex.color);
                     }
                     if (native_material.use_secondary_color) {
                         vertex.secondary_color =
@@ -37892,13 +37915,7 @@ finish_native_culled_route_sprite_state(
 
 [[nodiscard]] constexpr std::uint32_t sonic_ta_float_color_byte(
     const std::uint32_t bits) noexcept {
-    // Flycast ta_vtx.cpp's float-color table is indexed by the upper 16 bits,
-    // clamps before conversion, and maps either-sign NaN to 255.
-    const auto value = std::bit_cast<float>(bits & 0xFFFF0000u);
-    if (value != value) return 255u;
-    if (value <= 0.0f) return 0u;
-    if (value >= 1.0f) return 255u;
-    return static_cast<std::uint32_t>(value * 255.0f);
+    return sonic::color::ta_float_color_byte(bits);
 }
 
 [[nodiscard]] katana::runtime::NativePortHookResult draw_sprite_family(

@@ -144,7 +144,7 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:01577ff51fb72acfd491ad83b1e065c66a8b820a656648328dabfe82b5a000e3"};
+        "sha256:4d2adb6d96391d6e762b19b18e3057d8925d108fbb4014a7b2c4f09bf8901068"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

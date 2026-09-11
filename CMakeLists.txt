@@ -114,3 +114,13 @@ target_link_libraries(sonic_render_culling_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_sdk_color_tests EXCLUDE_FROM_ALL tools/test_sdk_color.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_sdk_color_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_sdk_color_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_sdk_color_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)

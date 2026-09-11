@@ -10,6 +10,11 @@ visibility correction is built, but a subsequent user report of a crash
 when the station-hall monitor enters view remains unresolved. Do not promote
 this build or describe the whole object-culling problem as visually verified.
 
+A later Speed Highway 2 crash supplied a complete capsule and identified an
+SDK constant-color read, separate from the new culling leaves. Its correction
+and verification are documented in `speed-highway-color-crash.md`; the monitor
+report remains unproven and must not be treated as the same root cause.
+
 ## Cause and implementation
 
 The wider projection alone was too late: retail code rejected objects against

@@ -91,6 +91,11 @@ hint monitor. A reported station-hall monitor crash is still under
 investigation; this experimental build is not a replacement baseline.
 See `docs/widescreen-culling.md` for the scope, evidence and remaining limits.
 
+The subsequent Speed Highway 2 capsule identified a separate finite-only SDK
+color read. The experimental build now preserves the original FMOV/FADD color
+behavior and converts exceptional colors at their output boundary. See
+`docs/speed-highway-color-crash.md` for the exact source evidence and checks.
+
 ## CPU performance work
 
 The performance batch found no reliable reduction in total CPU work. All
