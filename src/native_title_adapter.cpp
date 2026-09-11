@@ -26,6 +26,7 @@
 #include "sonic_native_texture_catalog.hpp"
 #include "sonic_native_sdk_texture_release_plan.hpp"
 #include "sonic_private_scenario_launcher.hpp"
+#include "sonic_presentation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6436,7 +6437,8 @@ sonic_render_state(
     const katana::runtime::NativePortDrawDiagnostics& diagnostics = {},
     const katana::runtime::NativePortMeshHandle mesh = {},
     const std::optional<katana::runtime::NativePortDrawBatchClass> batch_override =
-        std::nullopt)
+        std::nullopt,
+    const sonic::presentation::Role presentation_role = sonic::presentation::Role::Interface)
     noexcept {
     if (!valid_sonic_native_context(context))
         return graphics_abort(sonic_native_graphics_error_context);
@@ -6497,6 +6499,7 @@ sonic_render_state(
                       PerspectiveCorrect;
         packet.transform = transform.value_or(sonic_screen_space_transform());
         packet.viewport = viewport;
+        sonic::presentation::apply(packet, presentation_role);
         packet.topology = topology;
         packet.blend = blend.value_or(render_state->blend);
         // A source-owned material may override the four blend factors, but
@@ -6550,6 +6553,9 @@ sonic_render_state(
                         LogicalViewportAfterTransform;
                 packet.rasterizer.small_triangle_reference_extent =
                     {640u, 480u};
+                if (presentation_role == sonic::presentation::Role::World)
+                    packet.rasterizer.small_triangle_area_threshold *=
+                        sonic::presentation::horizontal_scale();
             }
         }
         packet.sampler = sampler.value_or(render_state->sampler);
@@ -6661,6 +6667,10 @@ sonic_render_state(
             static_cast<bool>(sonic_native_title_state.font_texture) &&
             packet.texture == sonic_native_title_state.font_texture;
         packet.batch.semantic = batch_override.value_or(
+            sonic::presentation::settings().widescreen &&
+                    presentation_role == sonic::presentation::Role::World
+                ? katana::runtime::NativePortDrawBatchClass::Scene3D
+            :
             font_draw
                 ? katana::runtime::NativePortDrawBatchClass::FontOverlay
             : packet.vertex_space !=
@@ -7323,7 +7333,8 @@ draw_polygon_line_family(
         std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
         {}, std::nullopt, std::nullopt, {}, std::nullopt, false, std::nullopt,
         katana::runtime::NativePortDepthCoordinateMode::ReciprocalPositive,
-        ninja_arc1);
+        ninja_arc1, std::nullopt, {}, {}, std::nullopt,
+        sonic::presentation::Role::World);
     return finish_pretransformed_stream_draw(context, result);
 }
 
@@ -8011,7 +8022,8 @@ draw_polygon_line_family(
         std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
         {}, std::nullopt, std::nullopt, {}, std::nullopt, false, std::nullopt,
         katana::runtime::NativePortDepthCoordinateMode::ReciprocalPositive,
-        ninja_arc1);
+        ninja_arc1, std::nullopt, {}, {}, std::nullopt,
+        sonic::presentation::Role::World);
     return finish_pretransformed_stream_draw(context, result);
 }
 
@@ -36329,7 +36341,8 @@ sonic_native_ninja_model_draw_impl(
                  persistent_mesh,
                  environment_mapping
                      ? std::optional{katana::runtime::NativePortDrawBatchClass::Scene3D}
-                     : std::nullopt);
+                     : std::nullopt,
+                 sonic::presentation::Role::World);
             if (result.action != katana::runtime::NativePortHookAction::Return)
                 return result;
             if (sonic_native_texlist_binding_diagnostic_enabled()) {
@@ -36440,13 +36453,37 @@ sonic_native_draw_pretransformed_dispatch(
         (textured && !reader.u32(context.cpu->r[4] + 8u, streams[2])))
         return graphics_abort(sonic_native_graphics_error_range);
 
+    // Source-bound PAL transition owners, not a four-vertex geometry guess.
+    // 0436FE calls this API; 0439AE tails here using its static descriptor.
+    // 09B46C/09B4F2 are the black/white level fades, with stack-owned streams.
+    const auto& cpu = *context.cpu;
+    const bool stack_fade = cpu.r[15] <= 0xFFFFFFFFu-56u &&
+        cpu.r[4] == cpu.r[15]+8u && streams[0] == cpu.r[4]+16u &&
+        streams[1] == cpu.r[4]+48u && cpu.fr[4] == 0xBC23D70Au &&
+        ((cpu.pr == 0x8C09B4EAu && selector == 0x60u) ||
+         (cpu.pr == 0x8C09B582u && (selector == 0x60u || selector == 0x20u)));
+    // The separate 042E4E stage-entry fade orders its perimeter differently
+    // and places the descriptor after the colors/positions in its stack frame.
+    const bool stage_fade = cpu.pr == 0x8C042F06u && selector == 0x62u &&
+        cpu.fr[4] == 0xBDCCCCCCu && cpu.r[15] <= 0xFFFFFFFFu-68u &&
+        cpu.r[4] == cpu.r[15]+52u && streams[0] == cpu.r[15]+20u &&
+        streams[1] == cpu.r[15]+4u;
+    const bool fullscreen_overlay = count == 4u && !textured &&
+        (stack_fade || stage_fade || (context.cpu->pr == 0x8C0437BAu && selector == 0x62u &&
+          context.cpu->fr[4] == 0xBDCCCCCCu) ||
+         (context.cpu->r[4] == 0x8C19B518u && selector == 0x60u &&
+          context.cpu->fr[4] == 0xBF8147AEu &&
+          streams[0] == 0x8C19B4E8u && streams[1] == 0x8C19B508u));
+
     // One bounded value witness per statically proven selector class.  It is
     // private product evidence, not a source of rendering semantics: no bulk
     // title data is persisted and an unimplemented class remains typed-abort.
     if (!sonic_native_title_state.pretransformed_probe_reported[variant]) {
         sonic_native_title_state.pretransformed_probe_reported[variant] = true;
         std::cerr << "SONIC_NATIVE_PRETRANSFORMED_PROBE r4=0x" << std::hex
-                  << context.cpu->r[4] << " r5=0x" << context.cpu->r[5]
+                  << context.cpu->r[4] << " pr=0x" << context.cpu->pr
+                  << " sp=0x" << context.cpu->r[15] << " fullscreen=" << fullscreen_overlay
+                  << " r5=0x" << context.cpu->r[5]
                   << " r6=0x" << context.cpu->r[6] << " fr4=0x"
                   << context.cpu->fr[4] << " streams=0x" << streams[0]
                   << ",0x" << streams[1] << ",0x" << streams[2];
@@ -36705,7 +36742,8 @@ sonic_native_draw_pretransformed_dispatch(
         katana::runtime::NativePortDepthCoordinateMode::ReciprocalPositive,
         (translucent ? 0x02100002u : 0x00080002u) |
             (textured ? 0x8u : 0u),
-        std::nullopt, draw_diagnostics);
+        std::nullopt, draw_diagnostics, {}, std::nullopt,
+        fullscreen_overlay ? sonic::presentation::Role::Fullscreen : sonic::presentation::Role::Interface);
     return finish_pretransformed_stream_draw(context, result);
 }
 
@@ -37308,6 +37346,45 @@ enum class SonicNativeSpriteProfile : std::uint8_t {
     Standard,
     RouteCamera
 };
+
+// The boot-image identity in the retained manifest binds these callsites and
+// their carrier contracts. In particular, CON_REGULAR alone is not HUD: the
+// menu and the generic 08EDD8 formatter use it too. No coordinate heuristic.
+[[nodiscard]] sonic::presentation::Role sonic_sprite_presentation_role(
+    const katana::runtime::CpuState& cpu, const std::uint32_t carrier,
+    const std::uint32_t texlist, const std::uint32_t frames) noexcept {
+    using sonic::presentation::Role;
+    if (!sonic::presentation::settings().widescreen) return Role::Interface;
+    constexpr std::array counters{0x8C08A332u,0x8C08A3B6u,
+        0x8C089ECCu,0x8C089F00u,0x8C089F2Eu,0x8C089F58u,0x8C089F7Au};
+    constexpr std::array clock{0x8C08A818u,0x8C08A838u,0x8C08A84Eu,
+        0x8C08A86Eu,0x8C08A88Eu,0x8C08A8A4u,0x8C08A8ECu,0x8C08A98Cu,
+        0x8C08A9A2u,0x8C08A9B8u,0x8C08A9CEu,0x8C08A9E4u,0x8C08A9FAu,
+        0x8C08AA10u,0x8C08AA26u};
+    constexpr std::array boss{0x8C0F205Au,0x8C0F2076u,0x8C0F209Au,
+        0x8C0F20CEu,0x8C0F20E2u,0x8C0F211Au,0x8C0F214Eu};
+    const auto has = [&](const auto& calls) {
+        return std::ranges::find(calls,cpu.pr) != calls.end();
+    };
+    if (texlist == 0x8C1BF0E4u && frames == 0x8C1BF1C8u &&
+        ((carrier == 0x8C1BF420u && has(counters)) ||
+         (cpu.r[15] <= 0xFFFFFFFFu-20u && carrier == cpu.r[15]+20u && has(clock))))
+        return Role::HudLeft;
+    if (carrier == 0x8C5901D8u && texlist == 0x8C590158u && frames == 0x8C590160u && has(boss))
+        return Role::HudRight;
+    // EXTRA: both animated owners draw the animal row from x603 toward the
+    // left. Bind the shared carrier and exact returns, not general sprite X.
+    if (carrier == 0x8C195F44u && texlist == 0x8C195E10u && frames == 0x8C195E18u &&
+        (cpu.pr == 0x8C026F4Cu || cpu.pr == 0x8C027070u || cpu.pr == 0x8C027298u))
+        return Role::HudRight;
+    // Alternative icons/counter reached directly by the original main HUD.
+    // The second icon is a tail call and retains the outer owner's return.
+    if ((cpu.pr == 0x8C0A1198u && carrier == 0x8C1C4490u && texlist == 0x8C1C3250u && frames == 0x8C1C447Cu) ||
+        (cpu.pr == 0x8C0A110Eu && carrier == 0x8C15B110u && texlist == 0x8C1C44BCu && frames == 0x8C15B0FCu) ||
+        (cpu.pr == 0x8C08A266u && carrier == 0x8C15B144u && texlist == 0x8C1C3250u && frames == 0x8C15B130u))
+        return Role::HudLeft;
+    return Role::Interface;
+}
 
 namespace {
 // Process-local observation only: deliberately outside SonicNativeTitleState,
@@ -38134,6 +38211,10 @@ finish_native_culled_route_sprite_state(
                     !std::isfinite(screen_bounds[bound]))
                     return graphics_abort(sonic_native_graphics_error_layout);
             }
+            if (sonic::presentation::settings().widescreen) {
+                screen_bounds[0] -= sonic::presentation::extra_horizontal_pixels();
+                screen_bounds[2] += sonic::presentation::extra_horizontal_pixels();
+            }
             for (std::size_t index = 0u; index < positions.size(); ++index) {
                 const auto rotated_x =
                     positions[index][0] * cosine -
@@ -38546,7 +38627,9 @@ finish_native_culled_route_sprite_state(
         std::nullopt, std::nullopt, std::nullopt, sprite_sampler,
         sprite_material, {}, std::nullopt, std::nullopt, {}, std::nullopt,
         false, sprite_transform, sprite_depth_mapping, sprite_arc1,
-        sprite_render_state, draw_diagnostics);
+        sprite_render_state, draw_diagnostics, {}, std::nullopt,
+        sprite_2d ? sonic_sprite_presentation_role(*context.cpu, address, texlist, texanim)
+                  : sonic::presentation::Role::World);
     report_trace(static_cast<unsigned>(result.action));
     return finish_sprite(result);
 }
@@ -41034,7 +41117,14 @@ sonic_native_ninja_model_coarse_cull_8c611384(
                 return std::nullopt;
         }
 
-        // 0x8C611460-0x8C6114A0.  Keep each FADD/FSUB/FDIV/FMUL/FMAC in
+        // Expand this host copy of render bounds; never guest/gameplay state.
+        if (sonic::presentation::settings().widescreen) {
+            bounds_bits[0] = std::bit_cast<std::uint32_t>(
+                std::bit_cast<float>(bounds_bits[0]) - sonic::presentation::extra_horizontal_pixels());
+            bounds_bits[2] = std::bit_cast<std::uint32_t>(
+                std::bit_cast<float>(bounds_bits[2]) + sonic::presentation::extra_horizontal_pixels());
+        }
+        // 0x8C611460-0x8C6114A0. Keep each FADD/FSUB/FDIV/FMUL/FMAC in
         // original order; regrouping these expressions changes SH-4 rounding,
         // denormal and NaN behavior.
         katana::runtime::fpu_binary(

@@ -1,0 +1,26 @@
+{
+  "schema": "sarecomp-pinned-dev-tools-v1",
+  "upstream_commit": "178448bee4239048661c5e2362850b1c135b6ba1",
+  "files": [
+    {
+      "path": ".local/toolchain/katana_core.lib",
+      "bytes": 197431946,
+      "sha256": "c285adc69e987bdec64efa46736f6cc541a661bb1b07d2186f77240dac93bc96"
+    },
+    {
+      "path": ".local/toolchain/katana_runtime_core.lib",
+      "bytes": 63507406,
+      "sha256": "fc2c07c814646dcd5e01e57a2c5bc3fed008b8298b804d579aa9b4dd5a9ddce9"
+    },
+    {
+      "path": ".local/toolchain/r354.katana-native-port",
+      "bytes": 37660,
+      "sha256": "1c3710d16fd2f294d7dfd6c638c6638e83bd7d07aeeca8780f6b9a6684d6ea3d"
+    },
+    {
+      "path": ".local/toolchain/sonic-native-provider-refresh.exe",
+      "bytes": 329216,
+      "sha256": "dd52b604f319fc4ada81cc811a46d6b6578d089997920c074a7f62ca98c8a3e6"
+    }
+  ]
+}

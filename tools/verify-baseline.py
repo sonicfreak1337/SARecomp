@@ -8,7 +8,8 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--quick', action='store_true', help='Check executable and AOT metadata only')
 args = parser.parse_args()
-manifest = json.loads((root / 'baseline/r354.json').read_text(encoding='utf-8'))
+portable = (root/'.local/baseline/r354-restored.json').exists()
+manifest = json.loads((root / ('baseline/development-bundle.json' if portable else 'baseline/r354.json')).read_text(encoding='utf-8'))
 checked = 0
 last = time.monotonic()
 for row in manifest['files']:
@@ -17,7 +18,9 @@ for row in manifest['files']:
         '.local/baseline/r354/product/generated/metadata/native-aot-pack.json'):
         continue
     path = (root / row['path']).resolve()
-    if not path.is_relative_to((root / '.local/baseline/r354').resolve()):
+    allowed = [root/'.local/baseline/r354']
+    if portable: allowed.append(root/'.local/toolchain')
+    if not any(path.is_relative_to(folder.resolve()) for folder in allowed):
         raise SystemExit('Invalid baseline manifest path')
     if path.stat().st_size != row['bytes']:
         raise SystemExit(f'Baseline size mismatch: {path}')

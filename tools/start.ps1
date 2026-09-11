@@ -1,7 +1,10 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param([ValidateSet('baseline','experimental')][string] $Mode = 'experimental',
-      [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Profile = 'development')
+      [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Profile = 'development',
+      [ValidateSet('original','widescreen')][string] $Aspect = 'original',
+      [ValidateRange(640,7680)][int] $Width = 1920,
+      [ValidateRange(480,4320)][int] $Height = 1080)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $base = Join-Path $root '.local/baseline/r354'
@@ -34,6 +37,7 @@ if (-not (Test-Path -LiteralPath $exe)) { throw 'Build the Sonic product first.'
 $start = [Diagnostics.ProcessStartInfo]::new($exe)
 $start.UseShellExecute = $false
 $start.WorkingDirectory = $product
+$start.ArgumentList.Add('--bringup-incomplete-hardware-closure')
 $start.ArgumentList.Add('--content-root')
 $start.ArgumentList.Add((Join-Path $base 'native-content'))
 $start.ArgumentList.Add('--presentation-fps')
@@ -43,5 +47,28 @@ foreach ($key in @($start.Environment.Keys)) {
     if ($key -like 'KATANA_*') { [void]$start.Environment.Remove($key) }
 }
 $start.Environment['KATANA_USER_DATA_ROOT'] = $userData
+if ($Mode -eq 'experimental') {
+    $display = Join-Path $run 'sonic-display.ini'
+    # Menu choices persist across starts. Explicit command-line choices alone
+    # replace the corresponding settings in an existing profile.
+    $values=@{mode=$Aspect;width=$Width;height=$Height;render_percent=100}
+    $exists=Test-Path -LiteralPath $display
+    if ($exists) {
+        foreach ($line in Get-Content -LiteralPath $display) {
+            if ($line -match '^\s*(mode|width|height|render_percent)\s*=\s*(.*?)\s*$') {
+                $values[$Matches[1]]=$Matches[2]
+            }
+        }
+    }
+    if ($PSBoundParameters.ContainsKey('Aspect')) {$values.mode=$Aspect}
+    if ($PSBoundParameters.ContainsKey('Width')) {$values.width=$Width}
+    if ($PSBoundParameters.ContainsKey('Height')) {$values.height=$Height}
+    if (-not $exists -or $PSBoundParameters.ContainsKey('Aspect') -or
+        $PSBoundParameters.ContainsKey('Width') -or $PSBoundParameters.ContainsKey('Height')) {
+        "mode=$($values.mode)`nwidth=$($values.width)`nheight=$($values.height)`nrender_percent=$($values.render_percent)" |
+            Set-Content -LiteralPath $display -Encoding utf8NoBOM
+    }
+    $start.Environment['SARECOMP_DISPLAY_CONFIG'] = $display
+}
 $process = [Diagnostics.Process]::Start($start)
 Write-Host "SONIC_STARTED mode=$Mode pid=$($process.Id) saves=$userData"

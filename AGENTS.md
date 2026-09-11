@@ -26,7 +26,8 @@ fixed. Preserve that product, its AOT pack, native semantics and save data.
 ## Current feature
 
 Real 16:9 and ultrawide 21:9: Hor+ world rendering at the actual pixel aspect,
-consistent render culling, undistorted HUD and complete screen fades. Keep
+consistent render culling, undistorted HUD anchored at the actual screen
+edges (explicit latest user requirement), and complete screen fades. Keep
 movie aspect and title simulation cadence intact. Do not stretch the final
 4:3 image or broaden gameplay activation/collision/event logic.
 
@@ -37,6 +38,9 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   for adapter-only changes. Keep 144 presentation FPS independent of title
   cadence. Do not regenerate AOT for display settings.
 - Use small relevant visual/boot checks, no full level matrix by default.
+- The user currently uses the PC: all tests hidden and muted using
+  KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
+  game window. Obtain visual evidence through native frame capture instead.
 - Before any edit, inspect the file. Source edits use the synchronous local
   `codex.exe --codex-run-as-apply-patch` endpoint. Read-only inspection may be
   delegated to existing Sage; no automatic fan-out.
@@ -46,4 +50,3 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   private remote; never original disc images. Installed assets are authorized
   for development, but the eventual end-user package requires installation
   from the user's original media. Personal saves stay local.
-

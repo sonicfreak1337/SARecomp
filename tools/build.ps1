@@ -38,11 +38,21 @@ if (Test-Path -LiteralPath (Join-Path $build 'CMakeCache.txt')) {
     if (-not $ninja) { throw 'Install Ninja before building.' }
 }
 $timer = [Diagnostics.Stopwatch]::StartNew()
+& python (Join-Path $PSScriptRoot 'prepare-product.py')
+if ($LASTEXITCODE -ne 0) { throw 'Sonic working product preparation failed.' }
 & cmake -S $root -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' `
     "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_MAKE_PROGRAM=$ninja" '-DCMAKE_LINKER_TYPE=LLD'
 if ($LASTEXITCODE -ne 0) { throw 'Sonic configure failed.' }
 $bound = Get-SonicBoundNinja -BuildRoot $build
 if ($bound -ne $ninja) { throw 'Unexpected Ninja binding change.' }
+& $bound -C $build -j $Jobs sonic_native_port_manifest sonic_native_provider_refresh
+if ($LASTEXITCODE -ne 0) { throw 'Sonic provider contract needs review; manifest build failed.' }
+& (Join-Path $build 'sonic_native_port_manifest.exe') `
+    (Join-Path $root '.local/working-product/next.katana-native-port') `
+    (Join-Path $root '.local/baseline/r354/native-content/boot.bin')
+if ($LASTEXITCODE -ne 0) { throw 'Sonic manifest generation failed.' }
+& python (Join-Path $PSScriptRoot 'prepare-product.py') --refresh
+if ($LASTEXITCODE -ne 0) { throw 'Sonic provider-only refresh failed; AOT was not changed.' }
 & $bound -C $build -j $Jobs @Target
 if ($LASTEXITCODE -ne 0) { throw 'Sonic build failed.' }
 Write-Host "SONIC_BUILD_OK elapsed_ms=$($timer.ElapsedMilliseconds) aot_recompiles=0"

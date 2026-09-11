@@ -2,6 +2,7 @@
 #include "katana/runtime/crash_capsule.hpp"
 #include "katana/runtime/native_port_content.hpp"
 #include "katana/runtime/native_port_graphics.hpp"
+#include "sonic_presentation.hpp"
 
 #include "katana/runtime/native_port_telemetry.hpp"
 #include "katana/runtime/native_port_texture_asset.hpp"
@@ -33,6 +34,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include "sonic_options.hpp"
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -596,6 +598,7 @@ int main(int argc, char** argv) {
             executable_path = std::filesystem::absolute(argv[0]);
         if (explicit_bringup)
             native_product_crash_session.arm(executable_path);
+        sonic::presentation::initialize(executable_path);
         std::filesystem::path content_root;
         if (direct_launch) {
             const auto configuration_path =
@@ -758,6 +761,7 @@ int main(int argc, char** argv) {
         graphics_config.keyboard_controls =
             platform_config.keyboard_controls;
         graphics_config.title = definition.project_id;
+        sonic::presentation::configure(graphics_config);
         const auto native_product_development_state_directory =
             (platform_config.user_data_root / definition.project_id /
              "states").string();
@@ -774,6 +778,7 @@ int main(int argc, char** argv) {
                 ? &native_performance_telemetry : nullptr;
         katana::runtime::NativePortDesktopHost host(
             graphics_config, frame_pacing);
+        sonic::options::install(executable_path);
         bool frame_pacing_snapshot_emitted = false;
         const auto emit_terminal_runtime_telemetry = [&]() noexcept {
             try {

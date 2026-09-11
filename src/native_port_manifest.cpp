@@ -139,7 +139,12 @@ inline constexpr std::string_view
         // the monitor's authored off material now reaches texture modulation.
         // Source review and components: r354-save-sdk-20260911a and
         // r354-graphics-20260911a. Hardware-provider semantics are unchanged.
-        "sha256:495b2a1840ef7e7cb645a15dae481270a4b6b1197cc68a1048d4bb59c2db90e0"};
+        // Sonic-only Hor+: an opt-in host presentation transform, explicit
+        // world/UI/fade provenance and source-bound HUD anchors. Original
+        // mode leaves packets unchanged; only host copies of horizontal
+        // render-cull bounds expand. Guest projection/timing/save semantics
+        // and every existing function/source binding remain unchanged.
+        "sha256:211168c342525e9106b0548d35ec6e83b5fefc74cf91c2d15f788d09ee82ccd8"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
