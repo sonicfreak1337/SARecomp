@@ -74,7 +74,8 @@ target_compile_definitions(game PRIVATE KATANA_NATIVE_PORT_PRODUCT=1
     KATANA_PORT_BUILD_PROFILE_NAME="performance" KATANA_PORT_PGO_MODE_NAME="off")
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
 set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
-target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map")
+target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
+    /threads:3 "/lldltocache:${CMAKE_BINARY_DIR}/thinlto-cache")
 add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL
     "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp")
 add_dependencies(game katana_native_port_link_audit)

@@ -83,3 +83,34 @@ been independently checked. Captures and logs are local under
 `runs/widescreen-final`; the inspected final frame is `emerald-coast-ultrawide.png`.
 Personal saves and original disc images are excluded from Git and the remote
 development archive.
+
+## CPU performance work
+
+The performance batch found no reliable reduction in total CPU work. All
+runtime, AOT and adapter experiments were discarded, including mesh-local
+color reuse. The exact accepted widescreen executable and adapter sources
+were restored. No gameplay work, memory guard or floating-point contract
+has changed. This batch adds measurement tooling, not a claimed FPS upgrade.
+
+The linker now uses a persistent ThinLTO cache and three worker threads. Build
+logs count actual recompiled AOT objects instead of always reporting zero.
+This improves development diagnostics; it is not a game-FPS claim.
+
+Run `python tools/benchmark-stage.py --tag unique-name --timing` for one hidden,
+muted, 60-second Emerald Coast probe with forward input and separate copied
+saves. It measures simulation/presentation rates and process CPU milliseconds
+per simulation frame, excluding the first ten seconds. It refuses to overlap
+another game or compiler. `--exe` selects a preserved reference executable;
+`--scenario sonic-windy-valley` selects the other measured scene.
+
+The probe uses a diagnostic entry and a timed shutdown, not a completed stage
+or story replay. Passing requires completed gameplay, the expected deadline
+stop reason, process exit status and no reported runtime fault. CPU timing
+includes all game threads and is not CPU temperature or a single-core duration.
+The local logs live under `runs/`; the compact measurement report is in
+`docs/performance-2026-09-11.md`.
+
+Vulkan is the next planned renderer option alongside D3D11 for the move toward
+Linux. It is not included in this build. The measurements currently identify
+translated game execution as the main CPU cost, so renderer work alone must
+not be assumed to deliver stable 30 simulation FPS.

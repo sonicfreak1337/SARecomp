@@ -33,6 +33,11 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 
 ## Work and verification
 
+- The next enhancement is an optional Vulkan renderer alongside D3D11, moving
+  toward Linux support. Keep D3D11 and the accepted baseline available. Vulkan
+  is not implemented by the CPU profiling batch; do not claim it fixes the
+  measured guest-execution bottleneck without measurements.
+
 - Work autonomously within the user's authorization; no repeated permissions.
 - Prefer incremental performance builds; retain the r354 compiled AOT pack
   for adapter-only changes. Keep 144 presentation FPS independent of title

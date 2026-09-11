@@ -38,6 +38,7 @@ if (Test-Path -LiteralPath (Join-Path $build 'CMakeCache.txt')) {
     if (-not $ninja) { throw 'Install Ninja before building.' }
 }
 $timer = [Diagnostics.Stopwatch]::StartNew()
+$buildStartedUtc = [DateTime]::UtcNow
 & python (Join-Path $PSScriptRoot 'prepare-product.py')
 if ($LASTEXITCODE -ne 0) { throw 'Sonic working product preparation failed.' }
 & cmake -S $root -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' `
@@ -55,4 +56,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Sonic manifest generation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Sonic provider-only refresh failed; AOT was not changed.' }
 & $bound -C $build -j $Jobs @Target
 if ($LASTEXITCODE -ne 0) { throw 'Sonic build failed.' }
-Write-Host "SONIC_BUILD_OK elapsed_ms=$($timer.ElapsedMilliseconds) aot_recompiles=0"
+$aotObjects = Join-Path $build 'CMakeFiles'
+$aotRecompiles = if (Test-Path -LiteralPath $aotObjects) {
+    @(Get-ChildItem -LiteralPath $aotObjects -Recurse -File -Filter 'unit-v*.cpp.obj' |
+        Where-Object LastWriteTimeUtc -GE $buildStartedUtc).Count
+} else { 0 }
+Write-Host "SONIC_BUILD_OK elapsed_ms=$($timer.ElapsedMilliseconds) aot_recompiles=$aotRecompiles"
