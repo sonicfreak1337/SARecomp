@@ -43,6 +43,11 @@ At the title screen, **B / Circle / Escape** opens a localized quit prompt.
 **A / Cross / Enter** confirms; **B / Circle / Escape** cancels. See
 `docs/title-quit.md` for the title-only scope and verification.
 
+The original in-game **50/60 Hz / Test** actions do not change the PC video
+mode. Their Dreamcast graphics reset is disabled; use `sonic-config.exe`
+for PC resolution, output frame rate, renderer and window mode. The original
+menu can still be navigated and closed. See `docs/legacy-video-options.md`.
+
 Run `./tools/start.ps1` for experiments or
 `./tools/start.ps1 -Mode baseline` for an independent r354 run copy.
 Both seed separate profiles from the local save backup. Directly launching

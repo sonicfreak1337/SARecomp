@@ -144,7 +144,7 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:c12c54a509c6810ad91cc9ad9353d935fa8180b3f08c76610af3df9e4676cc01"};
+        "sha256:26ef11d6f67796dbe5f9e4c14e665f61fd1ee995aa6e0ac93b0d6f060cbb1a7a"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -246,6 +246,16 @@ int main(const int argc, char* argv[]) {
                 6'735'296u,
                 true}};
         constexpr std::array static_hooks{
+            katana::runtime::NativePortHookBinding{
+                0x8089928Eu, 0xD8u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_legacy_video_mode_disabled",
+                "sha256:2eea7fcacf69722f68fb85461b4a455b2ae301aa89b6785df124ad3a95a32bb8",
+                sonic_native_title_adapter_provider_implementation_identity,
+                katana::runtime::NativePortHookCodeSource::LatentAotModule,
+                "sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5"},
             katana::runtime::NativePortHookBinding{
                 0x8C0884A0u, 0xA8u,
                 katana::runtime::NativePortHookKind::FunctionEntry,

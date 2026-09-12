@@ -58,6 +58,7 @@ add_library(katana_native_title_adapter STATIC
     src/sonic_private_scenario_launcher.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp src/sonic_camera.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
 target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime sonic_startup)
@@ -201,6 +202,17 @@ target_include_directories(sonic_language_tests PRIVATE "${SONIC_ROOT}/src"
     "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
 target_compile_options(sonic_language_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_language_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_legacy_video_tests EXCLUDE_FROM_ALL tools/test_legacy_video.cpp
+    src/sonic_legacy_video.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_legacy_video_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_legacy_video_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_legacy_video_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
