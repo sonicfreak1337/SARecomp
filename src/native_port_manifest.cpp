@@ -144,7 +144,14 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:26ef11d6f67796dbe5f9e4c14e665f61fd1ee995aa6e0ac93b0d6f060cbb1a7a"};
+        // Host dialogs use independent physical input polls. Rendering keeps
+        // TitleBasic's original 038F10 UV factor separate from SDK 1/256;
+        // typed full-width color planes cover the selected display aspect.
+        // Host quit/movie input follows configured physical bindings; movie
+        // Master gain preserves decoder timestamps, stream ends and counts.
+        // Settings cap internal rendering at 100 percent. No AOT regeneration.
+        // Render interpolation is compiled out; retired INI keys are ignored.
+        "sha256:475cc63011f02fcf25a1c4d6f14237a7540bbb5b8e069112d56a8df6ba1fa380"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -246,6 +253,16 @@ int main(const int argc, char* argv[]) {
                 6'735'296u,
                 true}};
         constexpr std::array static_hooks{
+            katana::runtime::NativePortHookBinding{
+                0x808929BEu, 0x38u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_options_legacy_display",
+                "sha256:634269bce4e226bfd5c6296653363581c690e2f55c38810eb90348c78dcbefdf",
+                sonic_native_title_adapter_provider_implementation_identity,
+                katana::runtime::NativePortHookCodeSource::LatentAotModule,
+                "sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5"},
             katana::runtime::NativePortHookBinding{
                 0x8089928Eu, 0xD8u,
                 katana::runtime::NativePortHookKind::FunctionEntry,

@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <algorithm>
 
 namespace sonic::rendering {
 inline constexpr wchar_t detached_menu_property[]=L"SonicRecompiled.DetachedMenu";
@@ -12,6 +13,19 @@ inline HMENU window_menu(HWND window) noexcept {
 class WindowFullscreen {
 public:
     bool active() const noexcept {return active_;}
+    bool display_changed(HWND window) noexcept {
+        constexpr UINT flags=SWP_FRAMECHANGED|SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOOWNERZORDER;
+        RECT current{};if(!GetWindowRect(window,&current))return false;
+        auto next=current;
+        if(active_) {
+            MONITORINFO monitor{sizeof(monitor)};
+            if(!GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor))return false;
+            next=monitor.rcMonitor;
+            bounds_=reachable_bounds(bounds_);
+        } else next=reachable_bounds(current);
+        if(EqualRect(&current,&next))return true;
+        return SetWindowPos(window,nullptr,next.left,next.top,next.right-next.left,next.bottom-next.top,flags)!=FALSE;
+    }
     bool toggle(HWND window) noexcept {
         constexpr UINT flags=SWP_FRAMECHANGED|SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOOWNERZORDER;
         if (!active_) {
@@ -45,12 +59,25 @@ public:
         RemovePropW(window,detached_menu_property);
     }
 private:
+    static RECT reachable_bounds(RECT bounds) noexcept {
+        // A removed monitor must not strand the saved window/title bar. Keep
+        // an ordinary reachable placement exactly as the player left it.
+        RECT title=bounds;title.bottom=std::min(bounds.bottom,bounds.top+32);
+        if(MonitorFromRect(&title,MONITOR_DEFAULTTONULL))return bounds;
+        MONITORINFO monitor{sizeof(monitor)};
+        if(!GetMonitorInfoW(MonitorFromRect(&bounds,MONITOR_DEFAULTTONEAREST),&monitor))return bounds;
+        const auto& work=monitor.rcWork;
+        const LONG width=std::min(bounds.right-bounds.left,work.right-work.left);
+        const LONG height=std::min(bounds.bottom-bounds.top,work.bottom-work.top);
+        return {work.left,work.top,work.left+width,work.top+height};
+    }
     static bool set_style(HWND window,int index,LONG_PTR value) noexcept {
         SetLastError(0);
         return SetWindowLongPtrW(window,index,value)!=0 || GetLastError()==0;
     }
     bool restore(HWND window,UINT flags) noexcept {
         // Execute every restoration even when one fails.
+        bounds_=reachable_bounds(bounds_);
         const bool style=set_style(window,GWL_STYLE,style_);
         const bool extended=set_style(window,GWL_EXSTYLE,extended_style_);
         const bool menu=SetMenu(window,menu_)!=FALSE;

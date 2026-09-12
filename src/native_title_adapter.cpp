@@ -25,12 +25,25 @@
 #include "sonic_native_sound_catalog.hpp"
 #include "sonic_native_texture_catalog.hpp"
 #include "sonic_native_sdk_texture_release_plan.hpp"
+#include "sonic_texture_sentinel.hpp"
 #include "sonic_private_scenario_launcher.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_camera.hpp"
+#include "sonic_motion_owner.hpp"
 #include "sonic_startup.hpp"
 #include "sonic_quit_prompt.hpp"
+#include "sonic_input.hpp"
+#include "sonic_menu_runtime.hpp"
+#include "sonic_profiles.hpp"
+#include "sonic_audio_settings.hpp"
+#include "sonic_audio_device.hpp"
+#include "sonic_host_resume.hpp"
+#include "sonic_movie_audio.hpp"
+#include "sonic_subtitles.hpp"
 #include "sonic_sdk_color.hpp"
+#include "sonic_model_uv.hpp"
+#include "sonic_camera_policy.hpp"
+#include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
 #include <array>
@@ -77,6 +90,7 @@
 
 void synchronize_native_adx_streams(
     katana::runtime::NativePortContext& context);
+void refresh_sonic_audio_settings(bool force=false);
 
 namespace {
 constexpr std::uint32_t sonic_native_graphics_error_context = 0x53414700u;
@@ -1419,6 +1433,7 @@ struct SonicNativePendingDraw final {
     std::vector<katana::runtime::NativePortVertex> vertices;
     std::vector<std::uint32_t> indices;
     katana::runtime::NativePortDrawPacket state;
+    sonic::motion::DrawTag motion;
     std::uint64_t submission_ordinal = 0u;
     std::uint32_t source_pc = 0u;
     std::uint32_t source_pr = 0u;
@@ -3136,6 +3151,7 @@ void pump_native_title_audio(katana::runtime::NativePortContext& context) {
         return;
     sonic_native_title_state.native_audio_last_pump_frame =
         context.frame_index;
+    refresh_sonic_audio_settings();
     SonicNativeScopedWork work{
         sonic_native_title_state.work_timing,
         SonicNativeWorkClass::AudioPump};
@@ -4355,6 +4371,59 @@ void note_native_draw_storage_failure(
     context.crash_capsule->note_v5_provider_transcript(record);
 }
 
+[[nodiscard]] sonic::motion::FrameTag sonic_motion_frame(
+    katana::runtime::NativePortContext& context) noexcept {
+    sonic::motion::FrameTag tag;
+    if(!sonic::presentation::Settings::interpolation || !context.cpu || !context.host)return tag;
+    const SonicGuestReader reader(*context.cpu);
+    std::uint16_t mode=0,request=0,pause=0,major=0,minor=0;
+    std::uint32_t blocked=0,special=0,control=0,cam=0,player=0,callback=0;
+    std::uint8_t type=0,level=0,actor=0,cam_state=0;
+    if(!reader.u16(0x8C7492F4u,mode)||mode!=15 ||
+       !reader.u16(0x8C19DD64u,request)||request ||
+       !reader.u16(0x8C19DD66u,pause)||pause!=1 ||
+       !reader.u32(0x8C7491ECu,blocked)||blocked ||
+       !reader.u32(0x8C6B6FACu,special)||special ||
+       !reader.u32(0x8C111F88u,control)||!control ||
+       !reader.u32(0x8C18B72Cu,cam)||!cam ||
+       !reader.u32(0x8C78C548u,player)||!player ||
+       !reader.u8(cam,cam_state)||cam_state!=2 ||
+       !reader.u8(control+8u,level)||level>1 ||
+       !reader.u8(control+6u,type)||!reader.u32(control+12u,callback)||
+       !sonic::camera::manual_camera_type(type,callback)||
+       !reader.u16(0x8C7492FAu,major)||!reader.u16(0x8C7492FCu,minor)||
+       !reader.u8(0x8C78B39Du,actor))return tag;
+    for(unsigned i=0;i<3;++i){
+        std::uint32_t angle=0;
+        if(!reader.f32(cam+0x20u+4u*i,tag.eye[i])||
+           !reader.f32(player+0x20u+4u*i,tag.player[i])||
+           !reader.u32(cam+0x14u+4u*i,angle))return {};
+        tag.angles[i]=std::uint16_t(angle);
+    }
+    tag.identity={sonic::motion::timeline.load(),std::uint64_t(major)<<16u|minor,
+                  actor,player,cam,control,callback,std::uint64_t(level)<<8u|type};
+    tag.sequence=context.frame_index;tag.time_ns=context.host->monotonic_time_nanoseconds();
+    // njSetCamera (640480) publishes this camera structure after building its
+    // first 64 bytes. Read the shared view, never a model's current XF bank.
+    std::uint32_t camera_data=0;sonic::motion::Matrix view;
+    std::array<float,5> projection{};
+    bool camera_bound=reader.u32(0x8C8E9E40u,camera_data)&&camera_data==0x8C7888C4u;
+    if(camera_bound){
+        for(unsigned i=0;i<16;++i)camera_bound=reader.f32(camera_data+4*i,view.values[i])&&camera_bound;
+        for(unsigned i=0;i<5;++i)camera_bound=reader.f32(sonic_ninja_transform_parameters+4*i,projection[i])&&camera_bound;
+        projection[3]*=projection[2];
+        if(camera_bound)tag.camera=sonic::motion::camera_frame(view,projection,sonic::presentation::horizontal_scale(),tag.eye);
+    }
+    if(sonic::motion::tracing()){
+        static unsigned samples=0;
+        if(samples++<12)std::fprintf(stderr,"SONIC_MOTION_CAMERA frame=%llu bound=%u valid=%u source=%x eye=%.3f,%.3f,%.3f matrix_eye=%.3f,%.3f,%.3f projection=%.3f,%.3f,%.3f,%.3f,%.3f\n",
+            static_cast<unsigned long long>(context.frame_index),unsigned(camera_bound),unsigned(tag.camera.valid),camera_data,
+            tag.eye[0],tag.eye[1],tag.eye[2],tag.camera.eye[0],tag.camera.eye[1],tag.camera.eye[2],
+            projection[0],projection[1],projection[2],projection[3],projection[4]);
+    }
+    tag.enabled=true;return tag;
+}
+
 [[nodiscard]] bool ensure_native_frame_open(
     katana::runtime::NativePortContext& context) {
     if (sonic_native_title_state.frame_open) return true;
@@ -4370,6 +4439,7 @@ void note_native_draw_storage_failure(
     frame_config.clear_depth = 0.0f;
     frame_config.depth_buffer =
         katana::runtime::NativePortDepthBufferConvention::ReciprocalPositive;
+    const sonic::motion::Submission motion_submission(sonic::motion::submitted_frame,sonic_motion_frame(context));
     context.graphics->begin_frame(frame_config);
     sonic_native_title_state.frame_open = true;
     sonic_native_title_state.draw_calls_this_frame = 0u;
@@ -4959,6 +5029,7 @@ void flush_native_draw_queues(katana::runtime::NativePortContext& context) {
             packet.vertices = pending.vertices;
             packet.indices = pending.indices;
         }
+        const sonic::motion::Submission motion_submission(sonic::motion::submitted_draw,pending.motion);
         context.graphics->draw(packet);
         ++flush_ordinal;
     };
@@ -6442,7 +6513,8 @@ sonic_render_state(
     const katana::runtime::NativePortMeshHandle mesh = {},
     const std::optional<katana::runtime::NativePortDrawBatchClass> batch_override =
         std::nullopt,
-    const sonic::presentation::Role presentation_role = sonic::presentation::Role::Interface)
+    const sonic::presentation::Role presentation_role = sonic::presentation::Role::Interface,
+    const sonic::motion::DrawTag motion_tag = {})
     noexcept {
     if (!valid_sonic_native_context(context))
         return graphics_abort(sonic_native_graphics_error_context);
@@ -6503,7 +6575,6 @@ sonic_render_state(
                       PerspectiveCorrect;
         packet.transform = transform.value_or(sonic_screen_space_transform());
         packet.viewport = viewport;
-        sonic::presentation::apply(packet, presentation_role);
         packet.topology = topology;
         packet.blend = blend.value_or(render_state->blend);
         // A source-owned material may override the four blend factors, but
@@ -6596,6 +6667,9 @@ sonic_render_state(
             authored_textured
                 ? katana::runtime::NativePortTextureStage::RequiredResolved
                 : katana::runtime::NativePortTextureStage::Disabled;
+        // Presentation overrides need the resolved texture and authored
+        // sampler. Applying earlier silently discarded optional anisotropy.
+        sonic::presentation::apply(packet, presentation_role);
         // Contract-failure provenance must survive in the ordinary product
         // profile even though full draw diagnostics remain opt-in.  The
         // enabled flag controls expensive breadcrumb/drawstream capture; the
@@ -6994,6 +7068,20 @@ sonic_render_state(
                                    packet.indices.end());
         }
         pending.state = packet;
+        pending.motion = motion_tag;
+        pending.motion.world = sonic::presentation::Settings::interpolation &&
+            (presentation_role==sonic::presentation::Role::World ||
+            packet.vertex_space!=katana::runtime::NativePortVertexSpace::PvrScreenReciprocal ||
+            packet.batch.semantic==katana::runtime::NativePortDrawBatchClass::Scene3D);
+        // Projected shadows and other non-Basic world draws still belong to
+        // their task. They must veto partial interpolation of the same actor.
+        if(pending.motion.world&&!pending.motion.identity[0]){
+            const auto owner=sonic::motion::current_owner;
+            if(owner.task&&owner.work){
+                pending.motion.identity[0]=std::uint64_t(owner.task)<<32u|owner.work;
+                pending.motion.identity[3]=owner.callback;
+            }
+        }
         pending.state.vertices = {};
         pending.state.indices = {};
         pending.submission_ordinal = draw_ordinal;
@@ -7023,11 +7111,7 @@ sonic_render_state(
     return graphics_abort(sonic_native_graphics_error_frame);
 }
 
-enum class SonicNativeTextureResolution : std::uint8_t {
-    Bound,
-    UnboundSentinel,
-    Malformed
-};
+using SonicNativeTextureResolution = sonic::texture::Resolution;
 
 [[nodiscard]] SonicNativeTextureResolution resolve_current_native_texture(
     katana::runtime::NativePortContext& context,
@@ -9566,8 +9650,7 @@ sonic_native_transition_authority_is_staged_for_texture_preparation(
     // The decrement path at 0x8C64DD00 also uses 16-bit loads/stores.
     // Retain every bookkeeping bit in the saved release image; a zero low
     // halfword plus the released identity/resource fields proves this slot free.
-    return words[0] == 0xFFFFFFFFu && words[1] == 0xFFFFFFFFu &&
-           words[4] == 0u && (words[16] & 0x0000FFFFu) == 0u;
+    return sonic::texture::released(words);
 }
 
 // SDK 60844A/6084F6 and 64DD26 change only the low16 reference count
@@ -12080,6 +12163,14 @@ void collect_native_pvm_allocations(katana::runtime::NativePortContext& context)
         current.texture_count == view.texture_count;
 }
 
+[[nodiscard]] bool has_current_native_pvm_view(
+    const SonicGuestReader& reader, const std::uint32_t texlist_address) {
+    return std::ranges::any_of(sonic_native_title_state.pvm_views, [&](const auto& view) {
+        return sonic_native_same_backing_address(view.texlist_address, texlist_address) &&
+            native_pvm_view_is_current(reader, view);
+    });
+}
+
 [[nodiscard]] std::optional<sonic_native::TextureArchiveBinding>
 sonic_native_standalone_texture_catalog(std::string_view filename) noexcept {
     // SDK filenames are case insensitive and may include their .PVR suffix.
@@ -14579,12 +14670,7 @@ void release_all_native_character_texture_sets(
         std::uint32_t selected_descriptor = 0u;
         if (!reader.u32(selected_texname + 8u, selected_descriptor))
             return false;
-        const auto pvm_view = std::ranges::find_if(sonic_native_title_state.pvm_views,
-            [&](const auto& view) {
-                return sonic_native_same_backing_address(view.texlist_address, texlist_address) &&
-                    native_pvm_view_is_current(reader, view);
-            });
-        if (pvm_view != sonic_native_title_state.pvm_views.end()) {
+        if (has_current_native_pvm_view(reader, texlist_address)) {
             const auto* descriptor = find_native_pvm_descriptor(context, reader, selected_descriptor);
             if (descriptor == nullptr) return false;
             texture = context.textures->resolve(descriptor->guest_token, descriptor->generation);
@@ -15171,75 +15257,20 @@ void release_all_native_character_texture_sets(
     std::uint32_t descriptor = 0u;
     if (!reader.u32(texname + 8u, descriptor))
         return SonicNativeTextureResolution::Malformed;
-    // Native TextureSets publish an exact host-owned catalog without guest
-    // descriptors. Consult that authority only on a would-be sentinel exit;
-    // ordinary descriptor draws need no additional owner scan. Named/dual
-    // publications retain their existing descriptor and generation rules.
-    const auto resolve_sentinel =
-        [&](const SonicNativeTextureResolution unowned_result) noexcept {
+    const auto sentinel = sonic::texture::sentinel(reader, descriptor,
+        {sonic_ninja_texture_registry_state, sonic_ninja_texture_registry_count,
+         static_cast<std::uint32_t>(max_native_texture_names)},
+        [&]() { return has_current_native_pvm_view(reader, texlist_address); },
+        [&]() {
             const auto owner = find_native_texlist_catalog_owner(
                 context, texlist_address, binding);
-            if (!native_texture_set_parent_is_authoritative(
-                    context, reader, owner))
-                return unowned_result;
+            return native_texture_set_parent_is_authoritative(context, reader, owner);
+        },
+        [&]() {
             return resolve_native_texture(context, reader, texlist_address,
-                                          texture_index, texture, diagnostics)
-                       ? SonicNativeTextureResolution::Bound
-                       : SonicNativeTextureResolution::Malformed;
-        };
-    // The retail SDK uses both a null TEXADDR during acquisition and the
-    // released -1 descriptor after retirement. Without the exact descriptorless
-    // native owner, both remain explicit no-draw states.
-    if (descriptor == 0u || descriptor == 0xFFFFFFFFu)
-        return resolve_sentinel(SonicNativeTextureResolution::UnboundSentinel);
-
-    if (descriptor != 0u && reader.range(descriptor, 32u)) {
-        std::array<std::uint32_t, 8u> words{};
-        for (std::uint32_t index = 0u; index < words.size(); ++index) {
-            if (!reader.u32(descriptor + index * 4u, words[index]))
-                return SonicNativeTextureResolution::Malformed;
-        }
-        // A materialized native descriptor deliberately keeps word 1 at the
-        // NINJA sentinel value while word 0 carries its resource key.  Only a
-        // sentinel in word 0 starts the released/unbound descriptor shape;
-        // treating word 1 alone as a sentinel rejects every native descriptor
-        // published by prepare_native_guest_texture_descriptors().
-        const bool sentinel_prefix = words[0] == 0xFFFFFFFFu;
-        if (sentinel_prefix) {
-            bool exact_sentinel =
-                words[0] == 0xFFFFFFFFu &&
-                words[1] == 0xFFFFFFFFu &&
-                std::all_of(words.begin() + 2u, words.end(),
-                            [](const auto word) { return word == 0u; });
-            // Retail release preserves TSP/TCW and other bookkeeping in a
-            // registry row. Reuse the same SDK-free predicate as allocation
-            // and retirement instead of demanding a zero-filled descriptor.
-            // This additional shape is accepted only in the live bounded
-            // registry, at an exact row boundary; it never restores a handle.
-            if (!exact_sentinel && words[1] == 0xFFFFFFFFu) {
-                std::uint32_t registry = 0u, count = 0u;
-                std::size_t bytes = 0u;
-                std::array<std::uint32_t, sonic_ninja_texture_descriptor_words>
-                    released_words{};
-                if (reader.u32(sonic_ninja_texture_registry_state, registry) &&
-                    reader.u32(sonic_ninja_texture_registry_count, count) &&
-                    registry != 0u && count != 0u && count <= max_native_texture_names &&
-                    checked_span_size(count, sonic_ninja_texture_registry_stride, bytes) &&
-                    reader.range(registry, bytes)) {
-                    const auto base = katana::runtime::canonical_physical_address(registry);
-                    const auto physical = katana::runtime::canonical_physical_address(descriptor);
-                    if (physical >= base &&
-                        static_cast<std::uint64_t>(physical) - base < bytes &&
-                        (physical - base) % sonic_ninja_texture_registry_stride == 0u &&
-                        read_native_guest_texture_descriptor(reader, descriptor, released_words))
-                        exact_sentinel = sonic_native_guest_texture_descriptor_released(released_words);
-                }
-            }
-            return resolve_sentinel(
-                exact_sentinel ? SonicNativeTextureResolution::UnboundSentinel
-                               : SonicNativeTextureResolution::Malformed);
-        }
-    }
+                                          texture_index, texture, diagnostics);
+        });
+    if (sentinel) return *sentinel;
     return resolve_native_texture(context, reader, texlist_address,
                                    texture_index, texture, diagnostics)
                ? SonicNativeTextureResolution::Bound
@@ -16024,6 +16055,34 @@ void report_basic_texlist_binding_diagnostic(
     }
 }
 
+thread_local sonic::lifecycle::SleepClock sonic_host_sleep_clock;
+
+std::uint64_t sonic_awake_nanoseconds() noexcept {
+    return sonic::audio_device::working_time();
+}
+void reset_sonic_host_sleep_clock(const katana::runtime::NativePortContext& context) noexcept {
+    sonic_host_sleep_clock.reset(context.host->monotonic_time_nanoseconds(),
+        sonic_awake_nanoseconds(),sonic::audio_device::resumes.load());
+}
+std::uint64_t service_sonic_host_resume(const katana::runtime::NativePortContext& context) noexcept {
+    if(!context.host)return 0;
+    const auto now=context.host->monotonic_time_nanoseconds();
+    const auto epoch=sonic::audio_device::resumes.load(std::memory_order_acquire);
+    if(!sonic_host_sleep_clock.needs_sample(now,epoch))return 0;
+    const auto asleep=sonic_host_sleep_clock.observe(now,sonic_awake_nanoseconds(),epoch);
+    if(!asleep)return 0;
+    sonic::audio_device::resumed();
+    auto& s=sonic_native_title_state;
+    const auto shift=[&](std::uint64_t& start){if(start&&now>=start)start+=std::min(asleep,now-start);};
+    shift(s.timer_epoch_nanoseconds);shift(s.periodic_epoch_nanoseconds);
+    s.frame_producer_next_deadline_nanoseconds=0;s.frame_producer_deferred_deadline_nanoseconds=0;
+    s.frame_producer_deadline_remainder=0;
+    sonic::camera::reset_timeline();sonic::motion::timeline.fetch_add(1);
+    std::fprintf(stderr,"SONIC_HOST_RESUME excluded_ns=%llu camera_history=reset\n",
+                 static_cast<unsigned long long>(asleep));
+    return asleep;
+}
+
 [[nodiscard]] std::uint32_t sonic_native_timer_ticks(
     const katana::runtime::NativePortContext& context) noexcept {
     // The title configures TMU0 from the 50-MHz peripheral clock with a /64
@@ -16031,6 +16090,7 @@ void report_basic_texlist_binding_diagnostic(
     // native monotonic host clock instead of recreating the SH-4 timer.
     constexpr std::uint64_t ticks_per_second = 781'250u;
     constexpr std::uint64_t nanoseconds_per_second = 1'000'000'000u;
+    static_cast<void>(service_sonic_host_resume(context));
     const auto now = context.host->monotonic_time_nanoseconds();
     const auto elapsed = now >= sonic_native_title_state.timer_epoch_nanoseconds
                              ? now - sonic_native_title_state.timer_epoch_nanoseconds
@@ -16343,6 +16403,7 @@ struct SonicPeriodicCounterSnapshot final {
 [[nodiscard]] bool periodic_counter_snapshot(
     const katana::runtime::NativePortContext& context,
     SonicPeriodicCounterSnapshot& snapshot) noexcept {
+    static_cast<void>(service_sonic_host_resume(context));
     if (context.host == nullptr ||
         !sonic_native_title_state.periodic_clock_initialized ||
         sonic_native_title_state.periodic_reload_ticks == 0u)
@@ -16961,7 +17022,12 @@ void apply_sonic_native_gameplay_probe_input(
 
     auto input = context.platform->poll_gamepads();
     apply_sonic_native_gameplay_probe_input(context, input);
-    sonic::quit_prompt::sample_input(context,input,suppress_all || suppress_edges ||
+    const auto sampled=sonic::input::sample(input);
+    sonic::audio::focused=sampled.focused;
+    const bool menu_consumes=sonic::menu::observe(context,sampled,suppress_all||suppress_edges||
+        sonic_native_private::scenario_menu_open(context)||sonic::quit_prompt::pending());
+    sonic::input::transform(input,sampled,suppress_all||menu_consumes);
+    sonic::quit_prompt::sample_input(context,input,sampled,menu_consumes || suppress_all || suppress_edges ||
         sonic_native_private::scenario_menu_open(context));
     sonic::camera::sample_input(context,input,suppress_all);
     constexpr auto slot_count = katana::runtime::native_port_gamepad_count;
@@ -17164,7 +17230,9 @@ void apply_sonic_native_gameplay_probe_input(
     katana::runtime::NativePortContext& context,
     std::uint32_t& previous_buttons) {
     if (context.platform == nullptr) return false;
-    const auto input = context.platform->poll_gamepads();
+    auto input = context.platform->poll_gamepads();
+    const auto sampled=sonic::input::sample(input);
+    sonic::input::transform(input,sampled,!sonic::input::replay() && sampled.connection_changed);
     const auto& primary = input.gamepads.front();
     auto current = primary.connected ? primary.buttons : 0u;
 
@@ -19401,6 +19469,7 @@ enum class SonicPeriodicHostTimeFailure : std::uint32_t {
 
 [[nodiscard]] bool service_periodic_host_time(
     katana::runtime::NativePortContext& context) {
+    static_cast<void>(service_sonic_host_resume(context));
     if (!sonic_native_title_state.periodic_clock_initialized)
         return true;
     if (sonic_native_title_state.periodic_reload_ticks == 0u)
@@ -21840,7 +21909,7 @@ native_adx_voice_config(
     const auto metadata = katana::runtime::inspect_native_port_adx_content(
         *context.platform, binding);
     return katana::runtime::native_port_adx_voice_config(
-        metadata, sonic_native_audio_output_sample_rate, gain, pan);
+        metadata, sonic_native_audio_output_sample_rate, gain*sonic::audio::factor(sonic::audio::adx_bus(binding.logical_id)), pan);
 }
 
 void publish_native_adx_state(katana::runtime::NativePortContext& context,
@@ -22657,13 +22726,41 @@ sound_collection_for_sequence(const std::uint8_t bank,
     return catalog[loaded->catalog_index].content_relative_path;
 }
 
+sonic::audio::Bus sonic_sound_bus(katana::runtime::NativePortSoundCollectionHandle handle) {
+    const auto& loaded=sonic_native_title_state.loaded_sound_collections;
+    const auto i=std::ranges::find_if(loaded,[&](const auto& v){return v.handle.slot==handle.slot&&v.handle.generation==handle.generation;});
+    const auto catalog=sonic_native::sound_collection_catalog();
+    return i==loaded.end()||i->catalog_index>=catalog.size()?sonic::audio::Bus::Master:sonic::audio::collection_bus(catalog[i->catalog_index].logical_id);
+}
+sonic::audio::Bus sonic_sound_port_bus(katana::runtime::NativePortSoundMidiPortHandle port){
+    const auto find=[&](const auto& ports,const auto& collections)->std::optional<sonic::audio::Bus>{
+        for(unsigned i=0;i<ports.size();++i)if(ports[i]&&ports[i]->slot==port.slot&&ports[i]->generation==port.generation&&collections[i])return sonic_sound_bus(*collections[i]);return {};
+    };
+    if(auto b=find(sonic_native_title_state.sound_midi_ports,sonic_native_title_state.sound_midi_port_collections))return *b;
+    if(auto b=find(sonic_native_title_state.sound_sequence_ports,sonic_native_title_state.sound_sequence_port_collections))return *b;
+    return sonic::audio::Bus::Master;
+}
+void refresh_sonic_audio_settings(bool force){
+    static thread_local std::uint64_t revision=0;static thread_local bool focused=true;
+    const auto next=sonic::presentation::revision();const bool focus=sonic::audio::focused.load();
+    if(!force&&revision==next&&focus==focused)return;revision=next;focused=focus;
+    auto& s=sonic_native_title_state;
+    if(s.audio_engine)for(const auto& v:s.adx_streams)if(v.bound&&v.voice)s.audio_engine->set_gain_pan(*v.voice,v.gain*sonic::audio::factor(sonic::audio::adx_bus(v.guest_path)),v.pan);
+    if(s.sound_bank_engine){
+        const auto update=[&](const auto& ports,const auto& values,const auto& collections){
+            for(unsigned i=0;i<ports.size();++i)if(ports[i]&&collections[i])s.sound_bank_engine->set_midi_gain_pan(*ports[i],values[i].gain*sonic::audio::factor(sonic_sound_bus(*collections[i])),values[i].pan);
+        };
+        update(s.sound_midi_ports,s.sound_midi_port_state,s.sound_midi_port_collections);
+        update(s.sound_sequence_ports,s.sound_sequence_port_state,s.sound_sequence_port_collections);
+    }
+}
 void apply_native_sound_port_state(
     const katana::runtime::NativePortSoundMidiPortHandle port,
     const SonicNativeLogicalSoundPortState& state) {
     if (!sonic_native_title_state.sound_bank_engine)
         throw std::runtime_error("native-sound-engine-unbound");
     auto& engine = *sonic_native_title_state.sound_bank_engine;
-    engine.set_midi_gain_pan(port, state.gain, state.pan);
+    engine.set_midi_gain_pan(port, state.gain*sonic::audio::factor(sonic_sound_port_bus(port)), state.pan);
     engine.set_midi_pitch_bend(port, state.pitch_bend);
     engine.set_midi_playback_rate(port, state.playback_rate);
     engine.set_midi_send_levels(
@@ -22703,12 +22800,13 @@ void commit_native_sound_port_state(
 [[nodiscard]] katana::runtime::NativePortSoundMidiPortConfig
 native_sound_port_config(
     const SonicNativeLogicalSoundPortState& state,
+    const katana::runtime::NativePortSoundCollectionHandle collection,
     const std::uint8_t bank = 0u,
     const std::uint8_t program = 0u) noexcept {
     katana::runtime::NativePortSoundMidiPortConfig config;
     config.program_bank = bank;
     config.program = program;
-    config.gain = state.gain;
+    config.gain = state.gain*sonic::audio::factor(sonic_sound_bus(collection));
     config.pan = state.pan;
     config.playback_rate = state.playback_rate;
     config.pitch_bend = state.pitch_bend;
@@ -22783,7 +22881,7 @@ bind_native_midi_port(const std::uint32_t port_index,
         port_program = authored_program;
         return *port;
     }
-    const auto config = native_sound_port_config(state, bank, program);
+    const auto config = native_sound_port_config(state, collection, bank, program);
     const auto candidate = engine.open_midi_port(collection, config);
     if (port.has_value()) {
         try {
@@ -22850,7 +22948,7 @@ bind_native_sequence_port(const std::uint32_t logical_port,
         port_collection->slot != collection.slot ||
         port_collection->generation != collection.generation) {
         const auto candidate = engine.open_midi_port(
-            collection, native_sound_port_config(state, program_bank, 0u));
+            collection, native_sound_port_config(state, collection, program_bank, 0u));
         if (port.has_value()) {
             try {
                 engine.close_midi_port(*port);
@@ -23502,12 +23600,12 @@ sonic_native_adxt_output_volume(
                     throw std::runtime_error("native-adx-engine-missing");
                 auto& audio = *sonic_native_title_state.audio_engine;
                 try {
-                    audio.set_gain_pan(*stream->voice, gain, stream->pan);
+                    audio.set_gain_pan(*stream->voice, gain*sonic::audio::factor(sonic::audio::adx_bus(stream->guest_path)), stream->pan);
                     write_volume(volume);
                 } catch (...) {
                     try {
                         audio.set_gain_pan(
-                            *stream->voice, previous_gain, previous_pan);
+                            *stream->voice, previous_gain*sonic::audio::factor(sonic::audio::adx_bus(stream->guest_path)), previous_pan);
                     } catch (...) {
                     }
                     try {
@@ -27944,6 +28042,7 @@ void restore_sonic_native_development_state(
         const auto content = restore_content(source.path);
         target.guest_path = content == nullptr ? std::string_view{} : content->guest_path;
     }
+    refresh_sonic_audio_settings(true);
 
     const auto now = context.host->monotonic_time_nanoseconds();
     auto& state = sonic_native_title_state;
@@ -28025,6 +28124,7 @@ sonic_native_development_state_request(
             state.timer_epoch_nanoseconds += elapsed;
             state.periodic_epoch_nanoseconds += elapsed;
         }
+        reset_sonic_host_sleep_clock(context);
         if (audio_quiesced) audio->set_output_paused(previous_output_paused);
     };
     try {
@@ -28066,10 +28166,12 @@ sonic_native_development_state_request(
             validate_sonic_native_development_state(context, state);
             restore_commit_started = true;
             restore_sonic_native_development_state(context, state);
+            reset_sonic_host_sleep_clock(context);
             const auto restored_memory = katana::runtime::capture_native_port_main_memory(*context.cpu);
             if (restored_memory != state.main_memory)
                 throw std::runtime_error("development-state-restored-ram-mismatch");
             sonic::camera::reset_timeline();
+            sonic::motion::timeline.fetch_add(1);
             audio->set_output_paused(state.services.output_paused);
             std::cerr << "SONIC_NATIVE_DEVELOPMENT_STATE operation=load"
                       << " sequence=" << request.sequence
@@ -30975,6 +31077,7 @@ sonic_native_play_movie(
             const auto& binding = sonic_movie_clips[clip_index];
             SonicNativeMoviePlayback playback{context.graphics};
             katana::runtime::NativePortMovieConfig config;
+            config.codec_provider=&sonic::movie_audio::provider();
             config.source.content_root = context.platform->content_root();
             config.source.content_relative_path = binding.relative_path;
             config.source.byte_identity = binding.byte_identity;
@@ -30993,6 +31096,12 @@ sonic_native_play_movie(
             movie_phase = 3u;
             bool host_paused = false;
             for (;;) {
+                const auto slept=service_sonic_host_resume(context);
+                if(slept&&!host_paused){
+                    const auto resumed=context.host->monotonic_time_nanoseconds();
+                    movie.pause(resumed>=slept?resumed-slept:0);
+                    movie.play(resumed);
+                }
                 if (katana::runtime::try_accept_native_port_host_stop(context)) {
                     movie.stop();
                     return {katana::runtime::NativePortHookAction::Return, 0u, 0u};
@@ -31044,6 +31153,7 @@ sonic_native_play_movie(
                     break;
                 }
 
+                sonic::audio::focused=sonic::input::window_focused();
                 movie.pump(now);
                 if (playback.callback_failure)
                     std::rethrow_exception(playback.callback_failure);
@@ -35455,9 +35565,10 @@ sonic_native_ninja_model_draw_impl(
                             !reader.i16(uv_address + 0u, u) ||
                             !reader.i16(uv_address + 2u, v))
                             return false;
-                        vertex.texture_coordinate = {
-                            static_cast<float>(u) / 256.0f,
-                            static_cast<float>(v) / 256.0f};
+                        vertex.texture_coordinate = sonic::model_uv::decode(
+                            u, v,
+                            material_owner == SonicNativeBasicMaterialOwner::TitleBasic,
+                            cpu);
                     }
                     if (observe_normal_draw && !bad_source_valid &&
                         ((!model_normal_scratch.empty() && sonic_native_bad_draw_normal(
@@ -36347,6 +36458,14 @@ sonic_native_ninja_model_draw_impl(
                                 << " context_tsp=" << old_context->texture_shading << std::dec;
                 });
             }
+            sonic::motion::DrawTag motion_tag;
+            if(sonic::presentation::Settings::interpolation && !environment_mapping){
+                const auto owner=sonic::motion::current_owner;
+                if(owner.task){
+                    motion_tag.identity={std::uint64_t(owner.task)<<32u|owner.work,model,mesh_address,owner.callback};
+                    motion_tag.enabled=true;
+                }
+            }
             const auto result = draw_packet(
                 context, material_control_flags, texture,
                 katana::runtime::NativePortPrimitiveTopology::TriangleList,
@@ -36374,7 +36493,7 @@ sonic_native_ninja_model_draw_impl(
                  environment_mapping
                      ? std::optional{katana::runtime::NativePortDrawBatchClass::Scene3D}
                      : std::nullopt,
-                 sonic::presentation::Role::World);
+                 sonic::presentation::Role::World,motion_tag);
             if (result.action != katana::runtime::NativePortHookAction::Return)
                 return result;
             if (sonic_native_texlist_binding_diagnostic_enabled()) {
@@ -36484,6 +36603,26 @@ sonic_native_draw_pretransformed_dispatch(
         !reader.u32(context.cpu->r[4] + 4u, streams[1]) ||
         (textured && !reader.u32(context.cpu->r[4] + 8u, streams[2])))
         return graphics_abort(sonic_native_graphics_error_range);
+
+    std::optional<sonic::subtitles::Layout> subtitle_layout;
+    const auto& subtitle_settings=sonic::presentation::settings();
+    const bool subtitle_background_call=context.cpu->pr==0x8C054AF0u;
+    if((subtitle_settings.subtitle_scale!=100||subtitle_settings.subtitle_background) && count==4 &&
+        (subtitle_background_call||context.cpu->pr==0x8C054B9Au) && context.cpu->fr[4]==0xBF999999u &&
+        selector==(subtitle_background_call?0x60u:0x80000060u) && context.cpu->r[15]<=0xFFFFFFFFu-92 &&
+        context.cpu->r[4]==context.cpu->r[15]+(subtitle_background_call?28u:12u) &&
+        streams[0]==context.cpu->r[15]+(subtitle_background_call?44u:28u) && streams[1]==context.cpu->r[15]+76u &&
+        (subtitle_background_call || streams[2]==context.cpu->r[15]+60u)) {
+        std::uint8_t type=0;std::int16_t x=0,y=0;std::uint16_t width=0,height=0;
+        const auto owner=context.cpu->r[14];
+        if(reader.range(owner,60) && reader.u8(owner,type) && type==1 && reader.i16(owner+2,x)&&reader.i16(owner+4,y)&&
+            reader.u16(owner+10,width)&&reader.u16(owner+12,height)&&width&&height)
+            subtitle_layout=sonic::subtitles::layout(float(x),float(y),float(width),float(height),subtitle_settings);
+        // The optional contrast layer is emitted exactly once at the text
+        // call, including when retail background alpha suppresses this call.
+        if(subtitle_layout && subtitle_background_call && subtitle_settings.subtitle_background)
+            return finish_pretransformed_stream_draw(context,{katana::runtime::NativePortHookAction::Return,0,0});
+    }
 
     // Source-bound PAL transition owners, not a four-vertex geometry guess.
     // 0436FE calls this API; 0439AE tails here using its static descriptor.
@@ -36682,6 +36821,18 @@ sonic_native_draw_pretransformed_dispatch(
         }
     }
 
+    if(subtitle_layout) {
+        sonic::subtitles::apply(vertices,*subtitle_layout,subtitle_background_call);
+        if(!subtitle_background_call && subtitle_settings.subtitle_background){
+            auto text_vertices=std::move(vertices);const auto band=sonic::subtitles::backdrop(text_vertices);vertices.assign(band.begin(),band.end());
+            katana::runtime::NativePortBlendState alpha;alpha.enabled=true;alpha.source_color=katana::runtime::NativePortBlendFactor::SourceAlpha;
+            alpha.destination_color=katana::runtime::NativePortBlendFactor::InverseSourceAlpha;
+            const auto background_result=draw_packet(context,ninja_flag_use_alpha,{},katana::runtime::NativePortPrimitiveTopology::TriangleStrip,
+                katana::runtime::NativePortViewportTarget::Ui,alpha,std::nullopt,std::nullopt,std::nullopt,std::nullopt,{},std::nullopt,std::nullopt,{},std::nullopt,false,std::nullopt,
+                katana::runtime::NativePortDepthCoordinateMode::ReciprocalPositive,0x02100002u,std::nullopt,{}, {},std::nullopt,sonic::presentation::Role::Fullscreen);
+            vertices=std::move(text_vertices);if(background_result.action==katana::runtime::NativePortHookAction::Abort)return background_result;
+        }
+    }
     static const bool diagnostic_pretransformed_state =
         sonic_native_diagnostic_enabled(
             "KATANA_SONIC_DIAGNOSTIC_PRETRANSFORMED_STATE");
@@ -39389,6 +39540,35 @@ void run_sonic_quit_modal(katana::runtime::NativePortContext& context) {
              <<" guest_frame_delta="<<(context.frame_index-guest_frame)<<'\n';
 }
 
+void run_sonic_options_modal(katana::runtime::NativePortContext& context) {
+    if(!sonic::menu::pending(context))return;
+    using namespace katana::runtime;
+    auto* const audio=sonic_native_title_state.audio_engine.get();bool audio_suspended=false,prior_pause=false;
+    sonic::menu::Services services;
+    services.suspend_audio=[&]{if(audio){prior_pause=audio->snapshot().output_paused;audio->set_output_paused(true);audio_suspended=true;}};
+    services.resume=[&](std::uint64_t elapsed){
+        auto& s=sonic_native_title_state;
+        s.timer_epoch_nanoseconds+=elapsed;s.periodic_epoch_nanoseconds+=elapsed;
+        reset_sonic_host_sleep_clock(context);
+        s.native_input_frame_index=std::numeric_limits<std::uint64_t>::max();
+        s.frame_producer_next_deadline_nanoseconds=0;s.frame_producer_deferred_deadline_nanoseconds=0;
+        if(audio_suspended)audio->set_output_paused(prior_pause);
+    };
+    services.apply_audio=[](bool focus){sonic::audio::focused=focus;refresh_sonic_audio_settings();};
+    services.original_transition=[&](unsigned destination){
+        if(!sonic::menu::original_options_ready(context)||(destination!=5&&destination!=7))return false;
+        auto& cpu=*context.cpu;const auto task=cpu.memory.read_u32(canonical_physical_address(0x8C9645D0));
+        const auto work=cpu.memory.read_u32(canonical_physical_address(task+0x2C));
+        const auto r=cpu.r,fr=cpu.fr,xf=cpu.xf;const auto sr=cpu.read_sr();
+        const std::array control{cpu.mach,cpu.macl,cpu.fpul,cpu.fpscr,cpu.gbr};
+        cpu.r[4]=destination;const bool result=invoke_frame_aot_service(context,0x8C90177E);
+        cpu.write_sr(sr);cpu.r=r;cpu.fr=fr;cpu.xf=xf;cpu.mach=control[0];cpu.macl=control[1];cpu.fpul=control[2];cpu.fpscr=control[3];cpu.gbr=control[4];
+        if(result)guest_write_u32(cpu,work+24,9,CodeWriteSource::Copy);
+        return result;
+    };
+    (void)sonic::menu::run(context,services);
+}
+
 [[nodiscard]] bool run_private_scenario_modal(
     katana::runtime::NativePortContext& context) {
     using namespace sonic_native_private;
@@ -39711,6 +39891,11 @@ sonic_native_frame_begin(
             run_sonic_quit_modal(context);
             if(context.stop_reason!=katana::runtime::NativePortStopReason::None)return finish_frame_hook();
         }
+        if(!sonic_native_private::scenario_menu_open(context)) {
+            run_sonic_options_modal(context);
+            if(context.stop_reason!=katana::runtime::NativePortStopReason::None)return finish_frame_hook();
+        }
+        sonic::profiles::poll(context.host->monotonic_time_nanoseconds());
 
         // 0x8C641E40 (and its 0x8C641E7E MMU/TA write) is intentionally not
         // called. The displaced second service was the complete 24-slot SDK

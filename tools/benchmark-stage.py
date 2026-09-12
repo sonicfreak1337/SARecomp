@@ -21,6 +21,9 @@ parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
+# Render interpolation was withdrawn; benchmark the original frame stream.
+parser.add_argument('--vsync', type=int, choices=(0,1,2), default=0)
+parser.add_argument('--anisotropy', type=int, choices=(1,2,4,8,16), default=1)
 args = parser.parse_args()
 if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
@@ -33,7 +36,7 @@ run.mkdir()
 saves = run/'user-data'
 shutil.copytree(root/'.local/baseline/r354/saves', saves, copy_function=shutil.copyfile)
 display = run/'sonic-display.ini'
-display.write_text(f'mode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\n')
+display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',

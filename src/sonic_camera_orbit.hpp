@@ -59,6 +59,12 @@ public:
         return {target+Vec3{horizontal*std::sin(yaw_),-radius_*std::sin(pitch_),horizontal*std::cos(yaw_)},target,yaw_,pitch_};
     }
     bool active() const noexcept { return active_; }
+    Pose mouse_update(Vec3 target,float dx,float dy) noexcept {
+        // Raw relative pixels are displacements, never multiplied by frame time.
+        if(std::isfinite(dx))yaw_=std::remainder(yaw_-dx*(0.15f*pi/180.0f),2*pi);
+        if(std::isfinite(dy) && dy!=0)pitch_=std::clamp(pitch_-dy*(0.15f*pi/180.0f),minimum_pitch,maximum_pitch);
+        return update(target,{},0);
+    }
     bool return_to(Vec3 original_eye,Vec3 target,float seconds) noexcept {
         const auto offset=original_eye-target;
         const float distance=length(offset);

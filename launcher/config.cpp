@@ -79,8 +79,12 @@ struct Dialog {
         std::vector<std::wstring> rates{L"30",L"60",L"90",L"120",L"144"};
         const auto rate=std::to_wstring(settings.presentation_fps);
         if(std::find(rates.begin(),rates.end(),rate)==rates.end()) rates.push_back(rate);
-        combo(Fps,L"Output frame rate",317,rates,int(std::find(rates.begin(),rates.end(),rate)-rates.begin()));
-        control(L"STATIC",L"Output FPS does not change the original game speed.",0,0,28,355,535,23);
+        const auto fps=combo(Fps,L"Output frame rate",317,
+            settings.vsync==1?std::vector<std::wstring>{L"Display controlled (VSync)"}:rates,
+            settings.vsync==1?0:int(std::find(rates.begin(),rates.end(),rate)-rates.begin()));
+        EnableWindow(fps,settings.vsync!=1);
+        control(L"STATIC",settings.vsync==1?L"VSync follows your display. Change VSync in in-game Options.":
+            L"Output FPS does not change the original game speed.",0,0,28,355,535,23);
         combo(TextLanguage,L"Text language",402,{L"Use game setting",L"Japanese",L"English",L"French",L"Spanish",L"German"},settings.text_language+1);
         combo(VoiceLanguage,L"Voice language",445,{L"Use game setting",L"Japanese",L"English"},settings.voice_language+1);
         combo(Subtitles,L"Subtitles",488,{L"Use game setting",L"Off",L"On"},settings.subtitles+1);
@@ -103,7 +107,7 @@ struct Dialog {
         result.window_mode=sonic::rendering::WindowMode(selected(WindowMode));
         result.widescreen=selected(Aspect)==1;
         result.render_percent=std::stoul(text(RenderScale));
-        result.presentation_fps=std::stoul(text(Fps));
+        if(settings.vsync!=1)result.presentation_fps=std::stoul(text(Fps));
         result.text_language=selected(TextLanguage)-1;
         result.voice_language=selected(VoiceLanguage)-1;
         result.subtitles=selected(Subtitles)-1;
@@ -182,6 +186,9 @@ struct Dialog {
         if(!handle) throw std::runtime_error("Could not open the configuration window");
         if(self_test) {
             // Native controls and serialization are exercised without showing/focusing a window.
+            const auto saved_fps=settings.presentation_fps;
+            if(bool(IsWindowEnabled(GetDlgItem(window,Fps)))!=(settings.vsync!=1))
+                throw std::runtime_error("VSync did not control the FPS field");
             SetDlgItemTextW(window,Resolution,L"2560 x 1080");
             SendDlgItemMessageW(window,Renderer,CB_SETCURSEL,1,0);
             SendDlgItemMessageW(window,WindowMode,CB_SETCURSEL,1,0);
@@ -195,9 +202,11 @@ struct Dialog {
             if(!saved || !roundtrip.setup_complete || roundtrip.width!=2560 || roundtrip.height!=1080 ||
                 roundtrip.renderer!=sonic::rendering::Renderer::Vulkan || roundtrip.window_mode!=sonic::rendering::WindowMode::Borderless ||
                 roundtrip.text_language!=4 || roundtrip.voice_language!=1 || roundtrip.subtitles!=1 ||
-                roundtrip.camera_style!=sonic::camera::Style::Recompiled || IsWindowVisible(window))
+                roundtrip.camera_style!=sonic::camera::Style::Recompiled ||
+                roundtrip.presentation_fps!=saved_fps || IsWindowVisible(window))
                 throw std::runtime_error("Configuration control/save roundtrip failed");
-            snapshot(path.parent_path()/"configuration.bmp");
+            if(!GetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",nullptr,0))
+                snapshot(path.parent_path()/"configuration.bmp");
             saved=false; SetDlgItemTextW(window,Resolution,L"-1 x 0");
             SendMessageW(window,WM_COMMAND,IDOK,0);
             if(saved || error.empty() || sonic::presentation::read_settings(path).width!=2560)

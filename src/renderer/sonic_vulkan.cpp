@@ -5,6 +5,7 @@
 #include "renderer_selection.hpp"
 #include "sonic_vulkan_shaders.hpp"
 #include "../sonic_startup.hpp"
+#include "../sonic_presentation.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -71,6 +72,7 @@ struct VulkanRenderer::Impl {
     Submission* current=nullptr; VkCommandBuffer command{}; bool rendering=false;
     Image working,completed,depth,white,type_base,type_depth,type_heads,type_counts;
     Buffer type_fragments,type_status; bool type_ready=false,completed_ready=false;
+    std::uint64_t completed_host_image=0;
     NativePortGraphicsConfig config;
     std::unordered_map<std::uint64_t,Image> textures;
     std::unordered_map<std::uint64_t,Mesh> meshes;
@@ -414,7 +416,9 @@ void VulkanRenderer::Impl::create_swapchain() {
     std::vector<VkPresentModeKHR> modes(n); check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical,surface,&n,modes.data()),"vulkan-present-modes");
     // The host owns the 144-Hz deadline. MAILBOX never queues a FIFO backlog.
     VkPresentModeKHR mode=VK_PRESENT_MODE_FIFO_KHR;
-    if(std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_MAILBOX_KHR)!=modes.end()) mode=VK_PRESENT_MODE_MAILBOX_KHR;
+    if(sonic::presentation::settings().vsync==1)mode=VK_PRESENT_MODE_FIFO_KHR;
+    else if(sonic::presentation::settings().vsync==2 && std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_IMMEDIATE_KHR)!=modes.end())mode=VK_PRESENT_MODE_IMMEDIATE_KHR;
+    else if(std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_MAILBOX_KHR)!=modes.end()) mode=VK_PRESENT_MODE_MAILBOX_KHR;
     else if(!config.synchronize_present && std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_IMMEDIATE_KHR)!=modes.end()) mode=VK_PRESENT_MODE_IMMEDIATE_KHR;
     VkSwapchainCreateInfoKHR create{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR}; create.surface=surface;
     if(exclusive_controlled) create.pNext=&exclusive;
@@ -423,6 +427,8 @@ void VulkanRenderer::Impl::create_swapchain() {
     create.imageArrayLayers=1; create.imageUsage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; create.preTransform=caps.currentTransform;
     create.compositeAlpha=VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; create.presentMode=mode; create.clipped=true;
     check(vkCreateSwapchainKHR(device,&create,nullptr,&swapchain),"vulkan-swapchain");
+    std::cerr<<"SONIC_VULKAN_PRESENT mode="<<(mode==VK_PRESENT_MODE_MAILBOX_KHR?"mailbox":mode==VK_PRESENT_MODE_IMMEDIATE_KHR?"immediate":"fifo")
+        <<" vsync_setting="<<sonic::presentation::settings().vsync<<" visible="<<IsWindowVisible(window)<<'\n';
     check(vkGetSwapchainImagesKHR(device,swapchain,&n,nullptr),"vulkan-swap-images");
     std::vector<VkImage> images(n); check(vkGetSwapchainImagesKHR(device,swapchain,&n,images.data()),"vulkan-swap-images");
     swap_images.resize(n); present_semaphores.resize(n);
@@ -694,7 +700,7 @@ VulkanRenderer::~VulkanRenderer()=default;
 std::uint64_t VulkanRenderer::create_texture(const NativePortTextureConfig& config) {
     auto& p=*impl_;
     auto image=p.make_image({config.extent.width,config.extent.height},config.format==NativePortTextureFormat::Rgba8Unorm?VK_FORMAT_R8G8B8A8_UNORM:VK_FORMAT_B8G8R8A8_UNORM,
-        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,config.mip_levels);
+        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,config.mip_levels);
     const auto id=p.next_id++;
     try { p.textures.emplace(id,image); } catch(...) { p.destroy(image); throw; }
     return id;
@@ -704,6 +710,7 @@ void VulkanRenderer::upload_texture(std::uint64_t id,const NativePortImageView& 
 }
 void VulkanRenderer::destroy_texture(std::uint64_t id) {
     auto& p=*impl_; auto it=p.textures.find(id); if(it==p.textures.end()) return;
+    if(p.completed_host_image==id){p.completed_host_image=0;p.completed_ready=false;}
     p.start(); auto resource=it->second;
     // This fence is submitted after every earlier use on the same queue.
     p.current->retired.emplace_back([&p,resource]() mutable {p.destroy(resource);}); p.textures.erase(it);
@@ -787,10 +794,15 @@ void VulkanRenderer::resolve_type_two() {
 }
 void VulkanRenderer::complete_frame() {
     auto& p=*impl_; p.end_render(); p.barrier(p.working,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); p.submit();
-    std::swap(p.working,p.completed); p.completed_ready=true;
+    std::swap(p.working,p.completed); p.completed_ready=true;p.completed_host_image=0;
+}
+void VulkanRenderer::complete_host_image(std::uint64_t texture) {
+    auto& p=*impl_;p.end_render();
+    p.barrier(p.textures.at(texture),VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);p.submit();
+    p.completed_host_image=texture;p.completed_ready=true;
 }
 void VulkanRenderer::abort_frame() {
-    auto& p=*impl_; p.end_render(); p.submit(); p.completed_ready=false;
+    auto& p=*impl_; p.end_render(); p.submit(); p.completed_ready=false;p.completed_host_image=0;
 }
 void VulkanRenderer::resize(NativePortExtent extent) { impl_->config.output_extent=extent; impl_->swap_dirty=true; }
 bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span<const std::byte> overlay) {
@@ -817,7 +829,8 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     if(acquired==VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {p.exclusive_acquired=p.exclusive_attempted=false;return false;}
     if(acquired==VK_ERROR_OUT_OF_DATE_KHR) {p.swap_dirty=true; return false;}
     if(acquired==VK_SUBOPTIMAL_KHR) p.swap_dirty=true; else check(acquired,"vulkan-acquire");
-    auto set=p.descriptor(p.composite_layout); p.image_descriptor(set,4,p.completed); p.sampler_descriptor(set,NativePortSamplerState{});
+    auto& completed=p.completed_host_image?p.textures.at(p.completed_host_image):p.completed;
+    auto set=p.descriptor(p.composite_layout); p.image_descriptor(set,4,completed); p.sampler_descriptor(set,NativePortSamplerState{});
     const float black[]={0,0,0,1}; auto& image=p.swap_images[index];
     p.begin_render(&image,nullptr,true,black); p.viewport(rect);
     NativePortDrawPacket packet; packet.depth.test_enabled=packet.depth.write_enabled=false; packet.rasterizer.cull=NativePortCullMode::None;
@@ -841,14 +854,15 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     return true;
 }
 std::vector<std::uint8_t> VulkanRenderer::capture_bgra_bottom_up() {
-    auto& p=*impl_; const auto width=p.completed.extent.width,height=p.completed.extent.height;
+    auto& p=*impl_;auto& completed=p.completed_host_image?p.textures.at(p.completed_host_image):p.completed;
+    const auto width=completed.extent.width,height=completed.extent.height;
     const auto size=std::size_t(width)*height*4;
     auto readback=p.make_buffer(size,VK_BUFFER_USAGE_TRANSFER_DST_BIT,true);
     try {
-        p.barrier(p.completed,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        p.barrier(completed,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         VkBufferImageCopy copy{}; copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; copy.imageExtent={width,height,1};
-        vkCmdCopyImageToBuffer(p.command,p.completed.image,p.completed.layout,readback.buffer,1,&copy);
-        p.barrier(p.completed,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); p.finish();
+        vkCmdCopyImageToBuffer(p.command,completed.image,completed.layout,readback.buffer,1,&copy);
+        p.barrier(completed,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); p.finish();
         std::vector<std::uint8_t> pixels(size);
         const auto* source=reinterpret_cast<const std::uint8_t*>(readback.mapped);
         for(unsigned y=0;y<height;++y) for(unsigned x=0;x<width;++x) {

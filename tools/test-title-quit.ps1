@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param([ValidateSet('d3d11','vulkan')][string]$Renderer='d3d11',
-      [ValidateSet('controller','keyboard')][string]$InputMode='controller',
+      [ValidateSet('controller','keyboard','remapped')][string]$InputMode='controller',
       [ValidateSet('japanese','english','french','spanish','german')][string]$Language='german',
       [ValidatePattern('^[a-z0-9-]+$')][string]$Tag='quit-title')
 $ErrorActionPreference='Stop'
@@ -18,13 +18,18 @@ Get-ChildItem -LiteralPath $data -File -Recurse | ForEach-Object {$_.IsReadOnly=
 $display=Join-Path $run 'sonic-display.ini'
 "setup_complete=1`nmode=widescreen`nwidth=1280`nheight=720`nrender_percent=100`nrenderer=$Renderer`npresentation_fps=144`nwindow_mode=windowed`ntext_language=$Language" |
     Set-Content -LiteralPath $display -Encoding utf8NoBOM
+if($InputMode -eq 'remapped'){
+    "bind_confirm=90,0,1,8192`nbind_cancel=67,0,2,4096`nmaster_volume=50" | Add-Content -LiteralPath $display -Encoding utf8NoBOM
+}
 foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'KATANA_*' -or $_.Name -like 'SARECOMP_*'})){
     Remove-Item -LiteralPath ('Env:'+$entry.Name)
 }
 $variables=@{
     KATANA_PORT_BACKGROUND_TEST='1';KATANA_PORT_IGNORE_FOCUS='1';KATANA_PORT_FINAL_PROGRESS='1'
     KATANA_USER_DATA_ROOT=$data;SARECOMP_DISPLAY_CONFIG=$display;SARECOMP_QUIT_TEST=$InputMode
-    KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE='1';KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS='90000'
+    KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE=$(if($InputMode -eq 'remapped'){'0'}else{'1'})
+    KATANA_SONIC_DIAGNOSTIC_MOVIE_BUTTON_SWEEP=$(if($InputMode -eq 'remapped'){'1'}else{'0'})
+    SARECOMP_MOVIE_AUDIO_TRACE='1';KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS='90000'
     KATANA_NATIVE_GRAPHICS_CAPTURE_DIRECTORY=(Join-Path $run 'frames')
     KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME='1';KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME='6000'
     KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='15'
@@ -54,6 +59,9 @@ $passed=$process.ExitCode -eq 0 -and
     [regex]::Matches($log,'SONIC_QUIT modal_end guest_instructions_delta=0 guest_frame_delta=0').Count -eq 2 -and
     $log.Contains('KATANA_SESSION_STOP reason=1 ') -and $output.Contains('SARECOMP_USER_EXIT clean=1') -and
     -not $log.Contains('SONIC_QUIT unavailable=')
+if($InputMode -eq 'remapped'){
+    $passed=$passed -and $log -match 'SONIC_MOVIE_AUDIO samples=[1-9][0-9]* gain_min=0\.500 gain_max=0\.500'
+}
 @{passed=$passed;exit_code=$process.ExitCode;renderer=$Renderer;input_mode=$InputMode;language=$Language} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'result.json')
 if(-not $passed){throw "Title quit test failed; inspect $run"}

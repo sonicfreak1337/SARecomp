@@ -1,4 +1,5 @@
 #include "sonic_sdk_color.hpp"
+#include "sonic_model_uv.hpp"
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,36 @@ int main(int argc, char** argv) {
             0x7FBFFFFFu,0x7FC00000u,0xFFBFFFFFu,0xFFC00000u,0x7F800001u,
             0xFF800001u,1u,0x007FFFFFu,0x7F7FFFFFu,0xFF7FFFFFu};
         Services services;
+        require(original.memory.read_u32(0x0C038F10u)==0x3B808083u,
+                "retail title UV factor changed");
+        require(original.memory.read_u32(0x0C610A84u)==0x3B800000u,
+                "retail resident UV factor changed");
+        unsigned uv_cases=0;
+        for (auto fpscr : {0u,1u,fpscr_dn_mask,fpscr_dn_mask|1u})
+        for (auto u : {-32768,-1275,-256,-255,-1,0,1,127,160,253,255,256,320,640,960,1119,1275,32767}) {
+            const auto v=static_cast<std::int16_t>(u== -32768 ? 32767 : -u);
+            original.r.fill(0u);original.fr.fill(0u);original.sr=sr_md_mask;
+            original.write_fpscr(fpscr);original.pc=0x8C0379E0u;
+            original.exception_generation=0;original.trap_pending=false;
+            original.r[1]=0x8CF00000u;original.fr[11]=original.memory.read_u32(0x0C038F10u);
+            put(original,original.r[1],std::uint16_t(u)|(std::uint32_t(std::uint16_t(v))<<16));
+            unsigned steps=0;
+            while(original.pc!=0x8C0379F0u && ++steps<=8)
+                (void)execute_dynamic_sh4_block(original,services,1u);
+            require(original.pc==0x8C0379F0u && original.exception_generation==0,
+                    "retail UV sequence failed");
+            native.write_fpscr(fpscr);
+            const auto before=native.read_fpscr();
+            const auto decoded=sonic::model_uv::decode(static_cast<std::int16_t>(u),v,true,native);
+            require(bits(decoded[0])==original.fr[5] && bits(decoded[1])==original.fr[6],
+                    "title UV differs from retail FLOAT/FMUL");
+            require(native.read_fpscr()==before,"host UV conversion changed guest FPSCR");
+            const auto resident=sonic::model_uv::decode(static_cast<std::int16_t>(u),v,false,native);
+            require(resident[0]==static_cast<float>(u)/256.0f && resident[1]==static_cast<float>(v)/256.0f,
+                    "resident SDK UV changed");
+            ++uv_cases;
+        }
+        std::cout<<"SONIC_MODEL_UV_TEST_OK retail_instruction_cases="<<uv_cases<<" resident_unchanged\n";
         unsigned cases = 0u, denormal_traps = 0u;
         for (auto entry : {0x8C620A72u, 0x8C6385F0u})
         for (auto fpscr : {0u,1u,fpscr_dn_mask,fpscr_dn_mask|1u,0x4106Du})

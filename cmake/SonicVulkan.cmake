@@ -16,7 +16,33 @@ target_link_libraries(sonic_vulkan PRIVATE KatanaRecomp::native_port_runtime son
 add_library(sonic_graphics OBJECT src/renderer/pinned/native_port_graphics.cpp)
 target_compile_options(sonic_graphics PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_graphics PRIVATE KatanaRecomp::native_port_runtime sonic_startup)
-add_executable(sonic_renderer_tests EXCLUDE_FROM_ALL tools/test_renderers.cpp $<TARGET_OBJECTS:sonic_graphics>)
+add_executable(sonic_renderer_tests EXCLUDE_FROM_ALL tools/test_renderers.cpp src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
 target_include_directories(sonic_renderer_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_renderer_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_renderer_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_host_ui_tests EXCLUDE_FROM_ALL tools/test_host_ui.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_host_ui_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_host_ui_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_host_ui_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_pacing_tests EXCLUDE_FROM_ALL tools/test_pacing.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_pacing_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_pacing_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_pacing_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_fullscreen_effect_tests EXCLUDE_FROM_ALL tools/test_fullscreen_effects.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_fullscreen_effect_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_fullscreen_effect_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_fullscreen_effect_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+
+#[[ Archived with the withdrawn render-interpolation prototype.
+add_executable(sonic_motion_tests EXCLUDE_FROM_ALL tools/test_motion.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_motion_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_motion_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_motion_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+]]

@@ -4,6 +4,12 @@
 #include "katana/runtime/native_port_graphics.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_startup.hpp"
+#include "sonic_input.hpp"
+#include "sonic_menu_runtime.hpp"
+#include "sonic_profiles.hpp"
+#include "sonic_restart.hpp"
+#include "sonic_diagnostics.hpp"
+#include "native_provider_identity.hpp"
 
 #include "katana/runtime/native_port_telemetry.hpp"
 #include "katana/runtime/native_port_texture_asset.hpp"
@@ -37,6 +43,7 @@
 #include <windows.h>
 #include "sonic_options.hpp"
 #include "sonic_configuration.hpp"
+#include "sonic_errors.hpp"
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -457,7 +464,7 @@ class NativeProductExceptionFilterScope final {
 #endif
 } // namespace
 
-int main(int argc, char** argv) {
+int run_game(int argc, char** argv) {
     std::optional<katana::runtime::NativePortMemory> diagnostic_memory;
     NativeProductCrashSession native_product_crash_session;
 #if defined(_WIN32)
@@ -598,11 +605,15 @@ int main(int argc, char** argv) {
             std::filesystem::path(argv[0]), executable_error);
         if (executable_error || executable_path.empty())
             executable_path = std::filesystem::absolute(argv[0]);
+        sonic::restart::recover(executable_path);
         if (!sonic::configuration::first_start(executable_path)) return 0;
         sonic::startup::Session startup;
         if (explicit_bringup)
             native_product_crash_session.arm(executable_path);
         sonic::presentation::initialize(executable_path);
+        sonic::menu::initialize(executable_path);
+        sonic::profiles::initialize(native_product_user_data_root());
+        sonic::input::set_replay(input_replay_launch);
         std::filesystem::path content_root;
         if (direct_launch) {
             const auto configuration_path =
@@ -735,7 +746,7 @@ int main(int argc, char** argv) {
                 katana::runtime::NativePortKeyboardControls>();
         platform_config.content_root = content_root;
         platform_config.user_data_root =
-            native_product_user_data_root();
+            sonic::profiles::data_root(sonic::presentation::settings().active_profile);
         platform_config.project_id = definition.project_id;
         if (const auto* initial_state = std::getenv(
                 "KATANA_NATIVE_INPUT_START_STATE");
@@ -785,6 +796,7 @@ int main(int argc, char** argv) {
         sonic::startup::phase("Preparing graphics...");
         katana::runtime::NativePortDesktopHost host(
             graphics_config, frame_pacing);
+        if(!sonic::restart::confirm_display(host,platform))return 0;
         sonic::startup::phase("Starting game...");
         sonic::options::install(executable_path);
         bool frame_pacing_snapshot_emitted = false;
@@ -1044,6 +1056,7 @@ int main(int argc, char** argv) {
                   << "}\n";
         return 1;
     } catch (const katana::runtime::NativePortGraphicsError& error) {
+        sonic::diagnostics::record(sonic::diagnostics::Failure::Graphics,static_cast<std::uint32_t>(error.failure()));
         emit_native_performance_snapshot();
         std::string combined_graphics_detail;
         std::string_view graphics_detail = error.what();
@@ -1069,6 +1082,7 @@ int main(int argc, char** argv) {
         } catch (...) {}
         return 1;
     } catch (const katana::runtime::NativePortContractError& error) {
+        sonic::diagnostics::record(sonic::diagnostics::Failure::Contract,static_cast<std::uint32_t>(error.failure()));
         emit_native_performance_snapshot();
         native_product_emit_crash(
             1u, "NativePortContractError",
@@ -1082,6 +1096,7 @@ int main(int argc, char** argv) {
         return 1;
     } catch (const std::exception& error) {
         emit_native_performance_snapshot();
+        sonic::diagnostics::record(sonic::diagnostics::Failure::Runtime);
         native_product_emit_crash(
             2u, "std-exception", 0xFFFFFFFFu,
             "native-product-runtime", error.what());
@@ -1094,9 +1109,28 @@ int main(int argc, char** argv) {
         return 1;
     } catch (...) {
         emit_native_performance_snapshot();
+        sonic::diagnostics::record(sonic::diagnostics::Failure::Unknown);
         native_product_emit_crash(
             3u, "unknown-exception", 0xFFFFFFFFu,
             "native-product-runtime");
         return 1;
     }
+}
+
+int main(int argc,char** argv){
+    sonic::diagnostics::source_identity=sonic_native_title_adapter_source_identity;
+    sonic::diagnostics::build_profile=KATANA_PORT_BUILD_PROFILE_NAME;
+    const auto result=run_game(argc,argv);
+    if(result){
+        try{if(sonic::diagnostics::failure.load()!=sonic::diagnostics::Failure::None&&sonic::profiles::library_root().empty())sonic::profiles::initialize(native_product_user_data_root());}catch(...){}
+        sonic::errors::show();return result;
+    }
+    if(const auto next=sonic::menu::take_restart()){
+        try {
+            // run_game has released its CPU, host, audio and save provider.
+            sonic::profiles::apply_pending_restore();
+            return sonic::restart::launch(std::filesystem::absolute(argv[0]),*next,sonic::menu::restart_language());
+        }catch(const std::exception& e){std::cerr<<"SONIC_RESTART failure="<<e.what()<<'\n';sonic::diagnostics::record(sonic::diagnostics::Failure::Restart);sonic::errors::show();return 1;}
+    }
+    return 0;
 }

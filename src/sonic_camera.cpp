@@ -3,6 +3,7 @@
 #include "sonic_camera_policy.hpp"
 #include "sonic_camera_world.hpp"
 #include "sonic_presentation.hpp"
+#include "sonic_input.hpp"
 #include "katana/runtime/runtime.hpp"
 #include <array>
 #include <bit>
@@ -26,6 +27,7 @@ struct State {
     CollisionBoom boom;
     const void* owner=nullptr;
     Stick input;
+    std::array<float,2> mouse{};
     std::int16_t raw_x=0,raw_y=0;
     std::uint64_t input_frame=~std::uint64_t{0}, frame=~std::uint64_t{0}, time=0;
     std::uint64_t first_test_time=0;
@@ -75,6 +77,7 @@ void write_pose(CpuState& cpu,std::uint32_t cam,const std::array<std::uint32_t,6
         std::span(reinterpret_cast<const std::uint8_t*>(bytes.data()),bytes.size()),CodeWriteSource::Copy);
 }
 NativePortHookResult suspend(NativePortContext& context,int reason) noexcept {
+    input::set_camera_active(false);
     state.orbit.reset();
     state.boom.reset();
     state.world.reset();
@@ -89,7 +92,7 @@ NativePortHookResult suspend(NativePortContext& context,int reason) noexcept {
 }
 }
 void reset_timeline() noexcept { state={}; }
-void suppress_input() noexcept { state.input={}; }
+void suppress_input() noexcept { state.input={};state.mouse={};input::set_camera_active(false); }
 void sample_input(NativePortContext& context,NativePortInputSnapshot& input,bool suppressed) noexcept {
     if (presentation::settings().camera_style!=Style::Recompiled) return;
     if (state.owner!=context.title_state ||
@@ -98,7 +101,13 @@ void sample_input(NativePortContext& context,NativePortInputSnapshot& input,bool
     }
     const auto& pad=input.gamepads[0];
     state.raw_x=pad.right_stick_x_raw;state.raw_y=pad.right_stick_y_raw;
-    state.input=suppressed?Stick{}:right_stick(pad.right_stick_x_raw,pad.right_stick_y_raw,pad.connected);
+    state.input=suppressed || !pad.connected?Stick{}:Stick{pad.right_stick_x,pad.right_stick_y};
+    state.mouse=suppressed?std::array<float,2>{}:input::consume_mouse_look();
+    const auto& options=presentation::settings();
+    state.input.x*=options.camera_sensitivity_x/100.0f*(options.camera_invert_x?-1:1);
+    state.input.y*=options.camera_sensitivity_y/100.0f*(options.camera_invert_y?-1:1);
+    state.mouse[0]*=options.mouse_sensitivity_x/100.0f*(options.camera_invert_x?-1:1);
+    state.mouse[1]*=-options.mouse_sensitivity_y/100.0f*(options.camera_invert_y?-1:1);
     state.input_frame=context.frame_index;
     if (tracing() && !testing() && context.frame_index%15==0)
         std::cerr<<"SONIC_CAMERA_INPUT frame="<<context.frame_index<<" connected="<<pad.connected
@@ -162,7 +171,7 @@ void sample_input(NativePortContext& context,NativePortInputSnapshot& input,bool
 }
 
 NativePortHookResult original_step(NativePortContext& context) noexcept {
-    if (presentation::settings().camera_style!=Style::Recompiled || !context.cpu ||
+    if (!context.cpu ||
         !state.original_valid || state.owner!=context.title_state) return {};
     auto& cpu=*context.cpu;
     if (cpu.pr!=0x8C019918u || cpu.r[4]!=state.camera) return {};
@@ -184,7 +193,7 @@ NativePortHookResult original_step(NativePortContext& context) noexcept {
 
 NativePortHookResult publish(NativePortContext& context) noexcept {
     // Original is a true passthrough, including zero guest reads/writes.
-    if (presentation::settings().camera_style!=Style::Recompiled) return {};
+    if (presentation::settings().camera_style!=Style::Recompiled) {input::set_camera_active(false);return {};}
     if (!context.cpu || !context.host) return {};
     auto& cpu=*context.cpu;
     // Only the state-2 camera task's normal publication. Other callers are
@@ -207,6 +216,7 @@ NativePortHookResult publish(NativePortContext& context) noexcept {
         const auto type=byte(cpu,control+6u); // +7 is the independent output format.
         const auto callback=word(cpu,control+12u);
         if (!manual_camera_type(type,callback)) return suspend(context,1000+type);
+        input::set_camera_active(true);
         const auto player_position=position(cpu,player),original_eye=position(cpu,cam);
         const auto actor=byte(cpu,character);
         const auto scene=std::uint32_t(half(cpu,stage_major))<<16u | half(cpu,stage_minor);
@@ -215,6 +225,8 @@ NativePortHookResult publish(NativePortContext& context) noexcept {
         const auto now=context.host->monotonic_time_nanoseconds();
         if (testing() && !state.first_test_time) state.first_test_time=now;
         const auto input=state.input_frame==context.frame_index?state.input:Stick{};
+        const auto mouse=state.input_frame==context.frame_index?state.mouse:std::array<float,2>{};
+        const bool looking=input.x!=0 || input.y!=0 || mouse[0]!=0 || mouse[1]!=0;
         const bool reset=!state.orbit.active()||state.owner!=context.title_state||
             state.player!=player||state.camera!=cam||state.scene!=scene||state.actor!=actor||
             context.frame_index<state.frame||now<state.time||length(player_position-state.previous_player)>200;
@@ -223,7 +235,7 @@ NativePortHookResult publish(NativePortContext& context) noexcept {
             // Let the retail camera finish its entry movement. Taking over
             // the first loading/transition pose freezes its temporary height.
             // After takeover neutral input retains the chosen elevation.
-            if (input.x==0 && input.y==0) {
+            if (!looking) {
                 state.time=now;state.frame=context.frame_index;state.owner=context.title_state;
                 return {};
             }
@@ -234,12 +246,14 @@ NativePortHookResult publish(NativePortContext& context) noexcept {
         const float dt=!new_frame||!state.time||now<state.time?0.0f:
             std::min(0.25f,float(double(now-state.time)/1e9));
         auto pose=state.orbit.update(target,input,dt);
+        if(new_frame && (mouse[0]!=0 || mouse[1]!=0))pose=state.orbit.mouse_update(target,mouse[0],mouse[1]);
         if (!finite(pose.eye)) return suspend(context,8);
-        if (input.x!=0 || input.y!=0) {state.last_input_time=now;state.returning=false;}
+        if (looking) {state.last_input_time=now;state.returning=false;}
         const auto motion=player_position-state.previous_player;
         const bool walking=!reset && new_frame && dt>0 && std::hypot(motion.x,motion.z)>std::max(0.015f,dt);
         const double idle=now>=state.last_input_time?double(now-state.last_input_time)/1e9:0;
-        if (walking && idle>=3) state.returning=true;
+        const auto delay=presentation::settings().camera_return_seconds;
+        if (walking && delay && idle>=delay) state.returning=true;
         if (state.returning) {
             if (state.orbit.return_to(original_eye,target,dt)) {
                 state.orbit.reset();state.boom.reset();state.original_valid=false;

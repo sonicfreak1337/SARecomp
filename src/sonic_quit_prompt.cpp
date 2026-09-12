@@ -3,6 +3,7 @@
 #include "sonic_quit_prompt.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_language.hpp"
+#include "sonic_input.hpp"
 #include "katana/runtime/runtime.hpp"
 #include "katana/runtime/native_port_content.hpp"
 #include <algorithm>
@@ -24,11 +25,14 @@ bool environment(const char* key,const char* expected="1") noexcept {
 bool background() noexcept {static const bool value=environment("KATANA_PORT_BACKGROUND_TEST");return value;}
 int test_mode() noexcept {
     static const int value=background()?(environment("SARECOMP_QUIT_TEST","controller")?1:
-        environment("SARECOMP_QUIT_TEST","keyboard")?2:0):0;
+        environment("SARECOMP_QUIT_TEST","keyboard")?2:environment("SARECOMP_QUIT_TEST","remapped")?3:0):0;
     return value;
 }
 struct State {
     Prompt prompt;
+    Controls controls;
+    ButtonRect confirm_rect,cancel_rect;
+    input::GlyphStyle glyphs=input::GlyphStyle::Keyboard;
     NativePortTextureHandle texture;
     const void* owner=nullptr;
     std::uint64_t connection=0,frame=0;
@@ -49,32 +53,37 @@ Screen screen(NativePortContext& context) noexcept {
         return read_screen(*context.cpu,bound(context));
     }catch(...){return Screen::None;}
 }
-bool focused() noexcept {
-    if(test_mode())return true;
-    if(background())return false;
-    DWORD process=0;const auto window=GetForegroundWindow();
-    if(window)GetWindowThreadProcessId(window,&process);
-    return process==GetCurrentProcessId();
-}
-Buttons buttons(const NativePortInputSnapshot& input,bool focus) noexcept {
-    if(!focus)return {};
-    const auto& pad=input.gamepads[0];
-    const auto mask=pad.connected?pad.buttons:0u;
-    Buttons result{bool(mask&native_port_gamepad_button_mask(NativePortGamepadButton::B)),
-                   bool(mask&native_port_gamepad_button_mask(NativePortGamepadButton::A))};
-    if(!background()) {
-        result.back|=(GetAsyncKeyState(VK_ESCAPE)&0x8000)!=0;
-        // Alt+Enter remains a display command, not confirmation.
-        result.accept|=(GetAsyncKeyState(VK_RETURN)&0x8000)!=0 && (GetAsyncKeyState(VK_MENU)&0x8000)==0;
-    }
-    return result;
-}
 void neutralize(NativePortInputSnapshot& input) noexcept {
     for(auto& pad:input.gamepads){const bool connected=pad.connected;pad={};pad.connected=connected;}
 }
 void connection(const NativePortInputSnapshot& input) noexcept {
     if(input.connection_generation!=state.connection){state.connection=input.connection_generation;state.prompt.disarm();}
 }
+}
+
+Buttons Controls::sample(const input::Snapshot& source,const input::Bindings& bindings,
+                         bool dialog,ButtonRect confirm,ButtonRect cancel) noexcept {
+    const auto old=mouse_;mouse_=source.mouse;
+    if(!source.focused||source.connection_changed){confirm_pressed_=cancel_pressed_=false;return {};}
+    auto physical=source;physical.mouse={};
+    if(physical.keys[VK_MENU])physical.keys[VK_RETURN]=false;
+    Buttons result{input::held(physical,input::Action::Cancel,bindings)||physical.keys[VK_ESCAPE],
+                   input::held(physical,input::Action::Confirm,bindings)||physical.keys[VK_RETURN]};
+    const auto mouse_action=[&](input::Action action){
+        const auto button=bindings[unsigned(action)].mouse;
+        return button && !(dialog&&button==1) && old[button] && !source.mouse[button];
+    };
+    result.back|=mouse_action(input::Action::Cancel);result.accept|=mouse_action(input::Action::Confirm);
+    if(dialog && source.mouse[1] && !old[1]){
+        confirm_pressed_=confirm.contains(source.cursor_x,source.cursor_y);
+        cancel_pressed_=cancel.contains(source.cursor_x,source.cursor_y);
+    }
+    if(dialog && !source.mouse[1] && old[1]){
+        result.accept|=confirm_pressed_&&confirm.contains(source.cursor_x,source.cursor_y);
+        result.back|=cancel_pressed_&&cancel.contains(source.cursor_x,source.cursor_y);
+        confirm_pressed_=cancel_pressed_=false;
+    }
+    return result;
 }
 
 Screen read_screen(CpuState& cpu,bool advertise_bound) noexcept {
@@ -103,27 +112,29 @@ int effective_language(CpuState& cpu,int preference) noexcept {
     try {const auto value=word(cpu,sonic::language::text_global);if(value<5)return int(value);}catch(...){}
     return 1;
 }
-void sample_input(NativePortContext& context,NativePortInputSnapshot& input,bool suppressed) noexcept {
+void sample_input(NativePortContext& context,NativePortInputSnapshot& input,const sonic::input::Snapshot& raw,bool suppressed) noexcept {
     if(state.owner!=context.cpu || context.frame_index<state.frame) {
         release(context);state={};state.owner=context.cpu;
     }
     state.frame=context.frame_index;
     const auto current=suppressed?Screen::None:screen(context);
     connection(input);
-    const bool focus=focused();
-    auto held=buttons(input,focus);
+    auto sampled=raw;
     if(test_mode()) {
-        neutralize(input);held={};
+        neutralize(input);sampled={};sampled.focused=true;
         // Owned hidden test input; never synthesizes OS/controller events.
         if(current!=Screen::None && !state.prompt.pending()) {
             ++state.test_wait;
             if(state.test_wait>=20) {
-                if(test_mode()==1){input.gamepads[0].connected=true;input.gamepads[0].buttons=native_port_gamepad_button_mask(NativePortGamepadButton::B);held=buttons(input,true);}
-                else held.back=true; // Same logical edge as focused Escape.
+                if(test_mode()!=2){sampled.connected=true;sampled.pad=1u<<(test_mode()==3?12:11);sampled.glyphs=sonic::input::GlyphStyle::Xbox;}
+                else sampled.keys[VK_ESCAPE]=true;
             }
         }
     }
-    const auto decision=state.prompt.sample(current,held,focus);
+    state.glyphs=sampled.glyphs;
+    if(sampled.connection_changed)state.prompt.disarm();
+    const auto held=state.controls.sample(sampled,presentation::settings().bindings,false);
+    const auto decision=state.prompt.sample(current,held,sampled.focused);
     if(decision==Decision::Opened)std::cerr<<"SONIC_QUIT opened screen="<<int(current)<<" frame="<<context.frame_index<<'\n';
     if(state.prompt.consumes_input())neutralize(input);
 }
@@ -136,7 +147,7 @@ bool draw(NativePortContext& context) {
     if(screen(context)!=state.prompt.screen() || !context.graphics){state.prompt.cancel();return false;}
     try {
         const auto lang=effective_language(*context.cpu,presentation::settings().text_language);
-        const auto image=rasterize(lang);
+        const auto image=rasterize(lang,presentation::settings().bindings,state.glyphs);
         NativePortTextureConfig config;config.extent={image.width,image.height};
         NativePortImageView pixels;pixels.extent=config.extent;pixels.format=NativePortTextureFormat::Rgba8Unorm;
         pixels.stride_bytes=image.width*4;pixels.pixels=image.pixels;
@@ -144,6 +155,16 @@ bool draw(NativePortContext& context) {
         const auto viewport=context.graphics->layout().game_viewport;
         const float scale=std::min(float(viewport.height)/720.0f,float(viewport.width)/704.0f);
         const float x=float(image.width)*scale/float(viewport.width),y=float(image.height)*scale/float(viewport.height);
+        const auto& layout=context.graphics->layout();
+        const auto hit_rect=[&](int left,int top,int right,int bottom){
+            const float ox=float(layout.output_extent.width)/layout.render_extent.width;
+            const float oy=float(layout.output_extent.height)/layout.render_extent.height;
+            const float px=viewport.x+(viewport.width-image.width*scale)*.5f;
+            const float py=viewport.y+(viewport.height-image.height*scale)*.5f;
+            return ButtonRect{int((px+left*scale)*ox),int((py+top*scale)*oy),
+                              int((px+right*scale)*ox),int((py+bottom*scale)*oy)};
+        };
+        state.confirm_rect=hit_rect(26,131,306,191);state.cancel_rect=hit_rect(334,131,614,191);
         const std::array<std::uint32_t,6> indices{0,1,2,0,2,3};
         const auto quad=[&](float w,float h,std::array<float,4> color,NativePortTextureHandle texture,unsigned order) {
             std::array<NativePortVertex,4> v{};
@@ -172,20 +193,22 @@ bool draw(NativePortContext& context) {
     }
 }
 Decision poll_modal(NativePortContext& context,bool focus) {
-    auto input=context.platform->poll_gamepads();connection(input);
-    focus=focus && focused();auto held=buttons(input,focus);
+    auto input=sonic::input::poll_host(*context.platform);connection(input);
+    auto sampled=sonic::input::sample(input,true);sampled.focused&=focus;
     if(test_mode()) {
         ++state.test_modal;
-        held={state.test_modal<12,false}; // Deliberately hold opening B/Esc.
+        Buttons held{state.test_modal<12,false}; // Deliberately hold opening B/Esc.
         if(state.test_modal==75)held={state.test_cancelled==0,state.test_cancelled!=0};
-        if(test_mode()==1) {
-            neutralize(input);input.gamepads[0].connected=true;
-            input.gamepads[0].buttons=(held.back?native_port_gamepad_button_mask(NativePortGamepadButton::B):0u)|
-                (held.accept?native_port_gamepad_button_mask(NativePortGamepadButton::A):0u);
-            held=buttons(input,true);
-        }
+        sampled={};sampled.focused=focus;
+        if(test_mode()!=2) {
+            sampled.connected=true;
+            sampled.pad=(held.back?1u<<(test_mode()==3?12:11):0u)|
+                        (held.accept?1u<<(test_mode()==3?13:10):0u);
+        }else {sampled.keys[VK_ESCAPE]=held.back;sampled.keys[VK_RETURN]=held.accept;}
     }
-    const auto result=state.prompt.sample(state.prompt.screen(),held,focus);
+    if(sampled.connection_changed)state.prompt.disarm();
+    const auto held=state.controls.sample(sampled,presentation::settings().bindings,true,state.confirm_rect,state.cancel_rect);
+    const auto result=state.prompt.sample(state.prompt.screen(),held,sampled.focused);
     if(result==Decision::Cancelled){++state.test_cancelled;state.test_wait=0;}
     if(result==Decision::Cancelled || result==Decision::Confirmed)
         std::cerr<<"SONIC_QUIT "<<(result==Decision::Cancelled?"cancelled":"confirmed")<<" frame="<<context.frame_index<<'\n';

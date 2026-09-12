@@ -6,6 +6,9 @@
 #include "../renderer_selection.hpp"
 #include "../sonic_vulkan.hpp"
 #include "../../sonic_startup.hpp"
+#include "../../sonic_input.hpp"
+#include "../../sonic_presentation.hpp"
+#include "../sonic_motion.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -21,6 +24,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -1014,7 +1018,7 @@ void validate_frame_pacing_config(
     // Software deadlines own cadence when pacing is active.  Combining them
     // with an unrelated monitor-vblank interval would double-throttle on
     // 50/60/120/144-Hz displays and make title time display-dependent.
-    if (pacing.enabled) graphics.synchronize_present = false;
+    if (pacing.enabled) graphics.synchronize_present = sonic::presentation::settings().vsync==1;
     return graphics;
 }
 
@@ -1443,6 +1447,7 @@ class NativePortGraphicsBackend final {
         initialize_frame_capture();
         initialize_graphics_diagnostics();
         create_window();
+        refresh_display_rate();
         refresh_layout();
         try {
             if (sonic::rendering::selected_renderer == sonic::rendering::Renderer::Vulkan) {
@@ -1509,7 +1514,17 @@ class NativePortGraphicsBackend final {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+        if(display_change_pending_) {
+            display_change_pending_=false;
+            display_rate_dirty_=true;
+            if(!fullscreen_.display_changed(window_))
+                std::fprintf(stderr,"SONIC_DISPLAY_RECOVERY failed win32=%lu\n",GetLastError());
+            // Re-query surface/present-mode support even when two monitors
+            // happen to have equal pixel dimensions. Guest render size stays.
+            if(vulkan_)vulkan_->resize(output_extent_);
+        }
         apply_pending_resize();
+        if(display_rate_dirty_)refresh_display_rate();
         update_runtime_options_menu();
     }
 
@@ -1524,6 +1539,14 @@ class NativePortGraphicsBackend final {
     [[nodiscard]] NativePortGraphicsLayout layout() const {
         require_owner_thread();
         return cached_layout_;
+    }
+
+    [[nodiscard]] std::uint32_t effective_presentation_rate(std::uint32_t manual) const noexcept {
+        return sonic::presentation::settings().vsync==1 ? display_rate_hz_ : manual;
+    }
+    [[nodiscard]] bool driver_paces_output() const noexcept {
+        return sonic::presentation::settings().vsync==1 && !minimized_ &&
+            window_ && IsWindowVisible(window_);
     }
 
     [[nodiscard]] NativePortTextureHandle create_texture(
@@ -2458,6 +2481,9 @@ if (!vulkan_) {
         // stream finishes the working image before a subsequent composite;
         // no CPU fence or full-image copy is required.
         if (vulkan_) vulkan_->complete_frame();
+        completed_host_image_ = false;
+        completed_host_texture_.Reset();
+        completed_host_view_.Reset();
         render_texture_.Swap(completed_texture_);
         render_target_.Swap(completed_target_);
         render_view_.Swap(completed_view_);
@@ -3241,7 +3267,7 @@ if (!vulkan_) {
                 inject_present_failure_once_ = false;
                 fail(NativePortGraphicsFailure::DeviceLost, static_cast<std::uint32_t>(E_FAIL), operation);
             }
-            const bool nonblocking = allow_nonblocking_present_ && runtime_options_ != nullptr &&
+            const bool nonblocking = sonic::presentation::settings().vsync!=1 && allow_nonblocking_present_ && runtime_options_ != nullptr &&
                 runtime_options_->independent_presentation_enabled.load(std::memory_order_acquire);
             if (nonblocking && inject_present_busy_once_) {
                 inject_present_busy_once_ = false;
@@ -3256,7 +3282,7 @@ if (!vulkan_) {
                 rasterize_performance_overlay_text(overlay, output, 2u);
                 rasterize_performance_overlay_text(overlay, simulation, 17u);
             }
-            const auto presented = vulkan_->present(cached_layout_.output_viewport, nonblocking,
+            const auto presented = vulkan_->present(completed_output_viewport(), nonblocking,
                 show_overlay ? std::as_bytes(std::span(&overlay, 1)) : std::span<const std::byte>{});
             stop_render_submit_telemetry(); flush_render_telemetry();
             if (!presented) return NativePortBackendPresentOutcome::Deferred;
@@ -3270,7 +3296,7 @@ if (!vulkan_) {
             1u, swap_chain_target_.GetAddressOf(), nullptr);
         constexpr std::array black{0.0f, 0.0f, 0.0f, 1.0f};
         context_->ClearRenderTargetView(swap_chain_target_.Get(), black.data());
-        set_viewport(cached_layout_.output_viewport);
+        set_viewport(completed_output_viewport());
         constexpr std::array blend_factor{0.0f, 0.0f, 0.0f, 0.0f};
         NativePortBlendState composite_blend;
         NativePortDepthState composite_depth;
@@ -3291,8 +3317,8 @@ if (!vulkan_) {
         context_->PSSetShader(composite_pixel_shader_.Get(), nullptr, 0u);
         auto* const sampler = resolve_sampler_state(composite_sampler);
         context_->PSSetSamplers(0u, 1u, &sampler);
-        context_->PSSetShaderResources(
-            0u, 1u, completed_view_.GetAddressOf());
+        auto* const completed_source = completed_host_image_ ? completed_host_view_.Get() : completed_view_.Get();
+        context_->PSSetShaderResources(0u, 1u, &completed_source);
         context_->Draw(3u, 0u);
         ID3D11ShaderResourceView* no_view = nullptr;
         context_->PSSetShaderResources(0u, 1u, &no_view);
@@ -3316,7 +3342,7 @@ if (!vulkan_) {
         // Flycast's D3D11 presenter uses the same flag/result pair in
         // core/rend/dx11/dx11context.cpp.
         const bool nonblocking =
-            allow_nonblocking_present_ && flip_swap_chain_ &&
+            sonic::presentation::settings().vsync!=1 && allow_nonblocking_present_ && flip_swap_chain_ &&
             runtime_options_ != nullptr &&
             runtime_options_->independent_presentation_enabled.load(
                 std::memory_order_acquire);
@@ -3397,6 +3423,40 @@ if (!vulkan_) {
         update_texture(image_texture_, image);
         begin_frame({});
 
+        // Opaque host menus are already rasterized at client resolution. Keep
+        // their pixels out of the lower-resolution game framebuffer entirely.
+        // The backend owns image_texture_; it changes only within this atomic
+        // PresentImage command. Ordinary frame completion restores game output.
+        if (viewport == NativePortViewportTarget::Ui &&
+            fit == NativePortImageFit::Stretch &&
+            image.extent == cached_layout_.output_extent &&
+            image.format == NativePortTextureFormat::Rgba8Unorm) {
+            complete_frame();
+            const auto& slot = resolve_texture(image_texture_);
+            if (vulkan_) vulkan_->complete_host_image(slot.vulkan_texture);
+            else {
+                completed_host_texture_ = slot.texture;
+                completed_host_view_ = slot.view;
+            }
+            completed_host_extent_ = image.extent;
+            completed_host_image_ = true;
+            if (!defer_presentation) static_cast<void>(repeat_present("present-image"));
+            return;
+        }
+
+        // Output-sized host dialogs are rasterized in client coordinates. They
+        // span the window even when the original game's viewport is 4:3.
+        // This scoped override never changes guest draws or movie fitting.
+        struct RestoreUiViewport {
+            NativePortGraphicsLayout& layout;
+            NativePortPixelRect saved;
+            ~RestoreUiViewport() { layout.ui_viewport = saved; }
+        } restore_ui_viewport{cached_layout_, cached_layout_.ui_viewport};
+        if (viewport == NativePortViewportTarget::Ui &&
+            fit == NativePortImageFit::Stretch &&
+            image.extent == cached_layout_.output_extent)
+            cached_layout_.ui_viewport = {0u, 0u, config_.render_extent.width,
+                                          config_.render_extent.height};
         const auto& current_layout = cached_layout_;
         const auto target = viewport == NativePortViewportTarget::Ui
                                 ? current_layout.ui_viewport
@@ -3589,6 +3649,7 @@ if (!vulkan_) {
                 window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
         }
         if (self == nullptr) return DefWindowProcW(window, message, word, data);
+        if(sonic::input::window_message(window,message,word,data))return 0;
         switch (message) {
         case WM_SYSKEYDOWN:
             if ((self->vulkan_ || sonic::rendering::selected_window_mode != sonic::rendering::WindowMode::Windowed) && word == VK_RETURN &&
@@ -3629,6 +3690,20 @@ if (!vulkan_) {
             return DefWindowProcW(window, message, word, data);
         case WM_CLOSE:
             self->close_requested_ = true;
+            return 0;
+        case WM_WINDOWPOSCHANGED:
+            self->display_rate_dirty_=true;
+            return DefWindowProcW(window, message, word, data);
+        case WM_DISPLAYCHANGE:
+            self->display_change_pending_=true;
+            return 0;
+        case WM_DPICHANGED:
+            if(!self->fullscreen_.active()&&data) {
+                const auto& r=*reinterpret_cast<const RECT*>(data);
+                SetWindowPos(window,nullptr,r.left,r.top,r.right-r.left,r.bottom-r.top,
+                    SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOOWNERZORDER);
+            }
+            self->display_change_pending_=true;
             return 0;
         case WM_SIZE:
             self->minimized_ = word == SIZE_MINIMIZED;
@@ -3715,7 +3790,8 @@ if (!vulkan_) {
         const auto maximum_rate_hz =
             runtime_options_->maximum_presentation_rate_hz.load(
                 std::memory_order_acquire);
-        if (!runtime_options_->frame_pacing_enabled.load(
+        if (sonic::presentation::settings().vsync==1 ||
+            !runtime_options_->frame_pacing_enabled.load(
                 std::memory_order_acquire) ||
             rate_hz < simulation_rate_hz || rate_hz > maximum_rate_hz)
             return true;
@@ -4003,9 +4079,8 @@ if (!vulkan_) {
         const auto simulation_rate_hz =
             runtime_options_->simulation_rate_hz.load(
                 std::memory_order_acquire);
-        const auto presentation_rate_hz =
-            runtime_options_->presentation_rate_hz.load(
-                std::memory_order_acquire);
+        const auto presentation_rate_hz = effective_presentation_rate(
+            runtime_options_->presentation_rate_hz.load(std::memory_order_acquire));
         const auto maximum_rate_hz =
             runtime_options_->maximum_presentation_rate_hz.load(
                 std::memory_order_acquire);
@@ -4070,7 +4145,7 @@ if (!vulkan_) {
             const auto rate_hz = runtime_presentation_rate_choices[index];
             const auto command = runtime_menu_rate_first +
                 static_cast<UINT>(index);
-            const auto enabled = pacing_enabled &&
+            const auto enabled = pacing_enabled && sonic::presentation::settings().vsync!=1 &&
                 rate_hz >= simulation_rate_hz &&
                 rate_hz <= maximum_rate_hz;
             static_cast<void>(EnableMenuItem(
@@ -4087,6 +4162,23 @@ if (!vulkan_) {
                                                  selected,
                                                  MF_BYCOMMAND));
         DrawMenuBar(window_);
+    }
+
+    void refresh_display_rate() noexcept {
+        display_rate_dirty_=false;
+        MONITORINFOEXW info{};info.cbSize=sizeof(info);
+        DEVMODEW mode{};mode.dmSize=sizeof(mode);
+        // Query only at startup or after window/display changes. Hidden or
+        // occluded windows need a bounded cadence even if Present returns early.
+        if(GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&info)&&
+            EnumDisplaySettingsW(info.szDevice,ENUM_CURRENT_SETTINGS,&mode)&&
+            mode.dmDisplayFrequency>=20&&mode.dmDisplayFrequency<=1000)
+            display_rate_hz_=mode.dmDisplayFrequency;
+        if(sonic::presentation::settings().vsync==1&&display_rate_reported_!=display_rate_hz_) {
+            std::fprintf(stderr,"SONIC_VSYNC_CLOCK display_hz=%u visible=%u manual_cap=ignored\n",
+                display_rate_hz_,unsigned(window_&&IsWindowVisible(window_)));
+            display_rate_reported_=display_rate_hz_;
+        }
     }
 
     void create_window() {
@@ -4149,6 +4241,7 @@ if (!vulkan_) {
                  code,
                  "window-create");
         }
+        sonic::input::window_created(window_);
         output_extent_ = config_.output_extent;
         pending_output_extent_ = output_extent_;
         update_runtime_options_menu(true);
@@ -4156,6 +4249,7 @@ if (!vulkan_) {
 
     void destroy_window() noexcept {
         if (window_ == nullptr) return;
+        (void)sonic::input::window_message(window_,WM_DESTROY,0,0);
         fullscreen_.attach_menu_before_destroy(window_);
         SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
         DestroyWindow(window_);
@@ -6691,15 +6785,23 @@ if (!vulkan_) {
 
     void capture_completed_frame(const std::uint64_t frame) {
         if (!should_capture_frame(frame)) return;
-        const auto width = config_.render_extent.width;
-        const auto height = config_.render_extent.height;
+        const auto extent = completed_host_image_ ? completed_host_extent_ : config_.render_extent;
+        const auto width = extent.width;
+        const auto height = extent.height;
         const auto row_bytes = static_cast<std::size_t>(width) * 4u;
         const auto pixel_bytes = row_bytes * static_cast<std::size_t>(height);
         if (vulkan_) capture_pixels_ = vulkan_->capture_bgra_bottom_up();
         else {
+        auto* const source_texture = completed_host_image_ ? completed_host_texture_.Get() : completed_texture_.Get();
+        D3D11_TEXTURE2D_DESC description{};
+        source_texture->GetDesc(&description);
+        if (capture_readback_) {
+            D3D11_TEXTURE2D_DESC previous{};
+            capture_readback_->GetDesc(&previous);
+            if (previous.Width != description.Width || previous.Height != description.Height ||
+                previous.Format != description.Format) capture_readback_.Reset();
+        }
         if (!capture_readback_) {
-            D3D11_TEXTURE2D_DESC description{};
-            completed_texture_->GetDesc(&description);
             description.Usage = D3D11_USAGE_STAGING;
             description.BindFlags = 0u;
             description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -6712,7 +6814,7 @@ if (!vulkan_) {
                      "graphics-capture-readback");
         }
 
-        context_->CopyResource(capture_readback_.Get(), completed_texture_.Get());
+        context_->CopyResource(capture_readback_.Get(), source_texture);
         D3D11_MAPPED_SUBRESOURCE mapped{};
         const auto map_result = context_->Map(
             capture_readback_.Get(), 0u, D3D11_MAP_READ, 0u, &mapped);
@@ -6898,8 +7000,20 @@ if (!vulkan_) {
     NativePortGraphicsLayout cached_layout_;
     bool close_requested_ = false;
     bool minimized_ = false;
+    bool display_change_pending_ = false;
+    bool display_rate_dirty_ = true;
+    std::uint32_t display_rate_hz_ = 60u;
+    std::uint32_t display_rate_reported_ = 0u;
     bool frame_open_ = false;
     bool completed_frame_available_ = false;
+    bool completed_host_image_ = false;
+    NativePortExtent completed_host_extent_{};
+    ComPtr<ID3D11Texture2D> completed_host_texture_;
+    ComPtr<ID3D11ShaderResourceView> completed_host_view_;
+    [[nodiscard]] NativePortPixelRect completed_output_viewport() const noexcept {
+        return completed_host_image_ ? NativePortPixelRect{0,0,output_extent_.width,output_extent_.height}
+                                     : cached_layout_.output_viewport;
+    }
     bool inject_present_failure_once_ = false;
     bool inject_present_busy_once_ = false;
     bool flip_swap_chain_ = false;
@@ -7090,6 +7204,8 @@ class NativePortGraphicsBackend final {
     [[nodiscard]] NativePortGraphicsLayout layout() const {
         return {};
     }
+    [[nodiscard]] std::uint32_t effective_presentation_rate(std::uint32_t manual) const noexcept { return manual; }
+    [[nodiscard]] bool driver_paces_output() const noexcept { return false; }
     [[nodiscard]] NativePortTextureHandle create_texture(
         const NativePortTextureConfig&,
         std::span<const NativePortImageView>) {
@@ -7280,6 +7396,9 @@ class NativePortGraphicsDevice::Impl final {
 
     [[nodiscard]] std::uint32_t
     requested_presentation_rate_nonblocking() const noexcept {
+        const auto desired=sonic::presentation::settings().presentation_fps;
+        const auto previous=last_options_presentation_fps_.exchange(desired,std::memory_order_relaxed);
+        if(previous && previous!=desired)runtime_options_.requested_presentation_rate_hz.store(desired,std::memory_order_release);
         return runtime_options_.requested_presentation_rate_hz.load(
             std::memory_order_acquire);
     }
@@ -7471,6 +7590,8 @@ class NativePortGraphicsDevice::Impl final {
 
         begin_batch();
         try {
+            if(sonic::presentation::Settings::interpolation && sonic::motion::submitted_frame.enabled)
+                motion_annotations_.push_back({batch_command_count_,sonic::motion::submitted_frame,{}});
             append_open(
                 [&](NativePortGraphicsCommandWriter& writer) {
                     return writer.begin_frame(config);
@@ -7491,6 +7612,9 @@ class NativePortGraphicsDevice::Impl final {
                 NativePortGraphicsFailure::InvalidDraw,
                 1u,
                 "draw-outside-frame");
+        if(sonic::presentation::Settings::interpolation &&
+           (sonic::motion::submitted_draw.enabled||sonic::motion::submitted_draw.world))
+            motion_annotations_.push_back({batch_command_count_,{},sonic::motion::submitted_draw});
         append_open(
             [&](NativePortGraphicsCommandWriter& writer) {
                 return writer.draw(packet);
@@ -8105,9 +8229,14 @@ class NativePortGraphicsDevice::Impl final {
                 std::chrono::steady_clock::now().time_since_epoch()).count());
     }
 
-    void update_presentation_deadline() noexcept {
-        const auto rate = runtime_options_.presentation_rate_hz.load(
-            std::memory_order_acquire);
+    void update_presentation_deadline(const NativePortGraphicsBackend& backend) noexcept {
+        const auto manual = runtime_options_.presentation_rate_hz.load(std::memory_order_acquire);
+        const auto rate = backend.effective_presentation_rate(manual);
+        if(consumer_presentation_manual_rate_!=manual||consumer_presentation_rate_!=rate) {
+            if(sonic::presentation::settings().vsync==1)
+                std::fprintf(stderr,"SONIC_PRESENT_CLOCK vsync=on saved_cap=%u display_hz=%u cap_applied=0\n",manual,rate);
+            consumer_presentation_manual_rate_=manual;
+        }
         if (consumer_presentation_rate_ == rate &&
             consumer_presentation_deadline_ != 0u) return;
         consumer_presentation_rate_ = rate;
@@ -8134,13 +8263,14 @@ class NativePortGraphicsDevice::Impl final {
     void present_on_consumer_deadline(NativePortGraphicsBackend& backend,
                                       const bool wait,
                                       const char* const operation = "repeat-present") {
-        update_presentation_deadline();
+        update_presentation_deadline(backend);
         auto now = presentation_now();
         if (wait && now < consumer_presentation_deadline_) {
             wait_until_monotonic_nanoseconds(consumer_presentation_deadline_);
             now = presentation_now();
         }
         if (now < consumer_presentation_deadline_) return;
+        render_motion_sample(backend,now);
         if (!backend.completed_image_available()) {
             // There is no output authority before the first complete image.
             saturating_atomic_add(published_missed_presentations_);
@@ -8155,15 +8285,25 @@ class NativePortGraphicsDevice::Impl final {
             // only when the next software deadline is reached.
             saturating_atomic_add(published_missed_presentations_);
         } else if (after > before) {
-            if (consumer_completed_image_presented_)
+            if (consumer_completed_image_presented_ && !motion_output_changed_)
                 saturating_add_value(consumer_repeated_presentations_, after - before);
             consumer_completed_image_presented_ = true;
+            motion_output_changed_=false;
         }
         backend.publish_telemetry();
         published_repeated_presentations_.store(
             consumer_repeated_presentations_, std::memory_order_release);
         published_presented_frames_.store(after, std::memory_order_release);
-        advance_presentation_deadline(presentation_now());
+        if(backend.driver_paces_output() && outcome==NativePortBackendPresentOutcome::Presented) {
+            // VSync owns visible output pacing. Do not add a software FPS cap
+            // after blocking Present/FIFO acquire, which would skip vblanks.
+            consumer_presentation_deadline_=presentation_now();
+            consumer_presentation_remainder_=0u;
+        } else {
+            // Occluded/hidden windows and deferred presents may return at once.
+            // Keep these bounded at the display cadence, never a busy retry loop.
+            advance_presentation_deadline(presentation_now());
+        }
     }
 
     [[nodiscard]] bool autonomous_presentation_active(
@@ -8222,6 +8362,15 @@ class NativePortGraphicsDevice::Impl final {
         NativePortGraphicsBackend& backend,
         NativePortFrameReadLease& lease) noexcept {
         const auto sequence = lease.sequence();
+        std::vector<sonic::motion::Annotation> annotations;
+        if constexpr(sonic::presentation::Settings::interpolation) {
+            const std::lock_guard lock(motion_annotations_mutex_);
+            const auto it=motion_published_annotations_.find(sequence);
+            if(it!=motion_published_annotations_.end()){
+                annotations=std::move(it->second);motion_published_annotations_.erase(it);
+            }
+        }
+        std::size_t annotation_index=0;
         observe_render_queue_depth();
         NativePortGraphicsCommandReader reader(lease);
         if (!reader.valid() || reader.size() == 0u) {
@@ -8242,7 +8391,10 @@ class NativePortGraphicsDevice::Impl final {
         while (auto command = reader.next()) {
             const auto ordinal = command->ordinal;
             try {
-                shutdown = execute_command(backend, *command) || shutdown;
+                const sonic::motion::Annotation* annotation=nullptr;
+                if(annotation_index<annotations.size()&&annotations[annotation_index].ordinal==ordinal)
+                    annotation=&annotations[annotation_index++];
+                shutdown = execute_command(backend, *command,annotation) || shutdown;
                 // Long draw leases must not monopolize the immediate context
                 // for several output periods. Bound clock/atomic checks to
                 // one per 16 commands and keep any failure inside this lease's
@@ -8291,7 +8443,10 @@ class NativePortGraphicsDevice::Impl final {
             }
         }
 
-        if (first_error.valid) consumer_presentation_faulted_ = true;
+        if (first_error.valid) {
+            consumer_presentation_faulted_ = true;
+            motion_history_.abort();motion_buffering_=false;
+        }
         if (terminal) {
             lease.fail(NativePortFrameQueueError::ConsumerException);
             observe_render_queue_depth();
@@ -8459,7 +8614,15 @@ class NativePortGraphicsDevice::Impl final {
 
         const auto sequence = batch_sequence_;
         const auto command_count = batch_command_count_;
+        if(sonic::presentation::Settings::interpolation && !motion_annotations_.empty()){
+            const std::lock_guard lock(motion_annotations_mutex_);
+            motion_published_annotations_.emplace(sequence,std::move(motion_annotations_));
+            motion_annotations_.clear();
+        }
         if (!batch_writer_->publish()) {
+            if constexpr(sonic::presentation::Settings::interpolation) {
+                const std::lock_guard lock(motion_annotations_mutex_);motion_published_annotations_.erase(sequence);
+            }
             abort_open_batch();
             observe_render_queue_depth();
             throw_queue_failure("render-command-publish");
@@ -8490,6 +8653,7 @@ class NativePortGraphicsDevice::Impl final {
     }
 
     void abort_open_batch() noexcept {
+        motion_annotations_.clear();
         if (batch_writer_.has_value()) batch_writer_->abort();
         batch_writer_.reset();
         batch_lease_.reset();
@@ -8722,9 +8886,48 @@ class NativePortGraphicsDevice::Impl final {
         backend.draw(packet);
     }
 
+    // Resource mutations cannot overtake deferred draws that still reference
+    // their old contents. Flush that prefix through the original path first.
+    void drain_motion_prefix(NativePortGraphicsBackend& backend) {
+        if constexpr(!sonic::presentation::Settings::interpolation)return;
+        if(!motion_buffering_)return;
+        backend.begin_frame(motion_history_.building().config);
+        sonic::motion::History::render(motion_history_.building(),1.0f,
+            [&](const auto& packet){draw_backend(backend,packet);},
+            [&]{backend.flush_type2_translucency();});
+        motion_buffering_=false;motion_history_.abort();
+    }
+    void render_motion_sample(NativePortGraphicsBackend& backend,std::uint64_t now,bool first=false) {
+        if constexpr(!sonic::presentation::Settings::interpolation)return;
+        if(const auto test_time=sonic::motion::test_time_ns.load();test_time&&background_test_mode_requested())now=test_time;
+        if((!first&&!motion_history_.can_render())||(!first&&!motion_history_.animated())||
+           (!first&&!backend.completed_frame_ready()))return;
+        const float alpha=motion_history_.alpha(now);
+        if(!first&&alpha<=motion_last_alpha_)return;
+        backend.begin_frame(motion_history_.current().config);
+        sonic::motion::History::render(motion_history_.current(),alpha,
+            [&](const auto& packet){draw_backend(backend,packet);},
+            [&]{backend.flush_type2_translucency();});
+        backend.complete_frame();motion_last_alpha_=alpha;motion_output_changed_=true;
+        if(sonic::motion::tracing()&&(first||motion_trace_samples_<32)){
+            std::fprintf(stderr,"SONIC_MOTION frame=%llu source_ns=%llu matched=%zu draws=%zu world=%zu rejected_world=%zu alpha=%.4f native=%u camera=%u\n",
+                static_cast<unsigned long long>(motion_history_.current().tag.sequence),
+                static_cast<unsigned long long>(motion_history_.current().tag.time_ns),
+                motion_history_.matched(),motion_history_.current().draws.size(),motion_history_.world_draws(),
+                motion_history_.rejected_world_draws(),alpha,unsigned(first),unsigned(motion_history_.current().camera_motion));
+            if(!first)++motion_trace_samples_;
+        }
+    }
+
     [[nodiscard]] bool execute_command(
         NativePortGraphicsBackend& backend,
-        const NativePortGraphicsCommandView& command) {
+        const NativePortGraphicsCommandView& command,
+        const sonic::motion::Annotation* annotation=nullptr) {
+        if(command.kind==NativePortGraphicsCommandKind::UpdateTexture||
+           command.kind==NativePortGraphicsCommandKind::DestroyTexture||
+           command.kind==NativePortGraphicsCommandKind::DestroyMesh){
+            drain_motion_prefix(backend);motion_history_.invalidate();
+        }
         switch (command.kind) {
         case NativePortGraphicsCommandKind::Show:
             backend.show();
@@ -8786,31 +8989,48 @@ class NativePortGraphicsDevice::Impl final {
                 std::get<NativePortGraphicsDestroyMeshView>(command.payload)
                     .mesh);
             return false;
-        case NativePortGraphicsCommandKind::BeginFrame:
+        case NativePortGraphicsCommandKind::BeginFrame: {
             consumer_drawn_frame_open_ = false;
-            backend.begin_frame(
-                std::get<NativePortGraphicsBeginFrameView>(command.payload)
-                    .config);
+            const auto& frame=std::get<NativePortGraphicsBeginFrameView>(command.payload).config;
+            if constexpr(sonic::presentation::Settings::interpolation) {
+                motion_buffering_=annotation&&annotation->frame.enabled&&motion_history_.accepts(annotation->frame);
+                if(motion_buffering_)motion_history_.begin(frame,annotation->frame);
+                else{motion_history_.abort();backend.begin_frame(frame);}
+            } else backend.begin_frame(frame);
             consumer_frame_start_draw_calls_ = backend.snapshot().draw_calls;
             consumer_drawn_frame_open_ = true;
             return false;
+        }
         case NativePortGraphicsCommandKind::Draw:
+            if(sonic::presentation::Settings::interpolation && motion_buffering_){
+                if(motion_history_.add(std::get<NativePortGraphicsDrawView>(command.payload).packet,
+                                      annotation?annotation->draw:sonic::motion::DrawTag{}))return false;
+                drain_motion_prefix(backend);
+            }
             draw_backend(
                 backend,
                 std::get<NativePortGraphicsDrawView>(command.payload).packet);
             return false;
         case NativePortGraphicsCommandKind::FlushType2:
+            if(sonic::presentation::Settings::interpolation && motion_buffering_){if(motion_history_.flush())return false;drain_motion_prefix(backend);}
             backend.flush_type2_translucency();
             return false;
         case NativePortGraphicsCommandKind::Present: {
             const bool frame_open = consumer_drawn_frame_open_;
             consumer_drawn_frame_open_ = false;
+            const bool motion_frame=sonic::presentation::Settings::interpolation && motion_buffering_;
+            if(motion_frame){
+                const auto test_time=sonic::motion::test_time_ns.load();
+                motion_history_.commit(test_time&&background_test_mode_requested()?test_time:presentation_now());motion_buffering_=false;
+                render_motion_sample(backend,presentation_now(),true);
+            }
             if (independent_presentation_enabled()) {
-                backend.complete_frame();
+                if(!motion_frame)backend.complete_frame();
                 consumer_completed_image_presented_ = false;
                 present_on_consumer_deadline(backend, true, "present");
                 consumer_presentation_faulted_ = false;
-            } else backend.present();
+            } else if(motion_frame)backend.repeat_present("present");
+            else backend.present();
             if (frame_open &&
                 backend.snapshot().draw_calls > consumer_frame_start_draw_calls_)
                 saturating_add_value(consumer_completed_drawn_frames_, 1u);
@@ -8825,14 +9045,17 @@ class NativePortGraphicsDevice::Impl final {
                 return false;
             }
             const auto before = backend.snapshot().presented_frames;
+            render_motion_sample(backend,presentation_now());
             backend.repeat_present();
             const auto after = backend.snapshot().presented_frames;
-            if (after > before)
+            if (after > before && !motion_output_changed_)
                 saturating_add_value(
                     consumer_repeated_presentations_, after - before);
+            motion_output_changed_=false;
             return false;
         }
         case NativePortGraphicsCommandKind::PresentImage: {
+            drain_motion_prefix(backend);motion_history_.abort();
             const auto& view =
                 std::get<NativePortGraphicsPresentImageView>(command.payload);
             consumer_drawn_frame_open_ = false;
@@ -8902,6 +9125,13 @@ class NativePortGraphicsDevice::Impl final {
     std::string development_state_directory_storage_;
     NativePortGraphicsConfig config_;
     std::thread::id producer_thread_;
+    std::vector<sonic::motion::Annotation> motion_annotations_;
+    std::mutex motion_annotations_mutex_;
+    std::unordered_map<std::uint64_t,std::vector<sonic::motion::Annotation>> motion_published_annotations_;
+    sonic::motion::History motion_history_;
+    bool motion_buffering_=false,motion_output_changed_=false;
+    float motion_last_alpha_=1;
+    unsigned motion_trace_samples_=0;
     NativePortGraphicsExecutionMode requested_mode_ =
         NativePortGraphicsExecutionMode::Parallel;
     NativePortGraphicsExecutionMode active_mode_ =
@@ -8910,7 +9140,8 @@ class NativePortGraphicsDevice::Impl final {
     std::string development_initial_state_path_;
     std::uint64_t development_probe_count_ = 0u;
     std::uint64_t development_probe_next_ = 0u;
-    NativePortRuntimeOptionsBridge runtime_options_;
+    mutable NativePortRuntimeOptionsBridge runtime_options_;
+    mutable std::atomic<unsigned> last_options_presentation_fps_{0};
     std::unique_ptr<NativePortGraphicsBackend> serial_backend_;
     std::unique_ptr<NativePortFrameQueue> queue_;
     std::thread consumer_thread_;
@@ -8950,6 +9181,7 @@ class NativePortGraphicsDevice::Impl final {
     std::uint64_t consumer_presentation_deadline_ = 0u;
     std::uint64_t consumer_presentation_remainder_ = 0u;
     std::uint32_t consumer_presentation_rate_ = 0u;
+    std::uint32_t consumer_presentation_manual_rate_ = 0u;
     bool consumer_completed_image_presented_ = false;
     bool consumer_presentation_faulted_ = false;
     std::uint64_t consumer_completed_drawn_frames_ = 0u;

@@ -16,6 +16,7 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [switch] $DisableCodePrefetch,
       [switch] $DisableStartupCache,
       [switch] $CheckOptions,
+      # Motion interpolation was withdrawn; no capture switch may enable it.
       [switch] $TraceFade)
 $ErrorActionPreference='Stop'
 if ($CameraCollisionTest) {

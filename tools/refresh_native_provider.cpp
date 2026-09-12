@@ -319,7 +319,7 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0;
+    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0;
     struct ReviewedLanguage {std::uint32_t address,size;std::string_view symbol,sha;bool latent;};
     constexpr std::array languages{
         ReviewedLanguage{0x8C0884A0u,0xA8u,"sonic_language_save","bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",false},
@@ -360,11 +360,16 @@ RenderHookExtension render_hook_extension(
             hook.code_identity=="sha256:2eea7fcacf69722f68fb85461b4a455b2ae301aa89b6785df124ad3a95a32bb8" &&
             hook.code_source==NativePortHookCodeSource::LatentAotModule &&
             hook.code_source_identity=="sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5";
-        if ((!model && !sphere && !language && !camera && !legacy_video) ||
+        const bool options_display=hook.guest_address==0x808929BEu && hook.covered_size==0x38u &&
+            hook.symbol=="sonic_options_legacy_display" &&
+            hook.code_identity=="sha256:634269bce4e226bfd5c6296653363581c690e2f55c38810eb90348c78dcbefdf" &&
+            hook.code_source==NativePortHookCodeSource::LatentAotModule &&
+            hook.code_source_identity=="sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5";
+        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != NativePortHookOriginalPolicy::MayContinueOriginal ||
-            (!language && !legacy_video && (hook.code_source != NativePortHookCodeSource::StaticImage ||
+            (!language && !legacy_video && !options_display && (hook.code_source != NativePortHookCodeSource::StaticImage ||
                 !hook.code_source_identity.empty())) ||
             !valid_native_port_sha256_identity(hook.provider_implementation_identity) ||
             std::ranges::any_of(before.hooks, [&](const auto& h) {
@@ -375,11 +380,11 @@ RenderHookExtension render_hook_extension(
         result.hooks.push_back(hook);
         result.added.push_back(hook);
         if(language) ++language_added;else if(camera) ++camera_added;
-        else if(legacy_video) ++legacy_video_added;else ++rendering_added;
+        else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
-        (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u)
+        (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u)
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;
@@ -427,7 +432,7 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
         const auto padded = "{{0x" + hex + "u, 0x0" +
             hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
         if(hook.code_source==katana::runtime::NativePortHookCodeSource::LatentAotModule) {
-            const auto shard=read_regular_file(generated_root/(hook.guest_address==0x8089928Eu?
+            const auto shard=read_regular_file(generated_root/((hook.guest_address==0x8089928Eu||hook.guest_address==0x808929BEu)?
                 "code/native-port-dispatch-shard-98441.cpp":"code/native-port-dispatch-shard-98440.cpp"));
             if(shard.find("{0x"+hex+"u, &fn_"+hex+"_runtime_entry, false, false}")==std::string::npos)
                 fail("sonic-language-hook-missing-frozen-entry");

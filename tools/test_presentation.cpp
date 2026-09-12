@@ -37,6 +37,25 @@ int main(int argc,char** argv) {
             close(project(Role::World,352)-project(Role::World,320),32*pixels_per_unit,"world square distortion");
             close(project(Role::World,-extra_horizontal_pixels()),0,"left frustum extent");
             close(project(Role::Fullscreen,640),float(extent.width),"incomplete fullscreen fade");
+            std::array<NativePortVertex,4> plane{};
+            plane[0].position={0,0,1};plane[1].position={0,480,1};
+            plane[2].position={640,0,1};plane[3].position={640,480,1};
+            const auto overlay=[&](Role role=Role::Interface,bool textured=false){
+                auto p=original;p.vertex_space=NativePortVertexSpace::PvrScreenReciprocal;
+                p.topology=NativePortPrimitiveTopology::TriangleStrip;p.vertices=plane;
+                if(textured)p.texture_stage=NativePortTextureStage::RequiredResolved;
+                apply(p,role);return p;
+            };
+            require(overlay().transform.values==original.transform.values,"scene color overlay stayed 4:3");
+            plane[1].position[1]=plane[3].position[1]=48;
+            require(overlay().transform.values==original.transform.values,"cinematic bar stayed 4:3");
+            require(overlay(Role::World).transform.values!=original.transform.values,"world plane stretched");
+            require(overlay(Role::Interface,true).transform.values!=original.transform.values,"textured picture stretched");
+            plane[2].position[0]=plane[3].position[0]=400;
+            require(overlay().transform.values!=original.transform.values,"local UI panel stretched");
+            plane[2].position[0]=plane[3].position[0]=640;
+            std::swap(plane[1],plane[3]);
+            require(overlay().transform.values!=original.transform.values,"overlapping triangles admitted");
             auto packet=original; apply(packet,Role::World);
             for(unsigned row=0;row<4;++row) for(unsigned col=1;col<4;++col)
                 require(packet.transform.values[row*4+col]==original.transform.values[row*4+col],"Y/Z/W changed");

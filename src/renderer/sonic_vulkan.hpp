@@ -25,6 +25,8 @@ public:
     void begin_type_two();
     void resolve_type_two();
     void complete_frame();
+    // Backend-owned output-resolution menu image, separate from the game pair.
+    void complete_host_image(std::uint64_t texture);
     void abort_frame();
     // False means an unavailable swap image, not device loss.
     bool present(katana::runtime::NativePortPixelRect, bool nonblocking,

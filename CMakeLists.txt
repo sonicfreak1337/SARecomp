@@ -58,7 +58,10 @@ add_library(katana_native_title_adapter STATIC
     src/sonic_private_scenario_launcher.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp src/sonic_camera.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp)
-target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp src/sonic_options_display.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_input.cpp src/sonic_menu.cpp
+    src/sonic_menu_image.cpp src/sonic_menu_text.cpp src/sonic_menu_runtime.cpp src/sonic_profiles.cpp src/sonic_restart.cpp)
+target_link_libraries(katana_native_title_adapter PUBLIC user32 gdi32 gdiplus)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
 target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime sonic_startup)
@@ -67,15 +70,54 @@ add_library(katana_generated STATIC IMPORTED)
 set_target_properties(katana_generated PROPERTIES
     IMPORTED_LOCATION "${SONIC_BASE}/aot/katana_generated.lib"
     INTERFACE_INCLUDE_DIRECTORIES "${SONIC_BASE}/product/generated/include")
-add_library(sonic_dispatch STATIC "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Keep the current hook bindings; the frozen r354 dispatch predates new Options.
+# Task-owner interpolation instrumentation is disabled in the preparation script.
+set(motion_dispatch "${CMAKE_BINARY_DIR}/generated/motion-dispatch/native-port-dispatch.cpp")
+add_custom_command(OUTPUT "${motion_dispatch}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-motion-dispatch.py"
+        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp" "${motion_dispatch}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-motion-dispatch.py"
+        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp"
+        "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
+add_library(sonic_dispatch STATIC "${motion_dispatch}")
 # Preserve the generated owner in the original link audit. This small archive
 # resolves the dispatch before the frozen archive; its old member is unused.
 set_target_properties(sonic_dispatch PROPERTIES OUTPUT_NAME katana_generated
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dispatch")
-target_include_directories(sonic_dispatch PRIVATE "${SONIC_WORKING}/generated/include")
+target_include_directories(sonic_dispatch PRIVATE "${SONIC_WORKING}/generated/include" "${SONIC_ROOT}/src")
 target_compile_options(sonic_dispatch PRIVATE /EHsc /utf-8)
 target_link_libraries(sonic_dispatch PRIVATE KatanaRecomp::native_port_runtime)
 add_executable(game launcher/main.cpp)
+target_include_directories(game PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_executable(sonic_menu_preview EXCLUDE_FROM_ALL tools/menu_preview.cpp
+    src/sonic_menu.cpp src/sonic_menu_text.cpp src/sonic_menu_image.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_menu_preview PRIVATE "${SONIC_ROOT}/src"
+    "${SONIC_BASE}/sdk/include" "${SONIC_BASE}/sdk/generated/include")
+target_compile_options(sonic_menu_preview PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_menu_preview PRIVATE KatanaRecomp::native_port_runtime sonic_startup user32 gdi32 gdiplus)
+add_executable(sonic_menu_assets_preview EXCLUDE_FROM_ALL tools/menu_assets_preview.cpp)
+add_executable(sonic_options_display_tests EXCLUDE_FROM_ALL tools/test_options_display.cpp src/sonic_options_display.cpp)
+target_compile_options(sonic_options_display_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_options_display_tests PRIVATE KatanaRecomp::native_port_runtime)
+add_executable(sonic_enhancement_tests EXCLUDE_FROM_ALL tools/test_enhancements.cpp
+    src/sonic_menu.cpp src/sonic_menu_text.cpp src/sonic_input.cpp src/sonic_profiles.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_enhancement_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_enhancement_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_enhancement_tests PRIVATE sonic_startup KatanaRecomp::native_port_runtime user32)
+add_executable(sonic_movie_audio_tests EXCLUDE_FROM_ALL tools/test_movie_audio.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_movie_audio_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_movie_audio_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_movie_audio_tests PRIVATE KatanaRecomp::native_port_runtime user32)
+add_executable(sonic_restart_tests EXCLUDE_FROM_ALL tools/test_display_restart.cpp
+    src/sonic_restart.cpp src/sonic_menu.cpp src/sonic_menu_image.cpp src/sonic_menu_text.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_restart_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_restart_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_restart_tests PRIVATE sonic_startup KatanaRecomp::native_port_runtime user32 gdi32 gdiplus)
+target_compile_options(sonic_menu_assets_preview PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_menu_assets_preview PRIVATE KatanaRecomp::native_port_runtime gdiplus)
 add_executable(sonic_config WIN32 launcher/config.cpp src/sonic_presentation.cpp)
 set_target_properties(sonic_config PROPERTIES OUTPUT_NAME sonic-config
     RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
@@ -100,6 +142,31 @@ target_include_directories(sonic_camera_platform PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_camera_platform PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_camera_platform PRIVATE KatanaRecomp::native_port_runtime)
 target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_camera_platform>)
+
+# Port-local endpoint replacement; preserve the frozen stream/domain ABI.
+set(audio_output "${CMAKE_BINARY_DIR}/generated/audio-output")
+add_custom_command(OUTPUT "${audio_output}/native_port_audio.cpp"
+        "${audio_output}/native_port_audio_execution_domain.hpp"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-audio-output.py"
+        "${SONIC_BASE}/katana-source-178448be.zip" "${audio_output}" "${SONIC_ROOT}/src/sonic_audio_recovery.inc"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-audio-output.py" "${SONIC_ROOT}/src/sonic_audio_recovery.inc"
+        "${SONIC_BASE}/katana-source-178448be.zip" VERBATIM)
+add_library(sonic_audio_output OBJECT "${audio_output}/native_port_audio.cpp")
+target_include_directories(sonic_audio_output PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_audio_output PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_audio_output PRIVATE KatanaRecomp::native_port_runtime ole32 winmm)
+target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_audio_output>)
+target_link_libraries(game PRIVATE ole32)
+add_executable(sonic_audio_recovery_tests EXCLUDE_FROM_ALL tools/test_audio_recovery.cpp $<TARGET_OBJECTS:sonic_audio_output>)
+target_include_directories(sonic_audio_recovery_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_audio_recovery_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_audio_recovery_tests PRIVATE KatanaRecomp::native_port_runtime ole32 winmm)
+
+add_executable(sonic_input_poll_tests EXCLUDE_FROM_ALL tools/test_input_poll.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_camera_platform>)
+target_include_directories(sonic_input_poll_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_input_poll_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_input_poll_tests PRIVATE KatanaRecomp::native_port_runtime user32)
 target_link_libraries(game PRIVATE sonic_vulkan)
 target_include_directories(game BEFORE PRIVATE "${SONIC_WORKING}/generated/include")
 target_include_directories(game PRIVATE "${SONIC_ROOT}/src")
@@ -120,6 +187,9 @@ add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL
     "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp")
 add_dependencies(game katana_native_port_link_audit)
 add_custom_command(TARGET game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:game>/assets/ui"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SONIC_ROOT}/assets/ui/options-background.png"
+        "$<TARGET_FILE_DIR:game>/assets/ui/options-background.png"
     COMMAND "$<TARGET_FILE:katana_native_port_link_audit>"
         "$<TARGET_FILE:game>" "${CMAKE_BINARY_DIR}/game-native-port.map"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -152,7 +222,7 @@ target_include_directories(sonic_presentation_tests PRIVATE "${SONIC_ROOT}/src" 
 target_compile_options(sonic_presentation_tests PRIVATE /EHsc /fp:strict)
 
 add_executable(sonic_quit_prompt_tests EXCLUDE_FROM_ALL tools/test_quit_prompt.cpp
-    src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp src/sonic_presentation.cpp)
+    src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp src/sonic_presentation.cpp src/sonic_input.cpp)
 target_include_directories(sonic_quit_prompt_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_quit_prompt_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_quit_prompt_tests PRIVATE
@@ -161,7 +231,7 @@ target_link_libraries(sonic_quit_prompt_tests PRIVATE
     KatanaRecomp::native_port_runtime gdi32 user32)
 
 add_executable(sonic_camera_tests EXCLUDE_FROM_ALL tools/test_camera.cpp
-    src/sonic_camera.cpp src/sonic_presentation.cpp)
+    src/sonic_camera.cpp src/sonic_presentation.cpp src/sonic_input.cpp)
 target_include_directories(sonic_camera_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_camera_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_camera_tests PRIVATE
@@ -194,6 +264,10 @@ target_link_libraries(sonic_sdk_color_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
+
+add_executable(sonic_texture_sentinel_tests EXCLUDE_FROM_ALL tools/test_texture_sentinel.cpp)
+target_include_directories(sonic_texture_sentinel_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_texture_sentinel_tests PRIVATE /EHsc /utf-8)
 
 add_executable(sonic_language_tests EXCLUDE_FROM_ALL tools/test_language.cpp
     src/sonic_language.cpp src/sonic_presentation.cpp

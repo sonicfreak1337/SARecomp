@@ -16,7 +16,7 @@ const Labels& labels(int language) noexcept {
     }};
     return text[language>=0 && language<5?language:1];
 }
-Image rasterize(int language) {
+Image rasterize(int language,const input::Bindings& bindings,input::GlyphStyle glyphs) {
     Image result;result.pixels.resize(std::size_t(result.width)*result.height*4);
     struct Canvas {
         HDC dc=CreateCompatibleDC(nullptr);HBITMAP bitmap=nullptr;HGDIOBJ previous=nullptr;
@@ -41,24 +41,17 @@ Image rasterize(int language) {
     SetBkMode(canvas.dc,TRANSPARENT);
     const auto text=[&](std::wstring_view value,RECT rect,unsigned font,COLORREF color,UINT alignment=DT_CENTER){
         SelectObject(canvas.dc,canvas.fonts[font]);SetTextColor(canvas.dc,color);
-        DrawTextW(canvas.dc,value.data(),int(value.size()),&rect,alignment|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        DrawTextW(canvas.dc,value.data(),int(value.size()),&rect,alignment|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     };
     const auto& copy=labels(language);
     text(L"Sonic Adventure: Recompiled",{24,19,616,46},0,RGB(174,202,228));
     text(copy.question,{20,55,620,110},1,RGB(246,249,255));
-    const auto badge=[&](int x,int y,wchar_t letter,COLORREF color,bool symbol){
-        auto pen=CreatePen(PS_SOLID,2,color);const auto old_pen=SelectObject(canvas.dc,pen);
-        const auto old_brush=SelectObject(canvas.dc,GetStockObject(NULL_BRUSH));
-        if(!symbol){Ellipse(canvas.dc,x,y,x+28,y+28);text(std::wstring_view(&letter,1),{x,y-1,x+28,y+28},2,color);}
-        else if(letter==L'B')Ellipse(canvas.dc,x+3,y+3,x+25,y+25);
-        else {MoveToEx(canvas.dc,x+5,y+5,nullptr);LineTo(canvas.dc,x+23,y+23);MoveToEx(canvas.dc,x+23,y+5,nullptr);LineTo(canvas.dc,x+5,y+23);}
-        SelectObject(canvas.dc,old_brush);SelectObject(canvas.dc,old_pen);DeleteObject(pen);
-    };
     for(unsigned i=0;i<2;++i) {
         const int x=i?334:26;fill({x,131,x+280,191},RGB(29,51,76));
-        badge(x+13,147,i?L'B':L'A',i?RGB(255,139,145):RGB(113,228,157),false);
-        badge(x+53,147,i?L'B':L'A',i?RGB(255,139,145):RGB(131,194,255),true);
-        text(i?copy.cancel:copy.confirm,{x+92,132,x+272,190},2,RGB(245,248,255));
+        const auto action=i?input::Action::Cancel:input::Action::Confirm;
+        const auto hint=input::binding_name(bindings[unsigned(action)],glyphs);
+        text(hint,{x+8,135,x+272,158},glyphs==input::GlyphStyle::Keyboard?3:2,i?RGB(255,139,145):RGB(131,194,255));
+        text(i?copy.cancel:copy.confirm,{x+8,158,x+272,188},2,RGB(245,248,255));
     }
     text(copy.keyboard,{16,207,624,242},3,RGB(180,200,225));
     GdiFlush();const auto* bgra=static_cast<const std::byte*>(pixels);

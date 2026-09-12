@@ -96,6 +96,33 @@ int main(int argc,char** argv) {
         }
         device.finish();
         std::cout<<"SONIC_RENDERER_TEST_OK backend="<<argv[1]<<" frames="<<device.snapshot().begun_frames<<'\n';
+        // Simulate losing the monitor holding this hidden window. No desktop
+        // display settings, real devices, focus, or user input are changed.
+        HWND recovery_window=nullptr;
+        EnumWindows([](HWND candidate,LPARAM context)->BOOL {
+            DWORD pid=0;GetWindowThreadProcessId(candidate,&pid);wchar_t name[128]{};
+            if(pid==GetCurrentProcessId()&&GetClassNameW(candidate,name,128)&&
+                std::wstring_view(name)==L"KatanaRecompNativeGraphicsV1"){
+                *reinterpret_cast<HWND*>(context)=candidate;return FALSE;
+            }return TRUE;
+        },reinterpret_cast<LPARAM>(&recovery_window));
+        if(!recovery_window)throw std::runtime_error("Display recovery window missing");
+        RECT recovery_original{},recovery_after{};GetWindowRect(recovery_window,&recovery_original);
+        const auto recovery_visible=IsWindowVisible(recovery_window);
+        const auto recovery_focus=GetForegroundWindow();
+        SetWindowPos(recovery_window,nullptr,100000,100000,0,0,SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER);
+        SendMessageW(recovery_window,WM_DISPLAYCHANGE,32,MAKELPARAM(1920,1080));
+        // poll_events is a nonblocking mailbox read in Parallel mode. Finish
+        // a real frame to cross the consumer's deferred recovery boundary.
+        device.begin_frame();device.draw(packet);device.present();device.finish();
+        GetWindowRect(recovery_window,&recovery_after);
+        if(!MonitorFromRect(&recovery_after,MONITOR_DEFAULTTONULL)||IsWindowVisible(recovery_window)!=recovery_visible||
+            GetForegroundWindow()!=recovery_focus)throw std::runtime_error("Display recovery stranded, exposed or focused the window");
+        SetWindowPos(recovery_window,nullptr,recovery_original.left,recovery_original.top,
+            recovery_original.right-recovery_original.left,recovery_original.bottom-recovery_original.top,
+            SWP_NOACTIVATE|SWP_NOZORDER);
+        static_cast<void>(device.poll_events());
+        std::cout<<"SONIC_DISPLAY_RECOVERY_OK hidden=1 focus_unchanged=1 offscreen_rehomed=1 render_after_change=1\n";
         if (sonic::rendering::selected_renderer==sonic::rendering::Renderer::Vulkan) {
             HWND window=nullptr;
             EnumWindows([](HWND candidate,LPARAM context)->BOOL {

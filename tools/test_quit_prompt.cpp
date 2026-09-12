@@ -49,6 +49,31 @@ int main(int argc,char** argv) {
         p.sample(Screen::None,{});require(!p.pending() && !p.visible() && !p.consumes_input(),"transition keeps modal armed");
         p.sample(Screen::PressStart,{});require(p.sample(Screen::PressStart,{false,true})==Decision::None,"A at title tries quitting");
 
+        auto remapped=sonic::input::default_bindings;
+        remapped[unsigned(sonic::input::Action::Confirm)]={'Z',0,1,1u<<13};
+        remapped[unsigned(sonic::input::Action::Cancel)]={'C',0,2,1u<<12};
+        Controls controls;sonic::input::Snapshot physical;physical.focused=true;physical.connected=true;
+        physical.pad=1u<<10;require(!controls.sample(physical,remapped,true).accept,"old A accepted after remapping");
+        physical.pad=1u<<13;require(controls.sample(physical,remapped,true).accept,"physical Y did not confirm");
+        physical.pad=1u<<12;require(controls.sample(physical,remapped,true).back,"physical X did not cancel");
+        physical.pad=0;physical.keys['Z']=true;require(controls.sample(physical,remapped,true).accept,"remapped keyboard confirm");
+        physical.keys={};physical.keys[VK_MENU]=physical.keys[VK_RETURN]=true;
+        require(!controls.sample(physical,remapped,true).accept,"Alt+Enter confirmed quit");
+        physical.keys={};physical.keys[VK_ESCAPE]=true;require(controls.sample(physical,remapped,true).back,"Escape fallback missing");physical.keys={};
+        const ButtonRect confirm_box{20,30,100,80},cancel_box{120,30,200,80};
+        physical.cursor_x=40;physical.cursor_y=40;physical.mouse[1]=true;
+        require(!controls.sample(physical,remapped,true,confirm_box,cancel_box).accept,"mouse-down confirmed quit");
+        physical.mouse[1]=false;physical.cursor_x=300;
+        require(!controls.sample(physical,remapped,true,confirm_box,cancel_box).accept,"drag-out confirmed quit");
+        physical.cursor_x=40;physical.mouse[1]=true;controls.sample(physical,remapped,true,confirm_box,cancel_box);
+        physical.mouse[1]=false;require(controls.sample(physical,remapped,true,confirm_box,cancel_box).accept,"release-inside failed");
+        physical.cursor_x=140;physical.mouse[1]=true;controls.sample(physical,remapped,true,confirm_box,cancel_box);
+        physical.focused=false;controls.sample(physical,remapped,true,confirm_box,cancel_box);
+        physical.focused=true;physical.mouse[1]=false;
+        require(!controls.sample(physical,remapped,true,confirm_box,cancel_box).back,"focus loss retained pending click");
+        physical.pad=1u<<13;physical.connection_changed=true;
+        require(!controls.sample(physical,remapped,true).accept,"reconnection pulse confirmed quit");
+
         CpuState cpu{.memory=Memory{0u}};
         require(read_screen(cpu,true)==Screen::None,"unmapped memory is not a title screen");
         auto ram=std::make_shared<LinearMemoryDevice>(0x1000000u);cpu.memory.map_region("ram",0x0C000000u,ram);
@@ -82,6 +107,7 @@ int main(int argc,char** argv) {
             bitmap(directory/("language-"+std::to_string(language)+".bmp"),std::move(image));
         }
         put(sonic::language::text_global,99);require(effective_language(cpu,-1)==1,"invalid game language fallback");
-        std::cout<<"SONIC_QUIT_TESTS_OK title_states input_edges focus transitions languages=5\n";return 0;
+        bitmap(directory/"remapped-playstation.bmp",rasterize(4,remapped,sonic::input::GlyphStyle::PlayStation));
+        std::cout<<"SONIC_QUIT_TESTS_OK title_states input_edges focus transitions languages=5 physical_remapping mouse_release alt_enter\n";return 0;
     }catch(const std::exception& error){std::cerr<<"SONIC_QUIT_TESTS_FAILED "<<error.what()<<'\n';return 1;}
 }

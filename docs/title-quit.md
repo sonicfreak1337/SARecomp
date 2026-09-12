@@ -1,16 +1,21 @@
 # Quit from the title screen
 
-B / Circle or Escape opens an in-game confirmation on Press Start and the
-root Adventure / Trial / Options menu. A / Cross or Enter quits; B / Circle
-or Escape cancels. A neutral release is required after opening, reconnecting
+B / Circle or Escape opens an in-game confirmation by default on Press Start
+and the root Adventure / Trial / Options menu. Menu Confirm/Cancel mappings
+also apply here, using the physical input snapshot before gameplay remapping.
+A / Cross or Enter quits by default; B / Circle or Escape cancels.
+A neutral release is required after opening, reconnecting
 a controller, returning focus and closing the dialog. Cancel wins simultaneous
 confirm/cancel input. Alt+Enter remains the fullscreen command.
 
 The popup uses the configured text language, or the original game's current
 language when the preference is **Use game setting**. Japanese, English,
-French, Spanish and German are provided. It uses the existing P1 south/east
-button mapping shared by Xbox and PlayStation; keyboard confirmation does
-not require the optional keyboard gameplay controls.
+French, Spanish and German are provided. The displayed hints use the menu
+bindings and Xbox/PlayStation/keyboard style of the opening device. Keyboard
+confirmation does not require optional keyboard gameplay controls; Enter and
+Escape remain accessible fallbacks. Left clicks commit only after release
+inside the same displayed button; dragging out or losing focus cancels a
+pending click. Other bound mouse buttons use release edges.
 
 ## Ownership and safety
 
@@ -85,5 +90,19 @@ The earlier Vulkan attempts exposed the incorrect original-Start timer guard
 and are retained as failed diagnostic evidence, not counted as passing tests.
 No hardware keyboard/controller or visible foreground test was performed.
 
-Final `out/experimental/game.exe` SHA-256:
+Executable SHA-256 for those earlier checks:
 `f7ce944522c7a5c50ee0a6621086cc77a45f436bae01849203ecba01c8ca5acc`.
+
+## Menu remapping integration, 2026-09-12
+
+`runs/quit-remapped-movie-01/result.json` passes on Vulkan with Confirm mapped
+to physical Y and Cancel to X (keyboard Z/C). The hidden test sends those
+explicit button bits, opens twice, cancels once, confirms once and exits with
+code 0. Both modal intervals retain zero guest frames/instructions. The same
+run also decodes the real intro at 50% Master volume before the diagnostic
+Start edge, covering the movie provider's live gain path.
+
+The component results at `.local/enhancement-tests/quit-remapped-final-01`
+also cover remapped keyboard input, Alt+Enter exclusion, Escape fallback,
+release-inside, drag-out cancellation and lost-focus/reconnect disarming.
+The actual remapped PlayStation prompt raster is in that directory.
