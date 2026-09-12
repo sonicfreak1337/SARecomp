@@ -19,6 +19,8 @@ parser.add_argument('--width', type=int, default=3182)
 parser.add_argument('--height', type=int, default=1332)
 parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
+parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
+parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
 # Render interpolation was withdrawn; benchmark the original frame stream.
@@ -47,6 +49,8 @@ env.update({
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'100000', 'SARECOMP_DISPLAY_CONFIG':str(display),
 })
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
+if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
+if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 exe = (root/args.exe).resolve(strict=True)
 # Reference executables use the exact same frozen DLLs and installed assets.
 env['PATH'] = str(root/'out/experimental') + os.pathsep + env.get('PATH', '')

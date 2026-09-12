@@ -17524,6 +17524,9 @@ constexpr std::uint32_t sonic_private_advertise_runtime_base = 0x0C900000u;
 constexpr std::uint32_t sonic_private_advertise_cleanup_entry = 0x8C9001A0u;
 constexpr std::uint32_t sonic_private_advertise_update_state = 11u;
 constexpr std::uint32_t sonic_private_staffroll_transition_state = 20u;
+// ADVERTISE result 104 follows 8C054176: the same cleanup, then main state
+// 18. The original resident loader 8C054392 calls SUMMARY header +0x0C.
+constexpr std::uint32_t sonic_private_tutorial_transition_state = 18u;
 constexpr std::uint32_t sonic_private_current_character = 0x8C78B39Du;
 constexpr std::uint32_t sonic_private_staffroll_character_count = 7u;
 
@@ -18287,8 +18290,11 @@ retire_sonic_native_overlay_task_generations(
 [[nodiscard]] bool sonic_native_private_staffroll_descriptor_bound(
     const sonic_native_private::ScenarioDescriptor& descriptor) noexcept {
     using namespace sonic_native_private;
-    return descriptor.provider_kind == ScenarioProviderKind::Staffroll &&
-        descriptor.id == "credits-current-character" &&
+    const bool staffroll = descriptor.provider_kind == ScenarioProviderKind::Staffroll &&
+        descriptor.id == "credits-current-character" && descriptor.entry_offset == 0x1BE0u;
+    const bool tutorial = descriptor.provider_kind == ScenarioProviderKind::Tutorial &&
+        descriptor.id == "tutorial-sonic" && descriptor.entry_offset == 0xB60u;
+    return (staffroll || tutorial) &&
         descriptor.guest_path == "SONICAD/SUMMARY.PRS" &&
         descriptor.encoded_identity ==
             "sha256:7d2ddc3e5441ef4ce18331401cbc06afa10c2f0d791142358af2ad4425e15777" &&
@@ -18297,7 +18303,6 @@ retire_sonic_native_overlay_task_generations(
         descriptor.encoded_size == 92380u &&
         descriptor.decoded_size == 695821u &&
         descriptor.runtime_base == 0x0C900000u &&
-        descriptor.entry_offset == 0x1BE0u &&
         descriptor.prerequisites == ScenarioPrerequisiteNone;
 }
 
@@ -18316,6 +18321,12 @@ retire_sonic_native_overlay_task_generations(
             0xD318u, 0x6430u, 0x000Bu, 0x604Cu};
         constexpr std::array<std::uint16_t, 6u> state_20_transition{
             0x53B1u, 0x430Bu, 0xE400u, 0xE214u, 0xA039u, 0x2D22u};
+        constexpr std::array<std::uint16_t, 4u> return_104_case{
+            0x8868u, 0x8B01u, 0xA08Du, 0x0009u};
+        constexpr std::array<std::uint16_t, 6u> state_18_transition{
+            0x53B1u, 0x430Bu, 0xE400u, 0xE212u, 0xA03Fu, 0x2D22u};
+        constexpr std::array<std::uint16_t, 7u> tutorial_init{
+            0xD337u, 0xD435u, 0x430Bu, 0x65B3u, 0x52B3u, 0x420Bu, 0xE400u};
         constexpr std::array<std::uint16_t, 13u> advertise_cleanup{
             0x4F22u, 0xD30Fu, 0x430Bu, 0x0009u, 0xD20Eu, 0x420Bu,
             0x0009u, 0xD30Eu, 0x430Bu, 0x0009u, 0x4F26u, 0x000Bu,
@@ -18331,6 +18342,8 @@ retire_sonic_native_overlay_task_generations(
             }
             return true;
         };
+        const bool tutorial = descriptor.provider_kind ==
+            sonic_native_private::ScenarioProviderKind::Tutorial;
         std::uint32_t main_state_address = 0u;
         std::uint32_t main_state = 0u;
         std::uint32_t header_init = 0u;
@@ -18360,6 +18373,10 @@ retire_sonic_native_overlay_task_generations(
             !exact_words(sonic_private_advertise_cleanup_entry,
                          advertise_cleanup))
             return false;
+        if (tutorial && (character != 0u ||
+            !exact_words(0x8C054054u, return_104_case) ||
+            !exact_words(0x8C054176u, state_18_transition) ||
+            !exact_words(0x8C054392u, tutorial_init))) return false;
         if (!context.loaded_aot->validate_bound_entry(
                 sonic_private_advertise_cleanup_entry))
             return false;
@@ -18459,7 +18476,8 @@ retire_sonic_native_overlay_task_generations(
 
     // Staffroll retains the user's current character and has no story/save
     // prerequisite. Its provider-specific gate binds the title/AOT state.
-    if (descriptor.provider_kind == ScenarioProviderKind::Staffroll)
+    if (descriptor.provider_kind == ScenarioProviderKind::Staffroll ||
+        descriptor.provider_kind == ScenarioProviderKind::Tutorial)
         return descriptor.prerequisites == ScenarioPrerequisiteNone;
 
     if (context.cpu == nullptr) return false;
@@ -18508,7 +18526,8 @@ retire_sonic_native_overlay_task_generations(
             context, descriptor))
         return false;
     try {
-        if (descriptor.provider_kind == ScenarioProviderKind::Staffroll)
+        if (descriptor.provider_kind == ScenarioProviderKind::Staffroll ||
+            descriptor.provider_kind == ScenarioProviderKind::Tutorial)
             return sonic_native_private_staffroll_ready(context, descriptor);
         if (descriptor.provider_kind == ScenarioProviderKind::EventLoader) {
             // Never call the PRS entry itself. The exact resident request
@@ -18663,7 +18682,10 @@ retire_sonic_native_overlay_task_generations(
 
     try {
         bool complete = false;
-        if (descriptor.provider_kind == ScenarioProviderKind::Staffroll) {
+        if (descriptor.provider_kind == ScenarioProviderKind::Staffroll ||
+            descriptor.provider_kind == ScenarioProviderKind::Tutorial) {
+            const auto transition = descriptor.provider_kind == ScenarioProviderKind::Tutorial
+                ? sonic_private_tutorial_transition_state : sonic_private_staffroll_transition_state;
             cpu.r[4] = 0u;
             complete = invoke_frame_aot_service(
                 context, sonic_private_advertise_cleanup_entry);
@@ -18677,12 +18699,12 @@ retire_sonic_native_overlay_task_generations(
                 main_state == sonic_private_advertise_update_state;
             if (complete) {
                 try {
-                    // Retail 8C054182 performs this write only after the
+                    // Retail 8C054176/8C054182 performs this write only after the
                     // cleanup returns. The next ordinary main update owns the
-                    // SUMMARY load and Staffroll initialization.
+                    // SUMMARY load and the selected original initialization.
                     katana::runtime::guest_write_u32(
                         cpu, sonic_private_main_state,
-                        sonic_private_staffroll_transition_state,
+                        transition,
                         katana::runtime::CodeWriteSource::Copy);
                 } catch (...) {
                     // Cleanup is irreversible. Never resume state 11 with its
@@ -18698,7 +18720,7 @@ retire_sonic_native_overlay_task_generations(
                           << descriptor.id << " character="
                           << static_cast<unsigned>(character)
                           << " main=" << main_state << "->"
-                          << sonic_private_staffroll_transition_state
+                          << transition
                           << " frame=" << context.frame_index << '\n';
             } else if (context.stop_reason ==
                        katana::runtime::NativePortStopReason::None) {

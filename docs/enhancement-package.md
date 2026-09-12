@@ -17,9 +17,12 @@ remains the original ADVERTISE screen 5, returning to new Options screen 8.
       Sony SDL3 backends, with configurable strength. Sony input/output share
       one report owner, including independent analog triggers.
 - [ ] Original baked tutorial/button hints need per-owner physical-binding
-      substitution. The common SUMMARY Next/Back bar is implemented, with
-      its actual-game visit still unobserved; character-specific diagrams
-      and in-world hint text remain. Native menu/quit prompts follow remapping.
+      substitution. The common SUMMARY Next/Back bar is implemented and
+      confirmed in the original tutorial with remapped PlayStation buttons
+      and Japanese keyboard labels. Character-specific diagrams remain;
+      the sampled in-world jump hint is already action-neutral. See
+      tutorial-native-visit.md and inworld-input-hint-audit.md. Native
+      menu/quit prompts follow remapping.
 - [x] Separate music/voice/effects, background mute, subtitle size/backplate,
       original language persistence.
 - [x] Consistent story+Chao profile snapshots, immutable versioned backups,

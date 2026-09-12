@@ -99,9 +99,10 @@ introduced. The accepted subtitle presentation remains unchanged.
 - `verify-baseline.py --quick`: PASS; both protected baseline executable/AOT
   hashes still match. No full matrix or physical controller test was run.
 
-The common tutorial bar's actual-game owner match remains to be observed in a
-normal tutorial visit; its source boundary and host raster are independently
-verified. The Options/Sound Test run does not claim that tutorial coverage.
+The later original tutorial visits confirm the common bar's live owner match
+and remapped PlayStation/Japanese keyboard labels. See tutorial-native-visit.md
+for captures, loader proof and remaining limits. The earlier Options/Sound Test
+run itself does not claim tutorial coverage.
 Bluetooth and USB packet delivery on the user's hardware are not claimed from
 the fake transport tests. The existing physical Sony controls remain available
 for the next ordinary playtest; there is no pending permission request.

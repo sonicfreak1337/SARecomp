@@ -62,7 +62,7 @@ constexpr std::array<ScenarioDescriptor, 1u> kEventPreviewScenarios{{
      // show its ordinary attract demo taking over instead of isolated EV2.
      .provider_abi_proven = false},
 }};
-constexpr std::array<ScenarioDescriptor, 1u> kStaffrollScenarios{{
+constexpr std::array<ScenarioDescriptor, 2u> kStaffrollScenarios{{
     {.id = "credits-current-character",
      .label = "Credits: Staff Roll (current character)",
      .guest_path = "SONICAD/SUMMARY.PRS",
@@ -76,6 +76,22 @@ constexpr std::array<ScenarioDescriptor, 1u> kStaffrollScenarios{{
      .entry_offset = 0x1BE0u,
      .prerequisites = ScenarioPrerequisiteNone,
      .provider_kind = ScenarioProviderKind::Staffroll,
+     .static_identity_proven = true,
+     .entry_shape_proven = true,
+     .provider_abi_proven = true},
+    {.id = "tutorial-sonic",
+     .label = "Sonic: How to Play",
+     .guest_path = "SONICAD/SUMMARY.PRS",
+     .encoded_identity =
+         "sha256:7d2ddc3e5441ef4ce18331401cbc06afa10c2f0d791142358af2ad4425e15777",
+     .decoded_identity =
+         "sha256:93969e279339fd1a9687e2cee7d842e544a41eb777283f2073a04adf1d531949",
+     .encoded_size = 92380u,
+     .decoded_size = 695821u,
+     .runtime_base = 0x0C900000u,
+     .entry_offset = 0xB60u,
+     .prerequisites = ScenarioPrerequisiteNone,
+     .provider_kind = ScenarioProviderKind::Tutorial,
      .static_identity_proven = true,
      .entry_shape_proven = true,
      .provider_abi_proven = true},
@@ -99,7 +115,7 @@ constexpr auto kScenarioGroups = [] {
         "diagnostics-sonic", "Sonic / Diagnostics", kGeneratedActionStageScenarios.size(),
         kGeneratedDiagnosticScenarios.size()};
     groups[kActionStageCharacters.size() + 1u] = {
-        "credits", "Credits",
+        "credits", "Tutorial / Credits",
         kGeneratedActionStageScenarios.size() + kGeneratedDiagnosticScenarios.size(),
         kStaffrollScenarios.size()};
     groups.back() = {"events", "Events", kGeneratedActionStageScenarios.size() +

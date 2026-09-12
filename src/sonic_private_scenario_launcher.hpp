@@ -17,6 +17,7 @@ enum class ScenarioProviderKind : std::uint8_t {
     EventLoader,
     StageLoader,
     Staffroll,
+    Tutorial,
 };
 
 enum ScenarioPrerequisite : std::uint32_t {

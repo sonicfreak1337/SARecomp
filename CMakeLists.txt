@@ -94,6 +94,9 @@ set_target_properties(sonic_dispatch PROPERTIES OUTPUT_NAME katana_generated
 target_include_directories(sonic_dispatch PRIVATE "${SONIC_WORKING}/generated/include" "${SONIC_ROOT}/src")
 target_compile_options(sonic_dispatch PRIVATE /EHsc /utf-8)
 target_link_libraries(sonic_dispatch PRIVATE KatanaRecomp::native_port_runtime)
+add_executable(sonic_dispatch_memo_tests EXCLUDE_FROM_ALL tools/test_dispatch_memo.cpp)
+target_include_directories(sonic_dispatch_memo_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_dispatch_memo_tests PRIVATE /EHsc /utf-8)
 add_executable(game launcher/main.cpp)
 target_include_directories(game PRIVATE "${CMAKE_BINARY_DIR}/generated")
 add_executable(sonic_menu_preview EXCLUDE_FROM_ALL tools/menu_preview.cpp
