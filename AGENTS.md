@@ -37,7 +37,14 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   unchanged default. Preserve scripted/event camera ownership inside levels
   as well as cutscenes. PAL camera-control +6 and +7 are separate bytes, not
   a 16-bit type. See `docs/camera-style.md` for the reviewed type policy and
-  actual-game orbit check. Do not claim swept camera collision is implemented.
+  actual-game orbit/collision check. Recompiled temporarily overrides OG;
+  after three idle-stick seconds, walking returns to OG. The sphere sweep
+  covers target-to-eye collision, not the entire temporal orbit arc.
+  The port-local DualSense camera mapping uses Z/R; retain Xbox and Original.
+- Startup shows English progress, prefetches bounded read-only program pages
+  and caches D3D shader bytecode / Vulkan driver data and pipeline recipes.
+  Cache failures must remain optional. Keep OS-cold/reboot measurements
+  distinct from an empty application cache. See `docs/startup-performance.md`.
 - The optional native Vulkan renderer lives in `src/renderer/` alongside the
   retained D3D11 path. Selection is in the native Options menu and requires a
   restart. Keep D3D11 and the accepted baseline available. See

@@ -1,136 +1,119 @@
 # Camera style
 
-Select **Original** or **Recompiled** in the English `sonic-config.exe`.
-The native window menu also has **Camera style (Neustart)**. Selection persists
-as `camera_style=original|recompiled` and applies on restart. Missing settings
-default to Original; an incremental build does not change the user's INI.
+Select **Original** or **Recompiled** in the English `sonic-config.exe` or the
+native Camera style menu, then restart. `camera_style=original|recompiled`
+persists in the display INI; Original remains the default.
 
-Original immediately continues the original camera publisher without guest
-memory access. Recompiled uses P1's right stick to orbit around the character:
-horizontal movement has no yaw stop; vertical movement changes elevation.
-The chosen angle follows the character instead of returning to stage-camera
-directions each frame. There is a radial stick deadzone and neutral handling
-for disconnect/suppression. Movement, buttons and other controller slots keep
-their existing mapping. No additional platform input poll is performed.
+Recompiled keeps the original gameplay camera until P1 moves the right stick.
+Horizontal input orbits without a yaw stop; vertical input raises or lowers
+the view. The first input inherits the original eye and distance. Merely
+moving horizontally does not clamp the inherited elevation. Each stick axis
+has a 12% deadzone, preventing small vertical noise from lifting the camera.
+The manual pitch range is -75 to +5 degrees; speeds are 240 degrees/second
+horizontally and 120 vertically. A stall contributes at most 250 ms.
 
-The first orbit inherits the original eye position, with distance limited to
-24–65 world units. Pitch ranges from a 75-degree downward view to a 5-degree
-upward view. The low limit keeps the orbit above the player's foot height on
-flat ground. This is not swept wall/ceiling collision: tight or sloping geometry
-can still intersect this experimental camera. Original remains available.
+Releasing the stick while stationary holds the chosen view. After three
+seconds without right-stick input, **walking** smoothly returns ownership to
+the original camera. Stick input immediately retakes control. Simulation
+cadence and repeated 144 Hz presentation do not change.
 
-## Original camera ownership
+## Original camera and scripts
 
-This is a Sonic PAL v1.003 feature, not a Katana-wide camera heuristic. The
-hook is bound to the original `8C01A100`, size `AC`, SHA-256
-`f88a14755daffb71dc3b9490f35660e768605e121e8f83e5df2dd2a8f541d002`.
-Only the normal state-2 camera task's call with PR `8C01991C` may be changed.
-It runs after the original callback/adjustment and before original NINJA
-view publication, so rendering, culling and the guest camera share the view.
-The frozen AOT partitions and pinned SDK are retained.
+The original camera continues evaluating while the manual view is active.
+Before that evaluation, a source-bound hook restores its saved pose only if
+the current task still contains our last published pose and has the same
+owner/state. This prevents our view from feeding back into the original
+camera's height/history. After evaluation, the manual view can replace the
+published pose; the original NINJA publisher still runs.
 
-The only guest write is the camera task's contiguous `+14..+2B`: pitch,
-yaw, unchanged roll, then eye XYZ. The original publisher still runs. The
-angle convention matches the original `01A680/01A718` conversion. CPU
-registers, floating-point flags, player work and other camera fields are
-preserved.
+The PAL v1.003 hooks are:
 
-The active control record is `U32[8C111F88]`: **byte +6** is the camera type,
-**byte +7** its output format, **byte +8** its active level, and word +12
-the callback. A word read at +6 would incorrectly include the format byte.
-Only level 0/1 and the reviewed P1 follow/area type-and-callback combinations
-in `sonic_camera_policy.hpp` admit manual control. Level 1 includes ordinary
-spatial camera areas; higher levels retain their complete original camera.
-Unknown types or a changed callback also retain original ownership.
+- `8C019F4A`, size `158`, caller PR `8C019918`: original-pose restoration.
+- `8C01A100`, size `AC`, caller PR `8C01991C`: final view publication.
 
-This preserves explicit event/path registrars `01AD2C` and `01ABDC`, which
-raise the active level to 2. STG01 and STG07 use these paths; further explicit
-registrars use levels 4/5. Area priority 3 is also excluded. Level alone is
-insufficient: some fixed and timed sequences use ordinary priorities.
-The conservative type policy additionally excludes:
+Both are bound to verified original bytes in the manifest. Writes stay in
+the camera task's 24-byte pose (`+14..+2B`). CPU state, player work and other
+camera fields remain intact. Original bypasses both hooks without guest
+memory reads or writes. No frozen AOT partition or pinned SDK is regenerated.
 
-- 26/27, 28/29: external or fixed target/eye data.
-- 48/49: fixed world coordinates or a multiphase authored sequence.
-- 51–57: external actors, timed phases or module-owned callbacks.
-- 62/63, 65–70: authored task poses, special area sequences, path/entry
-  selection, external positions or timed camera state.
+Control-record byte +6 is the camera type, byte +7 the output format, byte
++8 its active level, and word +12 its callback. Only reviewed follow/area
+types at levels 0/1 admit manual control. Unknown or changed callbacks,
+higher priorities, explicit event/path registrars, fixed/timed sequences,
+pause, cutscenes, transitions and input-blocked states retain original
+ownership. The policy uses no whale/boulder coordinates or stage trigger
+list. Their event registration paths were reviewed in STG01/STG07; neither
+full chase was replayed in this verification.
 
-The policy contains no stage-specific trigger or whale/boulder coordinates.
-The source checks establish these mechanisms in Emerald Coast and Lost
-World, but do not establish a completed playthrough of either chase.
+A stage/act/character change, changed owner, teleport, suspension or quicksave
+restore resets the manual state. Restore explicitly resets host-only state
+even when guest pointer values are unchanged.
 
-Manual control also suspends outside running state 15, for pause (16),
-outstanding transitions, the original pause/input-block predicates and the
-special-view path. It reacquires the original eye after a suspension,
-stage/act/character change, changed task owner, teleport or quicksave restore.
-A restored state can retain all pointer values; an explicit host-only reset
-handles that case after the existing RAM restore validation.
+## Wall collision
 
-## Timing and verification
+The camera sweeps a radius-2 sphere from its target to the desired eye with
+0.35 units of clearance. It retracts immediately on collision and recovers
+its distance smoothly. It uses actual registered static LandTable and dynamic
+object collision triangles, including transforms and same-address geometry
+updates. Solid geometry participates unless marked NoCam. Faces, edges and
+vertices are tested from both sides through a cached BVH. Invalid geometry
+or an overlapping starting position leaves the original camera in charge.
 
-The camera integrates host elapsed time once per game frame, capped at
-250 ms after a stall. Duplicate publishers reapply the pose without either
-integrating again or discarding elapsed time before the next frame. This is
-independent of repeated 144 Hz presentation. Camera input is not guaranteed
-to reproduce identical angles from a replay executed at a different speed;
-diagnostic traces include the actual integration interval and pose.
+This is a target-to-eye boom sweep, not a temporal sweep of the entire orbit
+arc. Invisible original collision boundaries can also shorten the boom;
+complete behavior in every tight/sloping location is not established.
 
-`sonic_camera_tests` checks a full revolution, vertical limits, target follow,
-raw-stick normalization, frame-rate independence, duplicate publication,
-Original passthrough, pause/script guards, restore reset and guest ABI/write
-boundaries. `sonic_presentation_tests` covers settings persistence and the
-retained aspect/HUD transformations. The config control test covers the new
-selection without opening a visible window or editing personal saves.
+## DualSense
 
-For the required actual gameplay check:
+The pinned WinMM path assigned Sony right-stick input to R/U. On DualSense,
+right stick is Z/R and U is a trigger; its released value falsely produced
+full camera input. A source-verified **port-local** platform object now maps
+Z/R only for DualSense plus Recompiled camera. Xbox, Original, other Sony
+controllers, movement, buttons and replay packets retain their prior paths.
+There is no extra input poll and no edit to the pinned SDK.
+
+Neutral live DualSense input was captured as approximately (-257, 1) and
+normalized to zero. The user then physically tested and accepted the fix.
+This is a camera-axis correction, not a redesign of legacy trigger mapping.
+
+## Verification
+
+`sonic_camera_tests` checks full orbit, vertical control, target follow,
+DualSense neutral/endpoints, deadzones, no height drift, original pose shadow,
+three-second idle/walking return, collision geometry/registry updates,
+restore, ABI/write bounds and 40 protected-state cases.
+
+The hidden/muted actual-game D3D11 run `runs/camera-wall-d3d11-02` completed
+its 25-second gameplay deadline. It captured 1,003.64 degrees of rotation,
+-75 to +5 degree pitch, 37 images and 19 collision samples. The shortest boom
+was 18.66 instead of 36.00 units; quiet stationary samples had no height drift.
+The hit was original Emerald Coast collision geometry, not necessarily a
+visible wall. Captured views kept Sonic centered.
+
+For an owned gameplay check without desktop input or personal-save writes:
 
 ```powershell
-./tools/capture-stage.ps1 -Tag camera-check -CameraStyle recompiled -CameraTest -Renderer d3d11 -Seconds 20
-python tools/check-camera-capture.py runs/camera-check
+./tools/capture-stage.ps1 -Tag camera-wall-check -CameraStyle recompiled -CameraCollisionTest -Renderer vulkan -Seconds 30
+python tools/check-camera-capture.py runs/camera-wall-check --collision --return
 ```
 
-`-CameraTest` provides a bounded right-stick sequence only inside an owned,
-hidden, muted test process. It uses the production normalization/orbit path
-and never injects operating-system input. The checker requires a continuous
-360-degree orbit, both vertical extremes, a character-aligned view, captured
-frames and the expected diagnostic deadline. Captures must also be inspected
-visually. Test saves and configuration are private copies under `runs/`.
+The helper supplies stick/walking input only inside that hidden test process.
+The checker requires a full orbit, vertical extremes, actual collision,
+return while walking after the idle interval, subsequent manual reacquisition,
+frame captures and the expected diagnostic deadline. Inspect the images too.
+This is a bounded Emerald Coast check, not a level matrix.
 
-Verified on 2026-09-12 with the actual native game, hidden and muted:
+The final startup build's `runs/startup-camera-vulkan-04` also reached its
+deadline with 184 manual samples, a full orbit and both vertical extremes.
+Its combined collision/return checker did **not** pass: the final quiet
+section was shorter than 30 samples and the return walk did not establish a
+completed OG handoff. The component return test passed; this run must not be
+presented as additional end-to-end proof of that handoff. Further owned runs
+were deferred because the user had started a separate game instance.
 
-| Backend / local run | Continuous rotation | Vertical view | Gameplay samples |
-| --- | ---: | --- | ---: |
-| D3D11, `runs/camera-orbit-d3d11-02` | 632.72 degrees | -75 to +5 degrees | 280 |
-| Vulkan, `runs/camera-orbit-vulkan-04` | 566.65 degrees | -75 to +5 degrees | 187 |
-
-Both reached the expected diagnostic deadline without a runtime fault. The
-captured side/front/rear, low and overhead views keep Sonic in the center;
-HUD placement remains fixed. These are stationary orbit checks, not a new
-stage matrix. Character-follow translation and 39 protected-state cases
-passed the component test. Config persistence, Original passthrough, camera
-menu selection and restoration also passed.
-
-The source audit covers the original in-level event mechanisms. The whale
-and boulder chase routes themselves have not been played in this test.
-
-Two intermediate hidden Vulkan launches failed before any camera hook at
-`vkGetPhysicalDeviceSurfaceCapabilitiesKHR` with result -13. Their cause is
-not established; the subsequent run above passed. The renderer now records
-window validity, client bounds and owning thread if this error recurs; it
-does not suppress or retry an unexplained failure. Logs are retained under
-`runs/camera-orbit-02` and `runs/camera-orbit-03`.
-
-The final build changes only numeric type formatting in the camera trace
-relative to the successful orbit runs. The final Vulkan Original-mode probe
-(`runs/camera-original-final`) also reached its deadline, with zero manual
-camera callbacks and no surface/runtime failure. The final config control
-test and 39 guard cases passed again. All owned game processes exited.
-
-Final build: `.local/camera-build-final.log`, 61.673 seconds, zero recompiled
-AOT partitions, native link audit passed. The r354 executable/metadata hash
-check passed. The user's current Vulkan/borderless/German INI was preserved.
-
-- `out/experimental/game.exe` SHA-256:
-  `bc52c8afb21500d11c4a98ff8cd4aab88337b7c9f7100ae4a792a2d7ee634cbe`
-- `out/experimental/sonic-config.exe` SHA-256:
-  `116a8e7d7442153df8aff4dc3d0d41c446268e8cdebe32299c604b552c24728a`
+Earlier hidden startup diagnostics recorded two Vulkan surface-capability
+errors (-13) and one frame-zero Windows heap exception (`c0000374`) before
+camera execution. Their causes are unproven; neither is a demonstrated
+camera-controller fault. Exact platform source/header/ABI checks passed and
+a later live-controller launch reached gameplay without those exceptions.
+Do not erase this distinction when describing successful camera tests.

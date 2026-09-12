@@ -5,6 +5,7 @@
 #include "native_port_ui_texture_edges.hpp"
 #include "../renderer_selection.hpp"
 #include "../sonic_vulkan.hpp"
+#include "../../sonic_startup.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -1448,6 +1449,9 @@ class NativePortGraphicsBackend final {
                 vulkan_ = std::make_unique<sonic::rendering::VulkanRenderer>(window_, config_);
             } else {
                 create_device(); create_pipeline(); create_render_surface(); create_white_texture();
+                ensure_performance_overlay_pipeline();
+                if(config_.maximum_transient_vertices) ensure_vertex_buffer(1);
+                if(config_.maximum_transient_indices) ensure_index_buffer(1);
             }
         } catch (...) {
             destroy_window();
@@ -4243,6 +4247,7 @@ if (!vulkan_) {
     }
 
     void create_pipeline() {
+        sonic::startup::phase("Preparing graphics...",0,feature_level_>=D3D_FEATURE_LEVEL_11_0?7:5);
         const auto draw_vertex_bytecode =
             compile_shader("draw_vertex_main", "vs_4_0");
         const auto draw_pixel_bytecode =
@@ -10392,6 +10397,7 @@ float4 type_two_resolve_pixel_main(CompositeVertexOutput input) : SV_Target {
 struct ShaderCompilerApi final {
     HMODULE module = nullptr;
     decltype(&D3DCompile) compile = nullptr;
+    decltype(&D3DCreateBlob) create_blob = nullptr;
 };
 
 [[nodiscard]] const ShaderCompilerApi& shader_compiler_api() noexcept {
@@ -10406,7 +10412,8 @@ struct ShaderCompilerApi final {
             if (module == nullptr) continue;
             const auto compile = reinterpret_cast<decltype(&D3DCompile)>(
                 GetProcAddress(module, "D3DCompile"));
-            if (compile != nullptr) return ShaderCompilerApi{module, compile};
+            if (compile != nullptr) return ShaderCompilerApi{module, compile,
+                reinterpret_cast<decltype(&D3DCreateBlob)>(GetProcAddress(module,"D3DCreateBlob"))};
             FreeLibrary(module);
         }
         return ShaderCompilerApi{};
@@ -10464,6 +10471,25 @@ struct ShaderCompilerApi final {
     const char* const entry,
     const char* const target,
     const char* const source_name) {
+    const auto started=std::chrono::steady_clock::now();
+    const auto& api=shader_compiler_api();
+    static const auto compiler_identity=[] {
+        std::array<wchar_t,32768> path{};const auto count=GetModuleFileNameW(shader_compiler_api().module,path.data(),DWORD(path.size()));
+        return count && count<path.size()?sonic::startup::file_digest(std::filesystem::path(std::wstring(path.data(),count))):std::string{};
+    }();
+    std::string cache_key;
+    if(!compiler_identity.empty()) {
+        std::string contract="sarecomp-dxbc-v1:strict:O3:"+compiler_identity+":"+entry+":"+target+":"+source_name+":";
+        contract.append(source,source_size);cache_key=sonic::startup::digest(contract);
+    }
+    const auto report=[&](bool hit) {sonic::startup::advance();std::fprintf(stderr,"SONIC_SHADER_CACHE backend=d3d11 entry=%s hit=%u elapsed_ms=%.3f\n",entry,unsigned(hit),std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count());};
+    if(api.create_blob && !cache_key.empty()) {
+        const auto cached=sonic::startup::cache_load("d3d-shaders",cache_key,4u*1024*1024);
+        if(cached.size()>=4 && std::memcmp(cached.data(),"DXBC",4)==0) {
+            ComPtr<ID3DBlob> blob;
+            if(SUCCEEDED(api.create_blob(cached.size(),blob.GetAddressOf()))) {std::memcpy(blob->GetBufferPointer(),cached.data(),cached.size());report(true);return blob;}
+        }
+    }
     const auto compile = shader_compiler_api().compile;
     if (compile == nullptr)
         throw NativePortGraphicsError(
@@ -10489,6 +10515,9 @@ struct ShaderCompilerApi final {
             NativePortGraphicsFailure::ShaderCompilation,
             static_cast<std::uint32_t>(result),
             entry);
+    if(!cache_key.empty()) sonic::startup::cache_save("d3d-shaders",cache_key,
+        std::span(static_cast<const std::byte*>(bytecode->GetBufferPointer()),bytecode->GetBufferSize()));
+    report(false);
     return bytecode;
 }
 

@@ -8,7 +8,10 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp
     sonic_render_culling.hpp sonic_render_culling.cpp sonic_sdk_color.hpp
     sonic_language.hpp sonic_language.cpp renderer/renderer_selection.hpp
-    sonic_camera_style.hpp sonic_camera_orbit.hpp sonic_camera_policy.hpp sonic_camera.hpp sonic_camera.cpp)
+    sonic_camera_style.hpp sonic_camera_orbit.hpp sonic_camera_policy.hpp sonic_camera.hpp sonic_camera.cpp
+    sonic_camera_collision.hpp sonic_camera_world.hpp sonic_camera_input.hpp
+    sonic_startup.hpp sonic_startup.cpp
+    ../tools/prepare-camera-platform.py)
 set(hashes)
 foreach(component IN LISTS components)
     set(path "${PROJECT_SOURCE_DIR}/src/${component}")

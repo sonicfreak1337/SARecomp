@@ -4,8 +4,11 @@
 #include "sonic_vulkan.hpp"
 #include "renderer_selection.hpp"
 #include "sonic_vulkan_shaders.hpp"
+#include "../sonic_startup.hpp"
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -13,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace sonic::rendering {
@@ -75,8 +79,11 @@ struct VulkanRenderer::Impl {
     VkPipelineLayout draw_pipeline_layout{},capture_pipeline_layout{},resolve_pipeline_layout{},composite_pipeline_layout{},overlay_pipeline_layout{};
     VkShaderModule draw_vs{},draw_ps{},capture_ps{},composite_vs{},composite_ps{},resolve_ps{},overlay_ps{};
     VkPipelineCache pipeline_cache{};
+    std::string cache_key;
+    bool warming_pipelines=false;
     VkFormat depth_format=VK_FORMAT_D32_SFLOAT;
     std::unordered_map<std::string,VkPipeline> pipelines;
+    std::unordered_set<std::string> unused_warm_pipelines;
     std::vector<std::pair<NativePortSamplerState,VkSampler>> samplers;
 
     explicit Impl(void* window,const NativePortGraphicsConfig& settings) : config(settings) {
@@ -184,6 +191,8 @@ struct VulkanRenderer::Impl {
     void buffer_descriptor(VkDescriptorSet,unsigned,const Buffer&);
     void sampler_descriptor(VkDescriptorSet,const NativePortSamplerState&);
     VkPipeline pipeline(const NativePortDrawPacket&,NativePortPrimitiveTopology,int kind,VkFormat format);
+    void warm_pipelines();
+    void save_pipeline_cache() noexcept;
     void viewport(NativePortPixelRect rect) {
         VkViewport viewport{float(rect.x),float(rect.y),float(rect.width),float(rect.height),0,1};
         VkRect2D scissor{{int(rect.x),int(rect.y)},{rect.width,rect.height}};
@@ -315,8 +324,26 @@ void VulkanRenderer::Impl::initialize(void* window) {
     else if(config.maximum_type2_fragments_per_pixel<=64) shader(shaders::resolve_ps_64,resolve_ps);
     else if(config.maximum_type2_fragments_per_pixel<=128) shader(shaders::resolve_ps_128,resolve_ps);
     else shader(shaders::resolve_ps_256,resolve_ps);
-    VkPipelineCacheCreateInfo cache{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-    check(vkCreatePipelineCache(device,&cache,nullptr,&pipeline_cache),"vulkan-pipeline-cache");
+    std::string contract="sarecomp-vulkan-pipelines-v1:"+std::to_string(properties.vendorID)+":"+
+        std::to_string(properties.deviceID)+":"+std::to_string(properties.driverVersion)+":"+
+        std::to_string(config.maximum_type2_fragments_per_pixel)+":";
+    contract.append(reinterpret_cast<const char*>(properties.pipelineCacheUUID),VK_UUID_SIZE);
+    const auto bind_shader=[&](std::span<const std::uint32_t> code){contract+=sonic::startup::digest(std::as_bytes(code));};
+    bind_shader(shaders::draw_vs);bind_shader(shaders::draw_ps);bind_shader(shaders::capture_ps);
+    bind_shader(shaders::composite_vs);bind_shader(shaders::composite_ps);bind_shader(shaders::overlay_ps);
+    bind_shader(shaders::resolve_ps_32);bind_shader(shaders::resolve_ps_64);bind_shader(shaders::resolve_ps_128);bind_shader(shaders::resolve_ps_256);
+    cache_key=sonic::startup::digest(contract);
+    auto cached=sonic::startup::cache_load("vulkan-driver",cache_key,64u*1024*1024);
+    if(cached.size()>=sizeof(VkPipelineCacheHeaderVersionOne)) {
+        VkPipelineCacheHeaderVersionOne header{};std::memcpy(&header,cached.data(),sizeof(header));
+        if(header.headerSize<sizeof(header) || header.headerSize>cached.size() || header.headerVersion!=VK_PIPELINE_CACHE_HEADER_VERSION_ONE ||
+            header.vendorID!=properties.vendorID || header.deviceID!=properties.deviceID || std::memcmp(header.pipelineCacheUUID,properties.pipelineCacheUUID,VK_UUID_SIZE))cached.clear();
+    } else cached.clear();
+    VkPipelineCacheCreateInfo cache{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};cache.initialDataSize=cached.size();cache.pInitialData=cached.empty()?nullptr:cached.data();
+    auto cache_result=vkCreatePipelineCache(device,&cache,nullptr,&pipeline_cache);
+    if(cache_result!=VK_SUCCESS && !cached.empty()) {cached.clear();cache.initialDataSize=0;cache.pInitialData=nullptr;cache_result=vkCreatePipelineCache(device,&cache,nullptr,&pipeline_cache);}
+    check(cache_result,"vulkan-pipeline-cache");
+    std::fprintf(stderr,"SONIC_SHADER_CACHE backend=vulkan driver_hit=%u bytes=%zu\n",unsigned(!cached.empty()),cached.size());
     const VkExtent2D extent{config.render_extent.width,config.render_extent.height};
     VkImageFormatProperties depth_support{};
     if(vkGetPhysicalDeviceImageFormatProperties(physical,VK_FORMAT_D24_UNORM_S8_UINT,VK_IMAGE_TYPE_2D,VK_IMAGE_TILING_OPTIMAL,
@@ -332,6 +359,7 @@ void VulkanRenderer::Impl::initialize(void* window) {
     upload_image(white,image,0);
     // The same WSI path is used by visible play and hidden/muted tests.
     swap_dirty=true;
+    warm_pipelines();
 }
 
 void VulkanRenderer::Impl::destroy_swapchain() {
@@ -513,8 +541,16 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
     add(blend.enabled); add(unsigned(blend.source_color)); add(unsigned(blend.destination_color)); add(unsigned(blend.color_operation));
     add(unsigned(blend.source_alpha)); add(unsigned(blend.destination_alpha)); add(unsigned(blend.alpha_operation)); add(blend.color_write_mask);
     add(z.test_enabled); add(z.write_enabled); add(unsigned(z.compare)); add(unsigned(raster.cull)); add(unsigned(raster.fill)); add(raster.front_counter_clockwise); add(raster.depth_clip_enabled);
-    if(auto it=pipelines.find(key);it!=pipelines.end()) return it->second;
-    if(pipelines.size()>=config.maximum_pipeline_states) throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceLimit,0,"vulkan-pipelines");
+    if(auto it=pipelines.find(key);it!=pipelines.end()) {if(!warming_pipelines)unused_warm_pipelines.erase(it->first);return it->second;}
+    if(pipelines.size()>=config.maximum_pipeline_states) {
+        // Historical warmup must never take budget away from this playthrough.
+        // These objects have never been bound, so no in-flight work uses them.
+        if(!warming_pipelines && !unused_warm_pipelines.empty()) {
+            const auto victim=unused_warm_pipelines.begin();const auto old=pipelines.find(*victim);
+            if(old!=pipelines.end()){vkDestroyPipeline(device,old->second,nullptr);pipelines.erase(old);}
+            unused_warm_pipelines.erase(victim);
+        } else throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceLimit,0,"vulkan-pipelines");
+    }
     const bool geometry=kind<=1;
     VkPipelineShaderStageCreateInfo stages[2]{};
     for(auto& stage:stages) stage.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -566,8 +602,67 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
     create.pViewportState=&viewport; create.pRasterizationState=&rasterizer; create.pMultisampleState=&samples;
     create.pDepthStencilState=&depth_state; create.pColorBlendState=&blending; create.pDynamicState=&dynamic;
     create.layout=kind==0?draw_pipeline_layout:kind==1?capture_pipeline_layout:kind==2?resolve_pipeline_layout:kind==3?composite_pipeline_layout:overlay_pipeline_layout;
-    VkPipeline result; check(vkCreateGraphicsPipelines(device,pipeline_cache,1,&create,nullptr,&result),"vulkan-pipeline"); pipelines.emplace(std::move(key),result);
+    const auto started=std::chrono::steady_clock::now();
+    VkPipeline result{};
+    const auto status=vkCreateGraphicsPipelines(device,pipeline_cache,1,&create,nullptr,&result);
+    if(status!=VK_SUCCESS) {if(result)vkDestroyPipeline(device,result,nullptr);check(status,"vulkan-pipeline");}
+    try {
+        const auto inserted=pipelines.emplace(key,result);
+        if(warming_pipelines)unused_warm_pipelines.insert(inserted.first->first);
+    }catch(...) {pipelines.erase(key);vkDestroyPipeline(device,result,nullptr);throw;}
+    std::fprintf(stderr,"SONIC_VULKAN_PIPELINE kind=%d warmup=%u elapsed_ms=%.3f\n",kind,unsigned(warming_pipelines),std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count());
     return result;
+}
+
+void VulkanRenderer::Impl::warm_pipelines() {
+    constexpr std::size_t stride=18*sizeof(std::uint32_t);
+    const auto recipes=sonic::startup::cache_load("vulkan-recipes",cache_key,std::min<std::size_t>(config.maximum_pipeline_states,4096)*stride);
+    if(recipes.size()%stride)return;
+    warming_pipelines=true;std::size_t warmed=0;
+    sonic::startup::phase("Preparing graphics...",0,recipes.size()/stride);
+    const auto discard_warmup=[&] {
+        for(const auto& key:unused_warm_pipelines) {
+            const auto entry=pipelines.find(key);
+            if(entry!=pipelines.end()){vkDestroyPipeline(device,entry->second,nullptr);pipelines.erase(entry);}
+        }
+        unused_warm_pipelines.clear();warmed=0;
+    };
+    try {for(std::size_t offset=0;offset<recipes.size();offset+=stride) {
+        std::array<std::uint32_t,18> k{};std::memcpy(k.data(),recipes.data()+offset,stride);
+        if(k[0]>4 || (k[1]!=VK_FORMAT_R8G8B8A8_UNORM && k[1]!=VK_FORMAT_B8G8R8A8_UNORM) || k[2]>=std::size(topologies) ||
+            k[3]>1 || k[4]>=std::size(factors) || k[5]>=std::size(factors) || k[6]>=std::size(operations) ||
+            k[7]>=std::size(factors) || k[8]>=std::size(factors) || k[9]>=std::size(operations) || k[10]>15 ||
+            k[11]>1 || k[12]>1 || k[13]>7 || k[14]>2 || k[15]>1 || k[16]>1 || k[17]>1)continue;
+        NativePortDrawPacket packet;
+        packet.blend.enabled=k[3];packet.blend.source_color=NativePortBlendFactor(k[4]);packet.blend.destination_color=NativePortBlendFactor(k[5]);
+        packet.blend.color_operation=NativePortBlendOperation(k[6]);packet.blend.source_alpha=NativePortBlendFactor(k[7]);
+        packet.blend.destination_alpha=NativePortBlendFactor(k[8]);packet.blend.alpha_operation=NativePortBlendOperation(k[9]);packet.blend.color_write_mask=std::uint8_t(k[10]);
+        packet.depth.test_enabled=k[11];packet.depth.write_enabled=k[12];packet.depth.compare=NativePortCompareOperation(k[13]);
+        packet.rasterizer.cull=NativePortCullMode(k[14]);packet.rasterizer.fill=NativePortFillMode(k[15]);
+        packet.rasterizer.front_counter_clockwise=k[16];packet.rasterizer.depth_clip_enabled=k[17];
+        pipeline(packet,NativePortPrimitiveTopology(k[2]),int(k[0]),VkFormat(k[1]));++warmed;sonic::startup::advance();
+    }}catch(const NativePortGraphicsError& error) {
+        warming_pipelines=false;discard_warmup();
+        if(error.failure()==NativePortGraphicsFailure::DeviceLost)throw;
+        std::fprintf(stderr,"SONIC_VULKAN_WARMUP fallback=lazy platform_error=%u\n",error.platform_error_code());
+    }catch(const std::bad_alloc&) {
+        discard_warmup();std::fprintf(stderr,"SONIC_VULKAN_WARMUP fallback=lazy host_memory=1\n");
+    }
+    warming_pipelines=false;
+    std::fprintf(stderr,"SONIC_VULKAN_WARMUP pipelines=%zu\n",warmed);
+}
+void VulkanRenderer::Impl::save_pipeline_cache() noexcept {
+    if(!device || !pipeline_cache || cache_key.empty() || pipelines.empty())return;
+    try {
+        std::size_t count=0;
+        if(vkGetPipelineCacheData(device,pipeline_cache,&count,nullptr)==VK_SUCCESS && count && count<=64u*1024*1024) {
+            std::vector<std::byte> bytes(count);
+            if(vkGetPipelineCacheData(device,pipeline_cache,&count,bytes.data())==VK_SUCCESS)sonic::startup::cache_save("vulkan-driver",cache_key,std::span(bytes.data(),count));
+        }
+        std::vector<std::string> keys;for(const auto& [key,_]:pipelines)keys.push_back(key);std::sort(keys.begin(),keys.end());
+        std::string recipes;for(const auto& key:keys)recipes+=key;
+        sonic::startup::cache_save("vulkan-recipes",cache_key,std::as_bytes(std::span(recipes.data(),recipes.size())));
+    }catch(...){}
 }
 
 void VulkanRenderer::Impl::upload_image(Image& image,const NativePortImageView& source,unsigned level) {
@@ -767,6 +862,7 @@ std::vector<std::uint8_t> VulkanRenderer::capture_bgra_bottom_up() {
 void VulkanRenderer::Impl::cleanup() noexcept {
     if(device) {
         vkDeviceWaitIdle(device);
+        save_pipeline_cache();
         for(auto& s:submissions) {
             for(auto& retired:s.retired) retired();
             for(auto& b:s.uploads) destroy(b.buffer);

@@ -32,8 +32,8 @@ remain unchanged. The separate, opt-in language setting adds source-bound
 load/save hooks described in `configuration-language.md`.
 
 The native link audit still checks imports, required symbols, forbidden
-owners, and closure. An explicit authoring copy admits exactly the additional
-`sonic_vulkan` library and `native_port_graphics.cpp.obj` owner. This does not
+owners, and closure. Explicit first-party owners cover the Vulkan/startup
+libraries and the source-verified graphics/platform objects. This does not
 disable the audit or alter the archived manifest.
 
 Vulkan implements textures and mip uploads, persistent and transient meshes,
@@ -55,6 +55,20 @@ this preserves coplanar fragments on hardware that offers D32 instead of D24.
 Shader extraction and adaptation fail if the expected source contract changes.
 
 ## Requirements and limits
+
+The renderer now persists driver pipeline-cache data and semantic pipeline
+recipes on normal shutdown. The identity includes device, driver, pipeline
+cache UUID, shaders and Type-2 capacity. A subsequent start rebuilds previously
+used pipelines before gameplay while the English loading window shows counts.
+Unseen states still compile when required. Invalid/unreadable caches fall back
+to normal creation. Warmup resource failure discards its unused pipelines and
+continues lazy creation; device loss remains an error. Never-bound historical
+pipelines are evicted before allowing warmup to consume the live pipeline
+budget. No in-flight pipeline is evicted by that rule.
+
+See `startup-performance.md` for cache bounds, measurements and limitations.
+This is separate from the driver's own cache and does not guarantee that every
+future state has been compiled on a first-ever launch.
 
 The backend requires Vulkan 1.3, a graphics/present queue, dynamic rendering,
 synchronization2, shader demote, fragment stores/atomics, geometry capability,

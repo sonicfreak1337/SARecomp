@@ -21,6 +21,13 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 include(cmake/PinnedSdk.cmake)
 include(cmake/AdapterIdentity.cmake)
 set(SONIC_WORKING "${SONIC_ROOT}/.local/working-product")
+add_library(sonic_startup STATIC src/sonic_startup.cpp)
+target_compile_options(sonic_startup PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_startup PRIVATE bcrypt psapi user32 gdi32)
+add_executable(sonic_startup_tests EXCLUDE_FROM_ALL tools/test_startup.cpp)
+target_include_directories(sonic_startup_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_startup_tests PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_startup_tests PRIVATE sonic_startup)
 
 # Authoring-only SDK imports never enter the game target's dependency closure.
 add_executable(sonic_native_port_manifest EXCLUDE_FROM_ALL src/native_port_manifest.cpp)
@@ -52,7 +59,7 @@ add_library(katana_native_title_adapter STATIC
 target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp src/sonic_camera.cpp)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
-target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime)
+target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime sonic_startup)
 
 add_library(katana_generated STATIC IMPORTED)
 set_target_properties(katana_generated PROPERTIES
@@ -77,6 +84,20 @@ target_link_libraries(sonic_config PRIVATE user32 gdi32 shell32)
 add_dependencies(game sonic_config)
 include(cmake/SonicVulkan.cmake)
 target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_graphics>)
+# A source-verified local platform object fixes only Recompiled's DualSense
+# right stick. It precedes the pinned archive; no SDK tree or AOT is rebuilt.
+set(camera_platform "${CMAKE_BINARY_DIR}/generated/camera-platform")
+add_custom_command(OUTPUT "${camera_platform}/native_port_platform.cpp"
+        "${camera_platform}/native_port_input_policy.hpp"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-camera-platform.py"
+        "${SONIC_BASE}/katana-source-178448be.zip" "${camera_platform}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-camera-platform.py"
+        "${SONIC_BASE}/katana-source-178448be.zip" VERBATIM)
+add_library(sonic_camera_platform OBJECT "${camera_platform}/native_port_platform.cpp")
+target_include_directories(sonic_camera_platform PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_camera_platform PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_camera_platform PRIVATE KatanaRecomp::native_port_runtime)
+target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_camera_platform>)
 target_link_libraries(game PRIVATE sonic_vulkan)
 target_include_directories(game BEFORE PRIVATE "${SONIC_WORKING}/generated/include")
 target_include_directories(game PRIVATE "${SONIC_ROOT}/src")

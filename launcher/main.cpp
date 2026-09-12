@@ -3,6 +3,7 @@
 #include "katana/runtime/native_port_content.hpp"
 #include "katana/runtime/native_port_graphics.hpp"
 #include "sonic_presentation.hpp"
+#include "sonic_startup.hpp"
 
 #include "katana/runtime/native_port_telemetry.hpp"
 #include "katana/runtime/native_port_texture_asset.hpp"
@@ -598,6 +599,7 @@ int main(int argc, char** argv) {
         if (executable_error || executable_path.empty())
             executable_path = std::filesystem::absolute(argv[0]);
         if (!sonic::configuration::first_start(executable_path)) return 0;
+        sonic::startup::Session startup;
         if (explicit_bringup)
             native_product_crash_session.arm(executable_path);
         sonic::presentation::initialize(executable_path);
@@ -709,6 +711,8 @@ int main(int argc, char** argv) {
             link.allows_ta_packet_renderer ||
             link.allows_aica_command_translation)
             throw std::runtime_error("native-port-link-contract");
+        sonic::startup::prefetch_program();
+        sonic::startup::phase("Loading game data...");
         diagnostic_memory.emplace(
             definition.bootstrap.cache_control_value);
         auto& memory = *diagnostic_memory;
@@ -756,6 +760,7 @@ int main(int argc, char** argv) {
                       << input_trace_mode << " file="
                       << input_trace_path.string() << '\n';
         }
+        sonic::startup::phase("Connecting controllers...");
         katana::runtime::NativePortPlatformServices platform(
             platform_config);
         katana::runtime::NativePortGraphicsConfig graphics_config;
@@ -777,8 +782,10 @@ int main(int argc, char** argv) {
         graphics_config.telemetry =
             native_performance_telemetry_enabled
                 ? &native_performance_telemetry : nullptr;
+        sonic::startup::phase("Preparing graphics...");
         katana::runtime::NativePortDesktopHost host(
             graphics_config, frame_pacing);
+        sonic::startup::phase("Starting game...");
         sonic::options::install(executable_path);
         bool frame_pacing_snapshot_emitted = false;
         const auto emit_terminal_runtime_telemetry = [&]() noexcept {

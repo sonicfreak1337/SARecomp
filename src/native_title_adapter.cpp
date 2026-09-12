@@ -28,6 +28,7 @@
 #include "sonic_private_scenario_launcher.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_camera.hpp"
+#include "sonic_startup.hpp"
 #include "sonic_sdk_color.hpp"
 
 #include <algorithm>
@@ -39432,6 +39433,7 @@ sonic_native_frame_begin(
                 sonic_native_frame_error_context};
 
     try {
+        sonic::startup::frame(context.frame_index);
         if (sonic_native_title_state.postpal_main_textures_pending) {
             static_cast<void>(acquire_native_texture_set(
                 context, SonicNativeTextureSetDomain::Main, 0u, false));

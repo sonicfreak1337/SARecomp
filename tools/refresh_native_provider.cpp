@@ -343,9 +343,12 @@ RenderHookExtension render_hook_extension(
             hook.covered_size == 0xA0u &&
             hook.symbol == "sonic_native_widescreen_draw_sphere_cull" &&
             hook.code_identity == "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551";
-        const bool camera=hook.guest_address==0x8C01A100u && hook.covered_size==0xACu &&
+        const bool camera=(hook.guest_address==0x8C01A100u && hook.covered_size==0xACu &&
             hook.symbol=="sonic_recompiled_camera_publish" &&
-            hook.code_identity=="sha256:f88a14755daffb71dc3b9490f35660e768605e121e8f83e5df2dd2a8f541d002";
+            hook.code_identity=="sha256:f88a14755daffb71dc3b9490f35660e768605e121e8f83e5df2dd2a8f541d002") ||
+            (hook.guest_address==0x8C019F4Au && hook.covered_size==0x158u &&
+            hook.symbol=="sonic_recompiled_camera_original_step" &&
+            hook.code_identity=="sha256:ed23827fa453d89252cda31480e5ae1854976d41680f155904e9f525eaf7186e");
         const bool language=std::ranges::any_of(languages,[&](const auto& row) {
             return hook.guest_address==row.address && hook.covered_size==row.size &&
                 hook.symbol==row.symbol && hook.code_identity=="sha256:"+std::string(row.sha) &&
@@ -370,7 +373,7 @@ RenderHookExtension render_hook_extension(
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
-        (language_added!=0u && language_added!=7u) || camera_added>1u)
+        (language_added!=0u && language_added!=7u) || camera_added>2u)
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;

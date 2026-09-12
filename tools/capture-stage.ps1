@@ -9,9 +9,20 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [ValidateSet('d3d11','vulkan')][string] $Renderer='d3d11',
       [ValidateSet('original','recompiled')][string] $CameraStyle='original',
       [switch] $CameraTest,
+      [switch] $CameraCollisionTest,
+      [switch] $CameraTrace,
+      [switch] $StartupTrace,
+      [string] $CacheRoot='',
+      [switch] $DisableCodePrefetch,
+      [switch] $DisableStartupCache,
       [switch] $CheckOptions,
       [switch] $TraceFade)
 $ErrorActionPreference='Stop'
+if ($CameraCollisionTest) {
+    if ($Scenario -notin @('emerald-coast','stage-01-0-sonic')) {throw 'The camera wall walk is bound to Emerald Coast Act 1.'}
+    if ($CameraStyle -ne 'recompiled') {throw 'The camera wall walk requires Recompiled camera style.'}
+    $CameraTest=$true
+}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $catalog=(Get-Content -LiteralPath (Join-Path $root 'src/sonic_private_stage_scenarios.inc') -Raw) +
     (Get-Content -LiteralPath (Join-Path $root 'src/sonic_private_scenario_launcher.cpp') -Raw)
@@ -43,9 +54,14 @@ $envs=@{
     KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='150'; SARECOMP_DISPLAY_CONFIG=$display
     SARECOMP_OPTIONS_SELF_TEST=$(if ($CheckOptions) {'1'} else {'0'})
     SARECOMP_CAMERA_TEST=$(if ($CameraTest) {'1'} else {'0'})
-    SARECOMP_CAMERA_TRACE=$(if ($CameraTest) {'1'} else {'0'})
+    SARECOMP_CAMERA_COLLISION_TEST=$(if ($CameraCollisionTest) {'1'} else {'0'})
+    SARECOMP_CAMERA_TRACE=$(if ($CameraTest -or $CameraTrace) {'1'} else {'0'})
+    SARECOMP_STARTUP_TRACE=$(if ($StartupTrace) {'1'} else {'0'})
+    SARECOMP_DISABLE_CODE_PREFETCH=$(if ($DisableCodePrefetch) {'1'} else {'0'})
+    SARECOMP_DISABLE_STARTUP_CACHE=$(if ($DisableStartupCache) {'1'} else {'0'})
+    SARECOMP_CACHE_ROOT=$(if ($CacheRoot) {[IO.Path]::GetFullPath($CacheRoot)} else {Join-Path $saves 'cache'})
 }
-if ($CameraTest) {
+if ($CameraTest -or $CameraTrace) {
     $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME='950'
     $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME='12000'
     $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='90'
@@ -69,6 +85,6 @@ $process=Start-Process -FilePath $game -WorkingDirectory $product `
     -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'stdout.log') `
     -RedirectStandardError (Join-Path $run 'stderr.log') -PassThru
 $process.PriorityClass='BelowNormal'
-[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;camera_style=$CameraStyle;camera_test=[bool]$CameraTest} |
+[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;camera_style=$CameraStyle;camera_test=[bool]$CameraTest;camera_collision_test=[bool]$CameraCollisionTest;camera_trace=[bool]$CameraTrace;startup_trace=[bool]$StartupTrace;code_prefetch=(-not $DisableCodePrefetch);startup_cache=(-not $DisableStartupCache);cache_root=$envs.SARECOMP_CACHE_ROOT} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'run.json')
 Write-Host "SONIC_CAPTURE_STARTED pid=$($process.Id) run=$run hidden=1 muted=1"

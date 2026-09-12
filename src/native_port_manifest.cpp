@@ -144,7 +144,7 @@ inline constexpr std::string_view
         // mode leaves packets unchanged; only host copies of horizontal
         // render-cull bounds expand. Guest projection/timing/save semantics
         // and every existing function/source binding remain unchanged.
-        "sha256:98b3402d473c188cc82db262348662bad1296a7fe0b6eb72821d7243ef56d122"};
+        "sha256:bb1ca5cef8d8a6ca1d44f8872c1b894254d34736ad55cb4a6d43ab7c130fdb43"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -253,6 +253,14 @@ int main(const int argc, char* argv[]) {
                 katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
                 "sonic_language_save",
                 "sha256:bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C019F4Au, 0x158u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_recompiled_camera_original_step",
+                "sha256:ed23827fa453d89252cda31480e5ae1854976d41680f155904e9f525eaf7186e",
                 sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C01A100u, 0xACu,
