@@ -49,7 +49,7 @@ add_library(katana_native_title_adapter STATIC
     src/sonic_native_texture_catalog.cpp
     src/sonic_native_transform_stream.cpp
     src/sonic_private_scenario_launcher.cpp)
-target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp src/sonic_camera.cpp)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
 target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime)
@@ -127,6 +127,15 @@ endif()
 add_executable(sonic_presentation_tests EXCLUDE_FROM_ALL tools/test_presentation.cpp src/sonic_presentation.cpp)
 target_include_directories(sonic_presentation_tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_BASE}/sdk/include" "${SONIC_BASE}/sdk/generated/include")
 target_compile_options(sonic_presentation_tests PRIVATE /EHsc /fp:strict)
+
+add_executable(sonic_camera_tests EXCLUDE_FROM_ALL tools/test_camera.cpp
+    src/sonic_camera.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_camera_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_camera_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_camera_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 
 # Oracle only: the interpreter and authoring SDK never enter the game link.
 file(ARCHIVE_EXTRACT INPUT "${SONIC_BASE}/katana-source-178448be.zip"

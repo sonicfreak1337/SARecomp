@@ -31,7 +31,7 @@ void validate(const Settings& value) {
         value.text_language < -1 || value.text_language > 4 ||
         value.voice_language < -1 || value.voice_language > 1 ||
         value.subtitles < -1 || value.subtitles > 1 || unsigned(value.window_mode)>2 ||
-        unsigned(value.renderer)>1)
+        unsigned(value.renderer)>1 || unsigned(value.camera_style)>1)
         throw std::runtime_error("Sonic settings outside supported range");
 }
 std::string_view trim(std::string_view value) {
@@ -75,6 +75,11 @@ Settings read_settings(const std::filesystem::path& path) {
                 throw std::runtime_error("Sonic renderer must be d3d11 or vulkan");
             selected.renderer = value == "vulkan" ? rendering::Renderer::Vulkan : rendering::Renderer::D3D11;
         } else if (key == "width") selected.width = number(value);
+        else if (key == "camera_style") {
+            if (value != "original" && value != "recompiled")
+                throw std::runtime_error("Camera style must be original or recompiled");
+            selected.camera_style = value == "recompiled" ? camera::Style::Recompiled : camera::Style::Original;
+        }
         else if (key == "height") selected.height = number(value);
         else if (key == "render_percent") selected.render_percent = number(value);
         else if (key == "presentation_fps") selected.presentation_fps = number(value);
@@ -106,6 +111,7 @@ void save_settings(const std::filesystem::path& path,const Settings& value) {
             <<"\nwidth="<<value.width<<"\nheight="<<value.height<<"\nrender_percent="<<value.render_percent
             <<"\nrenderer="<<rendering::name(value.renderer)<<"\npresentation_fps="<<value.presentation_fps
             <<"\nwindow_mode="<<window_modes[unsigned(value.window_mode)]
+            <<"\ncamera_style="<<camera::name(value.camera_style)
             <<"\ntext_language="<<(value.text_language<0?"game":text_languages[value.text_language])
             <<"\nvoice_language="<<(value.voice_language<0?"game":voice_languages[value.voice_language])
             <<"\nsubtitles="<<(value.subtitles<0?"game":value.subtitles?"on":"off")<<'\n';
@@ -122,6 +128,7 @@ void initialize(const std::filesystem::path& executable) {
     std::cerr << "SONIC_PRESENTATION mode=" << (current.widescreen ? "hor-plus" : "original")
               << " output=" << current.width << 'x' << current.height
               << " renderer=" << rendering::name(current.renderer)
+              << " camera=" << camera::name(current.camera_style)
               << " render_percent=" << current.render_percent
               << " x_scale=" << horizontal_scale() << " timing=unchanged\n";
 }

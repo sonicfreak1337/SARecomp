@@ -7,6 +7,8 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Tag='wide-16x9',
       [string] $Executable='',
       [ValidateSet('d3d11','vulkan')][string] $Renderer='d3d11',
+      [ValidateSet('original','recompiled')][string] $CameraStyle='original',
+      [switch] $CameraTest,
       [switch] $CheckOptions,
       [switch] $TraceFade)
 $ErrorActionPreference='Stop'
@@ -30,7 +32,7 @@ foreach ($directory in Get-ChildItem -LiteralPath (Join-Path $root '.local/basel
 }
 Get-ChildItem -LiteralPath $saves -File -Recurse | ForEach-Object {$_.IsReadOnly=$false}
 $display=Join-Path $run 'sonic-display.ini'
-"mode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
+"setup_complete=1`nmode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer`ncamera_style=$CameraStyle" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
 $envs=@{
     KATANA_PORT_BACKGROUND_TEST='1'; KATANA_PORT_IGNORE_FOCUS='1'
     KATANA_USER_DATA_ROOT=$saves; KATANA_PORT_FINAL_PROGRESS='1'
@@ -40,6 +42,13 @@ $envs=@{
     KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME='300'; KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME='1500'
     KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='150'; SARECOMP_DISPLAY_CONFIG=$display
     SARECOMP_OPTIONS_SELF_TEST=$(if ($CheckOptions) {'1'} else {'0'})
+    SARECOMP_CAMERA_TEST=$(if ($CameraTest) {'1'} else {'0'})
+    SARECOMP_CAMERA_TRACE=$(if ($CameraTest) {'1'} else {'0'})
+}
+if ($CameraTest) {
+    $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME='950'
+    $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME='12000'
+    $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='90'
 }
 if ($TraceFade) {
     $envs.KATANA_SONIC_DIAGNOSTIC_UI_PACKET_SEQUENCE='1'
@@ -60,6 +69,6 @@ $process=Start-Process -FilePath $game -WorkingDirectory $product `
     -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'stdout.log') `
     -RedirectStandardError (Join-Path $run 'stderr.log') -PassThru
 $process.PriorityClass='BelowNormal'
-[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height} |
+[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;camera_style=$CameraStyle;camera_test=[bool]$CameraTest} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'run.json')
 Write-Host "SONIC_CAPTURE_STARTED pid=$($process.Id) run=$run hidden=1 muted=1"

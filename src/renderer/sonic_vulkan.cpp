@@ -361,7 +361,19 @@ void VulkanRenderer::Impl::create_swapchain() {
     }
     if(exclusive_requested && !exclusive_controlled)
         std::cerr<<"SONIC_FULLSCREEN_FALLBACK backend=vulkan mode=borderless reason=exclusive-unavailable\n";
-    VkSurfaceCapabilitiesKHR caps; check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps),"vulkan-surface-caps");
+    VkSurfaceCapabilitiesKHR caps{};
+    const auto caps_result=vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps);
+    if(caps_result!=VK_SUCCESS) {
+        RECT client{},outer{};DWORD pid=0;
+        const auto client_ok=GetClientRect(window,&client),outer_ok=GetWindowRect(window,&outer);
+        const auto owner=GetWindowThreadProcessId(window,&pid);
+        std::cerr<<"SONIC_VULKAN_SURFACE_FAILURE valid="<<IsWindow(window)
+            <<" visible="<<IsWindowVisible(window)<<" iconic="<<IsIconic(window)
+            <<" client_ok="<<client_ok<<" client="<<client.right<<','<<client.bottom
+            <<" outer_ok="<<outer_ok<<" outer="<<outer.left<<','<<outer.top<<','<<outer.right<<','<<outer.bottom
+            <<" owner_thread="<<owner<<" current_thread="<<GetCurrentThreadId()<<" pid="<<pid<<'\n';
+    }
+    check(caps_result,"vulkan-surface-caps");
     swap_extent=caps.currentExtent;
     if(swap_extent.width==UINT32_MAX) swap_extent={config.output_extent.width,config.output_extent.height};
     if(!swap_extent.width || !swap_extent.height) { swap_dirty=true; return; }

@@ -15,7 +15,7 @@
 
 namespace {
 using sonic::presentation::Settings;
-enum Control { Renderer=101,WindowMode,Resolution,Aspect,RenderScale,Fps,TextLanguage,VoiceLanguage,Subtitles,ErrorText };
+enum Control { Renderer=101,WindowMode,Resolution,Aspect,RenderScale,Fps,TextLanguage,VoiceLanguage,Subtitles,CameraStyle,ErrorText };
 struct Dialog {
     std::filesystem::path path;
     Settings settings;
@@ -55,7 +55,7 @@ struct Dialog {
             CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
         auto title=control(L"STATIC",L"Sonic Adventure: Recompiled",0,0,28,22,535,32);
         SendMessageW(title,WM_SETFONT,reinterpret_cast<WPARAM>(title_font),TRUE);
-        control(L"STATIC",L"Graphics and language settings",0,0,28,58,535,25);
+        control(L"STATIC",L"Graphics, camera and language settings",0,0,28,58,535,25);
         combo(Renderer,L"Renderer",102,{L"Direct3D 11",L"Vulkan (experimental)"},int(settings.renderer));
         combo(WindowMode,L"Display mode",145,{L"Windowed",L"Borderless fullscreen",L"Fullscreen (exclusive)"},int(settings.window_mode));
         std::set<std::pair<unsigned,unsigned>> sizes{{640,480},{1280,720},{1920,1080},{2560,1080},{2560,1440},{3440,1440},{3840,2160}};
@@ -84,10 +84,12 @@ struct Dialog {
         combo(TextLanguage,L"Text language",402,{L"Use game setting",L"Japanese",L"English",L"French",L"Spanish",L"German"},settings.text_language+1);
         combo(VoiceLanguage,L"Voice language",445,{L"Use game setting",L"Japanese",L"English"},settings.voice_language+1);
         combo(Subtitles,L"Subtitles",488,{L"Use game setting",L"Off",L"On"},settings.subtitles+1);
-        control(L"STATIC",L"Changes apply on the next game start. Fullscreen keeps the chosen picture format.\nExclusive mode uses borderless fullscreen if the driver cannot acquire it.",0,0,28,536,535,42);
-        control(L"STATIC",L"",0,ErrorText,28,582,535,40);
-        control(L"BUTTON",L"Cancel",WS_TABSTOP|BS_PUSHBUTTON,IDCANCEL,306,630,110,34);
-        control(L"BUTTON",first_run?L"Save && start":L"Save",WS_TABSTOP|BS_DEFPUSHBUTTON,IDOK,430,630,130,34);
+        combo(CameraStyle,L"Camera style",531,{L"Original",L"Recompiled"},int(settings.camera_style));
+        control(L"STATIC",L"Recompiled: orbit with the right stick. Scripted camera sequences stay original.",0,0,28,571,535,40);
+        control(L"STATIC",L"Changes apply on the next game start. Fullscreen keeps the chosen picture format.\nExclusive mode uses borderless fullscreen if the driver cannot acquire it.",0,0,28,620,535,42);
+        control(L"STATIC",L"",0,ErrorText,28,666,535,40);
+        control(L"BUTTON",L"Cancel",WS_TABSTOP|BS_PUSHBUTTON,IDCANCEL,306,714,110,34);
+        control(L"BUTTON",first_run?L"Save && start":L"Save",WS_TABSTOP|BS_DEFPUSHBUTTON,IDOK,430,714,130,34);
     }
     Settings read_controls() const {
         auto result=settings;
@@ -105,6 +107,7 @@ struct Dialog {
         result.text_language=selected(TextLanguage)-1;
         result.voice_language=selected(VoiceLanguage)-1;
         result.subtitles=selected(Subtitles)-1;
+        result.camera_style=sonic::camera::Style(selected(CameraStyle));
         result.setup_complete=true;
         return result;
     }
@@ -173,7 +176,7 @@ struct Dialog {
         type.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_BTNFACE+1);
         if(!RegisterClassExW(&type)) throw std::runtime_error("Could not register the configuration window");
         constexpr DWORD style=WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX;
-        RECT bounds{0,0,px(590),px(690)};AdjustWindowRectEx(&bounds,style,FALSE,WS_EX_CONTROLPARENT);
+        RECT bounds{0,0,px(590),px(774)};AdjustWindowRectEx(&bounds,style,FALSE,WS_EX_CONTROLPARENT);
         auto handle=CreateWindowExW(WS_EX_CONTROLPARENT,type.lpszClassName,L"Sonic Adventure: Recompiled - Configuration",style,
             CW_USEDEFAULT,CW_USEDEFAULT,bounds.right-bounds.left,bounds.bottom-bounds.top,nullptr,nullptr,type.hInstance,this);
         if(!handle) throw std::runtime_error("Could not open the configuration window");
@@ -186,11 +189,13 @@ struct Dialog {
             SendDlgItemMessageW(window,TextLanguage,CB_SETCURSEL,5,0);
             SendDlgItemMessageW(window,VoiceLanguage,CB_SETCURSEL,2,0);
             SendDlgItemMessageW(window,Subtitles,CB_SETCURSEL,2,0);
+            SendDlgItemMessageW(window,CameraStyle,CB_SETCURSEL,1,0);
             SendMessageW(window,WM_COMMAND,IDOK,0);
             auto roundtrip=sonic::presentation::read_settings(path);
             if(!saved || !roundtrip.setup_complete || roundtrip.width!=2560 || roundtrip.height!=1080 ||
                 roundtrip.renderer!=sonic::rendering::Renderer::Vulkan || roundtrip.window_mode!=sonic::rendering::WindowMode::Borderless ||
-                roundtrip.text_language!=4 || roundtrip.voice_language!=1 || roundtrip.subtitles!=1 || IsWindowVisible(window))
+                roundtrip.text_language!=4 || roundtrip.voice_language!=1 || roundtrip.subtitles!=1 ||
+                roundtrip.camera_style!=sonic::camera::Style::Recompiled || IsWindowVisible(window))
                 throw std::runtime_error("Configuration control/save roundtrip failed");
             snapshot(path.parent_path()/"configuration.bmp");
             saved=false; SetDlgItemTextW(window,Resolution,L"-1 x 0");

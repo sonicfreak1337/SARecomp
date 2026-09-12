@@ -9,7 +9,7 @@ experimental worktree. See `baseline/r354.json` for the exact file identities.
 
 Development uses the existing Sonic title adapter and a pinned Katana runtime.
 Katana core and SA2 development are outside this project. Experimental work
-lives on `enhancements/widescreen`; `main` and the `r354-baseline` tag retain
+lives on `enhancements/widescreen` and `enhancements/camera-style`; `main` and the `r354-baseline` tag retain
 the initial standalone baseline.
 
 The independent, read-only snapshot lives under `.local/baseline/r354`.
@@ -150,7 +150,7 @@ The first interactive launch opens the English **`sonic-config.exe`** beside
 the game. Run `sonic-config.exe` again whenever settings should change.
 
 Choose Direct3D 11 or Vulkan; windowed, borderless or exclusive fullscreen;
-resolution; original 4:3 or widescreen; render scale; 30–144 output FPS;
+resolution; original 4:3 or widescreen; render scale; 30–144 output FPS; camera style;
 text language, voice language and subtitles. The original game cadence is
 independent of output FPS. Exclusive fullscreen falls back to borderless when
 the driver cannot acquire it. Alt+Enter returns to the saved window rectangle.
@@ -167,3 +167,13 @@ Direct launches use `out/experimental/sonic-display.ini`; `tools/start.ps1`
 retains separate settings per run profile. `SARECOMP_DISPLAY_CONFIG` selects
 an explicit config file (also understood by `sonic-config.exe`). Background
 tests skip the popup and use their own settings and copied saves.
+
+## Experimental camera
+
+Choose **Camera style: Recompiled** in `sonic-config.exe` and restart.
+The right stick rotates freely around the character and adjusts camera
+elevation; the view follows the character during movement. **Original** is
+the default and keeps the original camera. Scripted camera overrides and
+reviewed fixed/path/timed sections retain their original control, including
+in-level event mechanisms. See `docs/camera-style.md` for the exact policy,
+hidden gameplay verification and current collision limitations.

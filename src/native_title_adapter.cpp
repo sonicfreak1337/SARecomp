@@ -27,6 +27,7 @@
 #include "sonic_native_sdk_texture_release_plan.hpp"
 #include "sonic_private_scenario_launcher.hpp"
 #include "sonic_presentation.hpp"
+#include "sonic_camera.hpp"
 #include "sonic_sdk_color.hpp"
 
 #include <algorithm>
@@ -16939,6 +16940,7 @@ void apply_sonic_native_gameplay_probe_input(
                 return false;
         }
         ++sonic_native_title_state.native_input_updates;
+        if (suppress_all) sonic::camera::suppress_input();
         report_sonic_native_input_projection(
             context, reader, true, boundary_owner, nullptr);
         return true;
@@ -16957,6 +16959,7 @@ void apply_sonic_native_gameplay_probe_input(
 
     auto input = context.platform->poll_gamepads();
     apply_sonic_native_gameplay_probe_input(context, input);
+    sonic::camera::sample_input(context,input,suppress_all);
     constexpr auto slot_count = katana::runtime::native_port_gamepad_count;
     std::array<std::uint32_t, slot_count> existing_pointers{};
     std::array<std::uint32_t, slot_count> record_addresses{};
@@ -28062,6 +28065,7 @@ sonic_native_development_state_request(
             const auto restored_memory = katana::runtime::capture_native_port_main_memory(*context.cpu);
             if (restored_memory != state.main_memory)
                 throw std::runtime_error("development-state-restored-ram-mismatch");
+            sonic::camera::reset_timeline();
             audio->set_output_paused(state.services.output_paused);
             std::cerr << "SONIC_NATIVE_DEVELOPMENT_STATE operation=load"
                       << " sequence=" << request.sequence

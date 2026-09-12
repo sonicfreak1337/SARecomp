@@ -13,12 +13,14 @@
 namespace sonic::options {
 inline constexpr UINT first_command=0x7350, last_command=first_command+3;
 inline constexpr UINT renderer_command=0x7360;
+inline constexpr UINT camera_command=0x7370;
 inline constexpr UINT install_message=WM_APP+0x351;
 inline constexpr UINT restore_message=WM_APP+0x352;
 struct MenuState {
     HWND window=nullptr;
     HMENU format=nullptr;
     HMENU renderer=nullptr;
+    HMENU camera=nullptr;
     WNDPROC previous=nullptr;
     HHOOK hook=nullptr;
     std::filesystem::path config;
@@ -87,11 +89,20 @@ inline void select_renderer(UINT command) {
     CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,command,MF_BYCOMMAND);
     std::cerr<<"SONIC_OPTIONS_SAVED renderer="<<rendering::name(value.renderer)<<" applies=restart\n";
 }
+inline void select_camera(UINT command) {
+    auto pending=presentation::read_settings(state.config);
+    pending.camera_style=command==camera_command ? camera::Style::Original : camera::Style::Recompiled;
+    presentation::save_settings(state.config,pending);
+    state.selected.camera_style=pending.camera_style;
+    CheckMenuRadioItem(state.camera,camera_command,camera_command+1,command,MF_BYCOMMAND);
+    std::cerr<<"SONIC_OPTIONS_SAVED camera="<<camera::name(pending.camera_style)<<" applies=restart\n";
+}
 inline LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM word,LPARAM data) {
     if (message==restore_message) {
         try {
             state.selected=presentation::settings();
             save(state.selected);
+            select_camera(camera_command+unsigned(state.selected.camera_style));
             CheckMenuRadioItem(state.format,first_command,last_command,first_command+choice(state.selected),MF_BYCOMMAND);
             CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,
                 renderer_command+(state.selected.renderer==rendering::Renderer::Vulkan),MF_BYCOMMAND);
@@ -102,9 +113,11 @@ inline LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM word,LPARAM 
     }
     if (message==WM_COMMAND && HIWORD(word)==0 &&
         ((LOWORD(word)>=first_command && LOWORD(word)<=last_command) ||
-         LOWORD(word)==renderer_command || LOWORD(word)==renderer_command+1)) {
+         LOWORD(word)==renderer_command || LOWORD(word)==renderer_command+1 ||
+         LOWORD(word)==camera_command || LOWORD(word)==camera_command+1)) {
         try {
-            if (LOWORD(word)>=renderer_command) select_renderer(LOWORD(word));
+            if (LOWORD(word)>=camera_command) select_camera(LOWORD(word));
+            else if (LOWORD(word)>=renderer_command) select_renderer(LOWORD(word));
             else select(LOWORD(word));
         }
         catch (const std::exception& error) {
@@ -146,6 +159,16 @@ inline LRESULT CALLBACK install_hook(int code,WPARAM word,LPARAM data) {
                         return CallNextHookEx(state.hook,code,word,data);
                     CheckMenuRadioItem(state.renderer,renderer_command,renderer_command+1,
                         renderer_command+(state.selected.renderer==rendering::Renderer::Vulkan),MF_BYCOMMAND);
+                    state.camera=CreatePopupMenu();
+                    if (!state.camera) return CallNextHookEx(state.hook,code,word,data);
+                    AppendMenuW(state.camera,MF_STRING,camera_command,L"Original");
+                    AppendMenuW(state.camera,MF_STRING,camera_command+1,L"Recompiled");
+                    AppendMenuW(state.camera,MF_SEPARATOR,0,nullptr);
+                    AppendMenuW(state.camera,MF_STRING|MF_GRAYED,camera_command+2,L"Rechter Stick - nur Gameplay");
+                    if (!AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(state.camera),L"Camera style (Neustart)"))
+                        return CallNextHookEx(state.hook,code,word,data);
+                    CheckMenuRadioItem(state.camera,camera_command,camera_command+1,
+                        camera_command+unsigned(state.selected.camera_style),MF_BYCOMMAND);
                     state.previous=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(state.window,GWLP_WNDPROC,
                         reinterpret_cast<LONG_PTR>(&window_proc)));
                     state.ready=state.previous!=nullptr;
@@ -188,7 +211,7 @@ inline void install(const std::filesystem::path& executable) {
     UnhookWindowsHookEx(state.hook);
     state.hook=nullptr;
     if (!state.ready) throw std::runtime_error("Sonic Options menu unavailable");
-    std::cerr<<"SONIC_OPTIONS_READY choices=original,16:9,21:9,monitor renderers=d3d11,vulkan applies=restart\n";
+    std::cerr<<"SONIC_OPTIONS_READY choices=original,16:9,21:9,monitor renderers=d3d11,vulkan camera=original,recompiled applies=restart\n";
     // A bounded in-process menu integration check, only in hidden captures.
     if (testing) {
         for (unsigned index : {3u,2u,1u,0u}) {
@@ -200,6 +223,12 @@ inline void install(const std::filesystem::path& executable) {
             SendMessageW(state.window,WM_COMMAND,renderer_command+index,0);
             if ((GetMenuState(state.renderer,renderer_command+index,MF_BYCOMMAND)&MF_CHECKED)==0)
                 throw std::runtime_error("Sonic renderer selection failed");
+        }
+        for (unsigned index : {1u,0u}) {
+            SendMessageW(state.window,WM_COMMAND,camera_command+index,0);
+            if ((GetMenuState(state.camera,camera_command+index,MF_BYCOMMAND)&MF_CHECKED)==0 ||
+                unsigned(presentation::read_settings(state.config).camera_style)!=index)
+                throw std::runtime_error("Sonic camera selection failed");
         }
         // Return the pending selection to the active configuration through
         // the owning thread, preserving the exact custom capture resolution.

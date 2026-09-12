@@ -1,6 +1,7 @@
 #pragma once
 #include "katana/runtime/native_port_graphics.hpp"
 #include "renderer/renderer_selection.hpp"
+#include "sonic_camera_style.hpp"
 #include <filesystem>
 
 namespace sonic::presentation {
@@ -13,6 +14,7 @@ struct Settings {
     unsigned render_percent = 100;
     unsigned presentation_fps = 144;
     rendering::WindowMode window_mode = rendering::WindowMode::Windowed;
+    camera::Style camera_style = camera::Style::Original;
     int text_language = -1;
     int voice_language = -1;
     int subtitles = -1;

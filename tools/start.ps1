@@ -5,7 +5,8 @@ param([ValidateSet('baseline','experimental')][string] $Mode = 'experimental',
       [ValidateSet('original','widescreen')][string] $Aspect = 'original',
       [ValidateRange(640,7680)][int] $Width = 1920,
       [ValidateRange(480,4320)][int] $Height = 1080,
-      [ValidateSet('d3d11','vulkan')][string] $Renderer = 'd3d11')
+      [ValidateSet('d3d11','vulkan')][string] $Renderer = 'd3d11',
+      [ValidateSet('original','recompiled')][string] $CameraStyle = 'original')
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $base = Join-Path $root '.local/baseline/r354'
@@ -56,11 +57,11 @@ if ($Mode -eq 'experimental') {
     # replace the corresponding settings in an existing profile.
     $values=[ordered]@{mode=$Aspect;width=$Width;height=$Height;render_percent=100;renderer=$Renderer;
         presentation_fps=144;window_mode='windowed';text_language='game';voice_language='game';
-        subtitles='game';setup_complete=0}
+        subtitles='game';setup_complete=0;camera_style=$CameraStyle}
     $exists=Test-Path -LiteralPath $display
     if ($exists) {
         foreach ($line in Get-Content -LiteralPath $display) {
-            if ($line -match '^\s*(mode|width|height|render_percent|renderer|presentation_fps|window_mode|text_language|voice_language|subtitles|setup_complete)\s*=\s*(.*?)\s*$') {
+            if ($line -match '^\s*(mode|width|height|render_percent|renderer|presentation_fps|window_mode|text_language|voice_language|subtitles|setup_complete|camera_style)\s*=\s*(.*?)\s*$') {
                 $values[$Matches[1]]=$Matches[2]
             }
         }
@@ -69,9 +70,10 @@ if ($Mode -eq 'experimental') {
     if ($PSBoundParameters.ContainsKey('Width')) {$values.width=$Width}
     if ($PSBoundParameters.ContainsKey('Height')) {$values.height=$Height}
     if ($PSBoundParameters.ContainsKey('Renderer')) {$values.renderer=$Renderer}
+    if ($PSBoundParameters.ContainsKey('CameraStyle')) {$values.camera_style=$CameraStyle}
     if (-not $exists -or $PSBoundParameters.ContainsKey('Aspect') -or
         $PSBoundParameters.ContainsKey('Width') -or $PSBoundParameters.ContainsKey('Height') -or
-        $PSBoundParameters.ContainsKey('Renderer')) {
+        $PSBoundParameters.ContainsKey('Renderer') -or $PSBoundParameters.ContainsKey('CameraStyle')) {
         $values.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } |
             Set-Content -LiteralPath $display -Encoding utf8NoBOM
     }

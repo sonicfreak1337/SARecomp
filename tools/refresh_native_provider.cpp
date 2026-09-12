@@ -319,7 +319,7 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned rendering_added=0,language_added=0;
+    unsigned rendering_added=0,language_added=0,camera_added=0;
     struct ReviewedLanguage {std::uint32_t address,size;std::string_view symbol,sha;bool latent;};
     constexpr std::array languages{
         ReviewedLanguage{0x8C0884A0u,0xA8u,"sonic_language_save","bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",false},
@@ -343,13 +343,16 @@ RenderHookExtension render_hook_extension(
             hook.covered_size == 0xA0u &&
             hook.symbol == "sonic_native_widescreen_draw_sphere_cull" &&
             hook.code_identity == "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551";
+        const bool camera=hook.guest_address==0x8C01A100u && hook.covered_size==0xACu &&
+            hook.symbol=="sonic_recompiled_camera_publish" &&
+            hook.code_identity=="sha256:f88a14755daffb71dc3b9490f35660e768605e121e8f83e5df2dd2a8f541d002";
         const bool language=std::ranges::any_of(languages,[&](const auto& row) {
             return hook.guest_address==row.address && hook.covered_size==row.size &&
                 hook.symbol==row.symbol && hook.code_identity=="sha256:"+std::string(row.sha) &&
                 hook.code_source==(row.latent?NativePortHookCodeSource::LatentAotModule:NativePortHookCodeSource::StaticImage) &&
                 hook.code_source_identity==(row.latent?"sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5":"");
         });
-        if ((!model && !sphere && !language) ||
+        if ((!model && !sphere && !language && !camera) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != NativePortHookOriginalPolicy::MayContinueOriginal ||
@@ -363,11 +366,11 @@ RenderHookExtension render_hook_extension(
             fail("sonic-render-hook-unreviewed-structural-delta");
         result.hooks.push_back(hook);
         result.added.push_back(hook);
-        if(language) ++language_added;else ++rendering_added;
+        if(language) ++language_added;else if(camera) ++camera_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
-        (language_added!=0u && language_added!=7u))
+        (language_added!=0u && language_added!=7u) || camera_added>1u)
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;

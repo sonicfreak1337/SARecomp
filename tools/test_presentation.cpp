@@ -43,13 +43,26 @@ int main(int argc,char** argv) {
         }
         { std::ofstream f(folder/"sonic-display.ini"); f<<"mode=original\n"; }
         initialize(folder/"game.exe");
+        require(settings().camera_style==sonic::camera::Style::Original,"missing camera setting must preserve original");
         NativePortDrawPacket packet;
         const auto original=packet;
         for(auto role:{Role::World,Role::Interface,Role::Fullscreen,Role::HudLeft,Role::HudRight}) {
             apply(packet,role);
             require(packet.transform.values==original.transform.values && packet.viewport==original.viewport,"original changed");
         }
-        std::cout<<"SONIC_PRESENTATION_TESTS_OK 16:9 64:27 43:18 original\n";
+        Settings configured;
+        configured.camera_style=sonic::camera::Style::Recompiled;
+        configured.renderer=sonic::rendering::Renderer::Vulkan;
+        configured.text_language=4;
+        save_settings(folder/"sonic-display.ini",configured);
+        auto loaded=read_settings(folder/"sonic-display.ini");
+        require(loaded.camera_style==sonic::camera::Style::Recompiled &&
+            loaded.renderer==configured.renderer && loaded.text_language==4,"camera config roundtrip");
+        { std::ofstream f(folder/"sonic-display.ini");f<<"camera_style=invalid\n"; }
+        bool rejected=false;
+        try { (void)read_settings(folder/"sonic-display.ini"); } catch(const std::exception&) {rejected=true;}
+        require(rejected,"invalid camera setting accepted");
+        std::cout<<"SONIC_PRESENTATION_TESTS_OK 16:9 64:27 43:18 original camera-config\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }
