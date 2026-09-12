@@ -91,7 +91,9 @@ change the frozen AOT functions.
 Physical audio-device unplugging, actual sleep/resume and visible scanout
 across different monitor refresh rates remain untested. The existing audio
 and standby failure-injection checks are documented in audio-device-recovery.md.
-Separately textured ending effects and mixed voice/effect banks still need
-representative gameplay acceptance; pre-rendered mixed movie audio follows
+Separately textured ending effects still need representative gameplay
+acceptance. Mixed voice/effect bank routing is now verified on actual PCM;
+see [input/audio completion](options-input-audio-completion.md).
+Pre-rendered mixed movie audio follows
 Master rather than pretending to separate voices and music. No new replay
 system, full stage matrix or personal-save mutation was performed.

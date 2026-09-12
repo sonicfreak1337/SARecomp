@@ -106,6 +106,14 @@ add_executable(sonic_enhancement_tests EXCLUDE_FROM_ALL tools/test_enhancements.
 target_include_directories(sonic_enhancement_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_enhancement_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_enhancement_tests PRIVATE sonic_startup KatanaRecomp::native_port_runtime user32)
+add_executable(sonic_input_mapping_tests EXCLUDE_FROM_ALL tools/test_input_mapping.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_input_mapping_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_input_mapping_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_input_mapping_tests PRIVATE KatanaRecomp::native_port_runtime user32)
+add_executable(sonic_rumble_tests EXCLUDE_FROM_ALL tools/test_rumble.cpp)
+target_include_directories(sonic_rumble_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_rumble_tests PRIVATE /EHsc /utf-8 /fp:strict)
 add_executable(sonic_movie_audio_tests EXCLUDE_FROM_ALL tools/test_movie_audio.cpp src/sonic_presentation.cpp)
 target_include_directories(sonic_movie_audio_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_movie_audio_tests PRIVATE /EHsc /utf-8 /fp:strict)
@@ -161,6 +169,25 @@ add_executable(sonic_audio_recovery_tests EXCLUDE_FROM_ALL tools/test_audio_reco
 target_include_directories(sonic_audio_recovery_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_audio_recovery_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_audio_recovery_tests PRIVATE KatanaRecomp::native_port_runtime ole32 winmm)
+
+# Route mixed MLT containers at the actual note/program boundary, including
+# sequence notes and restored voices. The frozen SDK and AOT remain intact.
+set(audio_buses "${CMAKE_BINARY_DIR}/generated/audio-buses")
+add_custom_command(OUTPUT "${audio_buses}/native_port_sound_bank.cpp"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-audio-buses.py"
+        "${SONIC_BASE}/katana-source-178448be.zip" "${audio_buses}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-audio-buses.py"
+        "${SONIC_BASE}/katana-source-178448be.zip" VERBATIM)
+add_library(sonic_audio_buses OBJECT "${audio_buses}/native_port_sound_bank.cpp")
+target_include_directories(sonic_audio_buses PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_audio_buses PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_audio_buses PRIVATE KatanaRecomp::native_port_runtime)
+target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_audio_buses>)
+add_executable(sonic_audio_bus_tests EXCLUDE_FROM_ALL tools/test_audio_buses.cpp
+    src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_audio_buses> $<TARGET_OBJECTS:sonic_audio_output>)
+target_include_directories(sonic_audio_bus_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_audio_bus_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_audio_bus_tests PRIVATE KatanaRecomp::native_port_runtime ole32 winmm)
 
 add_executable(sonic_input_poll_tests EXCLUDE_FROM_ALL tools/test_input_poll.cpp
     src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_camera_platform>)

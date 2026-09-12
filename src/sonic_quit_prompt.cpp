@@ -71,7 +71,7 @@ Buttons Controls::sample(const input::Snapshot& source,const input::Bindings& bi
                    input::held(physical,input::Action::Confirm,bindings)||physical.keys[VK_RETURN]};
     const auto mouse_action=[&](input::Action action){
         const auto button=bindings[unsigned(action)].mouse;
-        return button && !(dialog&&button==1) && old[button] && !source.mouse[button];
+        return button && !(dialog&&button==1&&action==input::Action::Confirm) && old[button] && !source.mouse[button];
     };
     result.back|=mouse_action(input::Action::Cancel);result.accept|=mouse_action(input::Action::Confirm);
     if(dialog && source.mouse[1] && !old[1]){

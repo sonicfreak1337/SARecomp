@@ -151,7 +151,7 @@ inline constexpr std::string_view
         // Master gain preserves decoder timestamps, stream ends and counts.
         // Settings cap internal rendering at 100 percent. No AOT regeneration.
         // Render interpolation is compiled out; retired INI keys are ignored.
-        "sha256:475cc63011f02fcf25a1c4d6f14237a7540bbb5b8e069112d56a8df6ba1fa380"};
+        "sha256:616621b2542fbce3aff031a2d7682474ecd2876734cba348f1f180edcadb8fc5"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -253,6 +253,38 @@ int main(const int argc, char* argv[]) {
                 6'735'296u,
                 true}};
         constexpr std::array static_hooks{
+            katana::runtime::NativePortHookBinding{
+                0x8C6042B0u, 6u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal,
+                "sonic_native_rumble_capability",
+                "sha256:2eb2196012d5e864de7c33573a13e8f3179d01a955e1d5994c123eac1314593c",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C6042B6u, 0x64u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal,
+                "sonic_native_rumble_configure",
+                "sha256:882a220b86201c6e457a2b995de1087fb3a4b709e12e54a42a84969c8691fa2c",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C60431Au, 0x2Eu,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal,
+                "sonic_native_rumble_request",
+                "sha256:aee276d94ff40aff8c76eec88d446d6cbaf705f5dd380762e9dcba37fe97bfba",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C604348u, 0x3Cu,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal,
+                "sonic_native_rumble_stop",
+                "sha256:aa649b8b79189f8ddce7fc3b813fe6391e5be8d3a9878be5113991c409200c10",
+                sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x808929BEu, 0x38u,
                 katana::runtime::NativePortHookKind::FunctionEntry,

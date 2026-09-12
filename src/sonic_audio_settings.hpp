@@ -17,12 +17,18 @@ inline Bus adx_bus(std::string_view path) noexcept {
     if(path=="EVENT_ADX.AFS"||path=="EVENT_ADX_US.AFS")return Bus::Voice;
     return Bus::Master;
 }
-inline Bus collection_bus(std::string_view id) noexcept {
+// MLT is a container, not a bus. Retail P_/V_ banks are kept separate inside
+// the Chao containers; ALT relocates the voice bank from 6 to 1. Sky Deck's
+// two localized announcements share bank 1 with its stage effects.
+// These are authenticated asset/program identities, never guest addresses.
+inline Bus program_bus(std::string_view id, unsigned bank, unsigned program) noexcept {
     constexpr std::string_view prefix="sa-pal-v1003-mlt-";
-    if(!id.starts_with(prefix))return Bus::Master;
+    if(!id.starts_with(prefix)||id.size()!=prefix.size()+3)return Bus::Master;
     unsigned n=999;const auto value=id.substr(prefix.size());const auto converted=std::from_chars(value.data(),value.data()+value.size(),n);
     if(converted.ec!=std::errc{}||converted.ptr!=value.data()+value.size()||n>121)return Bus::Master;
-    if((n>=1&&n<=14)||(n>=16&&n<=17)||(n>=19&&n<=20)||(n>=24&&n<=25)||(n>=27&&n<=28)||(n>=111&&n<=120))return Bus::Voice;
+    if(bank==6)return Bus::Voice;
+    if(bank==1&&((n>=13&&n<=14)||(n>=16&&n<=17)||(n>=19&&n<=20)))return Bus::Voice;
+    if((n==107||n==108)&&bank==1&&(program==29||program==30))return Bus::Voice;
     return Bus::Effects;
 }
 }

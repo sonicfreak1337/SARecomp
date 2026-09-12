@@ -12,6 +12,7 @@
 #include <string_view>
 #include <stdexcept>
 #include <new>
+#include <span>
 #include "sonic_recovery_status.hpp"
 
 namespace sonic::audio_device {
@@ -48,6 +49,8 @@ struct Api {
     decltype(&waveOutPause) pause=&waveOutPause;
     decltype(&waveOutRestart) restart=&waveOutRestart;
     std::uint64_t (*now)() noexcept=&real_now;
+    // Optional in-process test observer, before mandatory background muting.
+    void (*observe_pcm)(std::span<const std::int16_t>) noexcept=nullptr;
 };
 inline std::atomic<const Api*> test_api{nullptr};
 inline const Api& api() noexcept {static const Api native;const auto* p=test_api.load();return p?*p:native;}

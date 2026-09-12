@@ -3,6 +3,7 @@
 #include "sonic_input.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_audio_device.hpp"
+#include "sonic_rumble.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -49,12 +50,13 @@ bool window_message(void* handle,unsigned message,std::uintptr_t word,std::intpt
         std::lock_guard guard(lock);
         switch(message) {
         case WM_POWERBROADCAST:
+            if(word==PBT_APMSUSPEND)rumble::engine().policy(true,0);
             if(word==PBT_APMRESUMEAUTOMATIC || word==PBT_APMRESUMESUSPEND){
                 os.keys={};os.mouse={};os.mouse_dx=os.mouse_dy=0;look_dx=0;look_dy=0;
                 audio_device::resumed();
             }
             break;
-        case WM_DESTROY:if(window.load()==h){window=nullptr;os={};camera_active=false;look_dx=0;look_dy=0;if(!hidden())ClipCursor(nullptr);}break;
+        case WM_DESTROY:if(window.load()==h){rumble::engine().policy(true,0);window=nullptr;os={};camera_active=false;look_dx=0;look_dy=0;if(!hidden())ClipCursor(nullptr);}break;
         case WM_APP+91: {
             if(!hidden() && os.focused && camera_active.load() && !modal.load() && presentation::settings().mouse_camera) {
                 RECT r{};GetClientRect(h,&r);MapWindowPoints(h,nullptr,reinterpret_cast<POINT*>(&r),2);ClipCursor(&r);
@@ -62,7 +64,7 @@ bool window_message(void* handle,unsigned message,std::uintptr_t word,std::intpt
             break;
         }
         case WM_SETFOCUS:os.focused=true;break;
-        case WM_KILLFOCUS:os={};camera_active=false;look_dx=0;look_dy=0;if(!hidden())ClipCursor(nullptr);break;
+        case WM_KILLFOCUS:rumble::engine().policy(true,0);os={};camera_active=false;look_dx=0;look_dy=0;if(!hidden())ClipCursor(nullptr);break;
         case WM_KEYDOWN:case WM_SYSKEYDOWN:
             if(word<256){os.keys[word]=true;last_device=GlyphStyle::Keyboard;}
             if(message==WM_KEYDOWN && word>=VK_F1 && word<=VK_F24 && !os.keys[VK_CONTROL]) {
@@ -74,7 +76,7 @@ bool window_message(void* handle,unsigned message,std::uintptr_t word,std::intpt
         case WM_LBUTTONDOWN:case WM_LBUTTONUP:os.mouse[1]=message==WM_LBUTTONDOWN;last_device=GlyphStyle::Keyboard;break;
         case WM_RBUTTONDOWN:case WM_RBUTTONUP:os.mouse[2]=message==WM_RBUTTONDOWN;last_device=GlyphStyle::Keyboard;break;
         case WM_MBUTTONDOWN:case WM_MBUTTONUP:os.mouse[3]=message==WM_MBUTTONDOWN;last_device=GlyphStyle::Keyboard;break;
-        case WM_XBUTTONDOWN:case WM_XBUTTONUP:os.mouse[HIWORD(word)==XBUTTON1?4:5]=message==WM_XBUTTONDOWN;break;
+        case WM_XBUTTONDOWN:case WM_XBUTTONUP:os.mouse[HIWORD(word)==XBUTTON1?4:5]=message==WM_XBUTTONDOWN;last_device=GlyphStyle::Keyboard;break;
         case WM_MOUSEWHEEL:os.wheel+=short(HIWORD(word))/WHEEL_DELTA;break;
         case WM_INPUT: {
             RAWINPUT raw{};UINT size=sizeof(raw);
@@ -158,11 +160,17 @@ void transform(katana::runtime::NativePortInputSnapshot& pads,const Snapshot& so
         if(down(Action(i)))p.buttons|=i==unsigned(Action::Start)?1u<<4:1u<<(10+i-unsigned(Action::A));
     for(unsigned i=0;i<4;++i)if(down(Action(i)))p.buttons|=1u<<i;
     auto digital=logical;digital.pad&=~((1u<<14)|(1u<<15));
-    if(held(digital,Action::LeftTrigger,config.bindings)){p.left_trigger_raw=255;p.left_trigger=1;}
-    if(held(digital,Action::RightTrigger,config.bindings)){p.right_trigger_raw=255;p.right_trigger=1;}
-    // Preserve analog trigger strength under the default mapping.
-    if(config.bindings[unsigned(Action::LeftTrigger)].pad&(1u<<14)){p.left_trigger_raw=std::max(p.left_trigger_raw,old.left_trigger_raw);p.left_trigger=std::max(p.left_trigger,old.left_trigger);}
-    if(config.bindings[unsigned(Action::RightTrigger)].pad&(1u<<15)){p.right_trigger_raw=std::max(p.right_trigger_raw,old.right_trigger_raw);p.right_trigger=std::max(p.right_trigger,old.right_trigger);}
+    const auto trigger=[&](Action action,std::uint8_t& raw,float& strength){
+        if(held(digital,action,config.bindings)){raw=255;strength=1;}
+        // Analog sources follow the physical binding, including cross-maps
+        // and combinations. A digital alternative still wins at full strength.
+        if(!logical.connected||!old.connected)return;
+        const auto binding=config.bindings[unsigned(action)].pad;
+        if(binding&(1u<<14)){raw=std::max(raw,old.left_trigger_raw);strength=std::max(strength,old.left_trigger);}
+        if(binding&(1u<<15)){raw=std::max(raw,old.right_trigger_raw);strength=std::max(strength,old.right_trigger);}
+    };
+    trigger(Action::LeftTrigger,p.left_trigger_raw,p.left_trigger);
+    trigger(Action::RightTrigger,p.right_trigger_raw,p.right_trigger);
     p.buttons|=old.buttons&(1u<<5); // private diagnostic View/Share remains separate.
     look_dx.store(source.mouse_dx);look_dy.store(source.mouse_dy);
 }
@@ -174,7 +182,8 @@ std::wstring binding_name(const Binding& b,GlyphStyle style) {
         constexpr std::array<std::wstring_view,16> sony{L"↑",L"↓",L"←",L"→",L"Options",L"Share",L"L3",L"R3",L"L1",L"R1",L"×",L"○",L"□",L"△",L"L2",L"R2"};
         std::wstring result;for(unsigned i=0;i<16;++i)if(b.pad&(1u<<i)){if(!result.empty())result+=L" / ";result+=(style==GlyphStyle::PlayStation?sony:xbox)[i];}return result;
     }
-    if(b.key){wchar_t name[64]{};const auto scan=MapVirtualKeyW(b.key,MAPVK_VK_TO_VSC_EX);const auto extended=(scan&0xff00)?1u<<24:0u;GetKeyNameTextW(LONG((scan&255)<<16|extended),name,64);if(*name)return name;}
+    const auto key=b.key?b.key:b.alternate;
+    if(key){wchar_t name[64]{};const auto scan=MapVirtualKeyW(key,MAPVK_VK_TO_VSC_EX);const auto extended=(scan&0xff00)?1u<<24:0u;GetKeyNameTextW(LONG((scan&255)<<16|extended),name,64);if(*name)return name;}
     if(b.mouse)return L"Mouse "+std::to_wstring(b.mouse);
     return L"—";
 }

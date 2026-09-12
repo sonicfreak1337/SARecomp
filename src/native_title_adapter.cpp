@@ -33,6 +33,7 @@
 #include "sonic_startup.hpp"
 #include "sonic_quit_prompt.hpp"
 #include "sonic_input.hpp"
+#include "sonic_rumble.hpp"
 #include "sonic_menu_runtime.hpp"
 #include "sonic_profiles.hpp"
 #include "sonic_audio_settings.hpp"
@@ -17026,6 +17027,8 @@ void apply_sonic_native_gameplay_probe_input(
     sonic::audio::focused=sampled.focused;
     const bool menu_consumes=sonic::menu::observe(context,sampled,suppress_all||suppress_edges||
         sonic_native_private::scenario_menu_open(context)||sonic::quit_prompt::pending());
+    sonic::rumble::engine().policy(!sampled.focused || suppress_all || menu_consumes ||
+        sonic::quit_prompt::pending(), sonic::presentation::settings().vibration);
     sonic::input::transform(input,sampled,suppress_all||menu_consumes);
     sonic::quit_prompt::sample_input(context,input,sampled,menu_consumes || suppress_all || suppress_edges ||
         sonic_native_private::scenario_menu_open(context));
@@ -17533,6 +17536,9 @@ void emit_sonic_native_gameplay_probe_sample(
                              ? now - probe.active_nanoseconds
                              : 0u;
     const auto presentations = context.host->presented_frames();
+    SonicGuestReader reader(*context.cpu);
+    std::uint32_t release=0,delta=0;
+    const bool cadence_readable=reader.u32(sonic_frame_producer_release,release) && reader.u32(0x8C754E04u,delta);
     std::cerr << "SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id="
               << probe.descriptor->id << " protocol="
               << sonic_native_gameplay_probe_protocol << " input_profile="
@@ -17548,6 +17554,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " input_applied_frames=" << probe.input_applied_frames
               << " completed_frames=" << probe.completed_frames
               << " drawn_frames=" << probe.drawn_frames
+              << " cadence_readable=" << (cadence_readable?1:0)
+              << " active_video_hz=" << sonic_native_title_state.active_video_refresh_hz
+              << " release_slots=" << release << " logical_delta=" << delta
               << " phase=" << static_cast<std::uint32_t>(probe.input_phase)
               << " final=" << (complete ? 1 : 0) << '\n' << std::flush;
     probe.last_sample_nanoseconds = now;
@@ -20809,6 +20818,37 @@ maintain_native_operand_cache_range(
 } // namespace
 
 extern "C" katana::runtime::NativePortHookResult
+sonic_native_rumble_capability(katana::runtime::NativePortContext& context) noexcept {
+    if(!valid_sonic_native_context(context))return graphics_abort(context,sonic_native_graphics_error_context);
+    context.cpu->r[0]=sonic::rumble::engine().capable(context.cpu->r[4])?1u:0u;
+    return {katana::runtime::NativePortHookAction::Return,0u,0u};
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_rumble_configure(katana::runtime::NativePortContext& context) noexcept {
+    if(!valid_sonic_native_context(context))return graphics_abort(context,sonic_native_graphics_error_context);
+    context.cpu->r[0]=static_cast<std::uint32_t>(sonic::rumble::engine().configure(context.cpu->r[4],context.cpu->r[5]));
+    return {katana::runtime::NativePortHookAction::Return,0u,0u};
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_rumble_request(katana::runtime::NativePortContext& context) noexcept {
+    if(!valid_sonic_native_context(context))return graphics_abort(context,sonic_native_graphics_error_context);
+    auto& cpu=*context.cpu;int result=-2;
+    if(sonic::rumble::engine().capable(cpu.r[4])) {
+        SonicGuestReader reader(cpu);std::array<std::uint8_t,8> bytes{};bool valid=reader.range(cpu.r[5],bytes.size());
+        for(unsigned i=0;valid && i<bytes.size();++i)valid=reader.u8(cpu.r[5]+i,bytes[i]);
+        result=valid?sonic::rumble::engine().request(cpu.r[4],bytes):-1;
+    }
+    cpu.r[0]=static_cast<std::uint32_t>(result);
+    return {katana::runtime::NativePortHookAction::Return,0u,0u};
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_rumble_stop(katana::runtime::NativePortContext& context) noexcept {
+    if(!valid_sonic_native_context(context))return graphics_abort(context,sonic_native_graphics_error_context);
+    context.cpu->r[0]=static_cast<std::uint32_t>(sonic::rumble::engine().cancel(context.cpu->r[4]));
+    return {katana::runtime::NativePortHookAction::Return,0u,0u};
+}
+
+extern "C" katana::runtime::NativePortHookResult
 sonic_native_private_stage_tuple_override(
     katana::runtime::NativePortContext& context) noexcept {
     return apply_sonic_native_private_stage_tuple_override(context);
@@ -22726,33 +22766,15 @@ sound_collection_for_sequence(const std::uint8_t bank,
     return catalog[loaded->catalog_index].content_relative_path;
 }
 
-sonic::audio::Bus sonic_sound_bus(katana::runtime::NativePortSoundCollectionHandle handle) {
-    const auto& loaded=sonic_native_title_state.loaded_sound_collections;
-    const auto i=std::ranges::find_if(loaded,[&](const auto& v){return v.handle.slot==handle.slot&&v.handle.generation==handle.generation;});
-    const auto catalog=sonic_native::sound_collection_catalog();
-    return i==loaded.end()||i->catalog_index>=catalog.size()?sonic::audio::Bus::Master:sonic::audio::collection_bus(catalog[i->catalog_index].logical_id);
-}
-sonic::audio::Bus sonic_sound_port_bus(katana::runtime::NativePortSoundMidiPortHandle port){
-    const auto find=[&](const auto& ports,const auto& collections)->std::optional<sonic::audio::Bus>{
-        for(unsigned i=0;i<ports.size();++i)if(ports[i]&&ports[i]->slot==port.slot&&ports[i]->generation==port.generation&&collections[i])return sonic_sound_bus(*collections[i]);return {};
-    };
-    if(auto b=find(sonic_native_title_state.sound_midi_ports,sonic_native_title_state.sound_midi_port_collections))return *b;
-    if(auto b=find(sonic_native_title_state.sound_sequence_ports,sonic_native_title_state.sound_sequence_port_collections))return *b;
-    return sonic::audio::Bus::Master;
-}
 void refresh_sonic_audio_settings(bool force){
     static thread_local std::uint64_t revision=0;static thread_local bool focused=true;
     const auto next=sonic::presentation::revision();const bool focus=sonic::audio::focused.load();
     if(!force&&revision==next&&focus==focused)return;revision=next;focused=focus;
     auto& s=sonic_native_title_state;
     if(s.audio_engine)for(const auto& v:s.adx_streams)if(v.bound&&v.voice)s.audio_engine->set_gain_pan(*v.voice,v.gain*sonic::audio::factor(sonic::audio::adx_bus(v.guest_path)),v.pan);
-    if(s.sound_bank_engine){
-        const auto update=[&](const auto& ports,const auto& values,const auto& collections){
-            for(unsigned i=0;i<ports.size();++i)if(ports[i]&&collections[i])s.sound_bank_engine->set_midi_gain_pan(*ports[i],values[i].gain*sonic::audio::factor(sonic_sound_bus(*collections[i])),values[i].pan);
-        };
-        update(s.sound_midi_ports,s.sound_midi_port_state,s.sound_midi_port_collections);
-        update(s.sound_sequence_ports,s.sound_sequence_port_state,s.sound_sequence_port_collections);
-    }
+    // SoundBank applies current bus gains per note in its audio worker. A
+    // container can hold both voices and effects; port-wide scaling would
+    // misroute them and multiply master volume twice.
 }
 void apply_native_sound_port_state(
     const katana::runtime::NativePortSoundMidiPortHandle port,
@@ -22760,7 +22782,7 @@ void apply_native_sound_port_state(
     if (!sonic_native_title_state.sound_bank_engine)
         throw std::runtime_error("native-sound-engine-unbound");
     auto& engine = *sonic_native_title_state.sound_bank_engine;
-    engine.set_midi_gain_pan(port, state.gain*sonic::audio::factor(sonic_sound_port_bus(port)), state.pan);
+    engine.set_midi_gain_pan(port, state.gain, state.pan);
     engine.set_midi_pitch_bend(port, state.pitch_bend);
     engine.set_midi_playback_rate(port, state.playback_rate);
     engine.set_midi_send_levels(
@@ -22800,13 +22822,13 @@ void commit_native_sound_port_state(
 [[nodiscard]] katana::runtime::NativePortSoundMidiPortConfig
 native_sound_port_config(
     const SonicNativeLogicalSoundPortState& state,
-    const katana::runtime::NativePortSoundCollectionHandle collection,
+    const katana::runtime::NativePortSoundCollectionHandle,
     const std::uint8_t bank = 0u,
     const std::uint8_t program = 0u) noexcept {
     katana::runtime::NativePortSoundMidiPortConfig config;
     config.program_bank = bank;
     config.program = program;
-    config.gain = state.gain*sonic::audio::factor(sonic_sound_bus(collection));
+    config.gain = state.gain;
     config.pan = state.pan;
     config.playback_rate = state.playback_rate;
     config.pitch_bend = state.pitch_bend;
@@ -28129,6 +28151,7 @@ sonic_native_development_state_request(
     };
     try {
         previous_output_paused = audio->snapshot().output_paused;
+        sonic::rumble::engine().policy(true,0);
         audio->rebase_development_state_epoch();
         audio_quiesced = true;
         const auto path = std::filesystem::u8path(request.path);
@@ -28274,6 +28297,7 @@ sonic_native_render_command_arena_configure(
 
 void release_sonic_native_title_host_providers(
     katana::runtime::NativePortContext& context) noexcept {
+    sonic::rumble::engine().policy(true,0);
     sonic::quit_prompt::release(context);
     auto& state = sonic_native_title_state;
     // The stopped guest cannot resume. Preserve the original failure's bounded
@@ -39504,6 +39528,7 @@ void sonic_native_private_draw_scenario_overlay(
 
 void run_sonic_quit_modal(katana::runtime::NativePortContext& context) {
     using namespace katana::runtime;
+    sonic::rumble::engine().policy(true,0);
     // The already-completed title frame contains the popup. Repeat it without
     // advancing any guest task, demo timer, save operation or original audio.
     const auto guest_instructions=context.cpu->retired_guest_instructions;
@@ -39542,6 +39567,7 @@ void run_sonic_quit_modal(katana::runtime::NativePortContext& context) {
 
 void run_sonic_options_modal(katana::runtime::NativePortContext& context) {
     if(!sonic::menu::pending(context))return;
+    sonic::rumble::engine().policy(true,0);
     using namespace katana::runtime;
     auto* const audio=sonic_native_title_state.audio_engine.get();bool audio_suspended=false,prior_pause=false;
     sonic::menu::Services services;

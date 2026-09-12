@@ -119,6 +119,7 @@ std::wstring Model::description()const{
     for(const auto& c:choices_)if(c.id==id&&!c.details.empty())return c.details;
     // Interpolation was withdrawn; its prototype is no longer a menu option.
     if(id=="vsync")return copy("vsync_help",language());
+    if(id=="vibration")return copy("vibration_help",language());
     if(id=="presentation_fps")return copy(draft_.vsync==1?"fps_vsync_help":"fps_help",language());
     if(id=="export_diagnostics")return copy("diagnostics_help",language());
     if(id=="sound_test"&&!title_)return copy("title_only",language());
@@ -209,15 +210,21 @@ Result Model::update(const input::Snapshot& s,double now){
     const auto old=std::exchange(previous_,s);
     if(!s.focused || s.connection_changed){armed_=false;pressed_row_=pressed_confirmation_=-1;return result;}
     const auto held=[&](const input::Snapshot& v,input::Action a){return input::held(v,a,draft_.bindings);};
-    const bool accept=held(s,input::Action::Confirm)||s.keys[13],cancel=held(s,input::Action::Cancel)||s.keys[27];
-    const bool old_accept=held(old,input::Action::Confirm)||old.keys[13],old_cancel=held(old,input::Action::Cancel)||old.keys[27];
-    const bool any=accept||cancel||s.pad||s.mouse[1]||s.mouse[2]||std::any_of(s.keys.begin(),s.keys.end(),[](bool v){return v;});
+    auto digital=s,old_digital=old;digital.mouse={};old_digital.mouse={};
+    const bool accept=held(digital,input::Action::Confirm)||s.keys[13],cancel=held(digital,input::Action::Cancel)||s.keys[27];
+    const bool old_accept=held(old_digital,input::Action::Confirm)||old.keys[13],old_cancel=held(old_digital,input::Action::Cancel)||old.keys[27];
+    const bool any=accept||cancel||s.pad||std::any_of(s.mouse.begin(),s.mouse.end(),[](bool v){return v;})||std::any_of(s.keys.begin(),s.keys.end(),[](bool v){return v;});
     if(!armed_){if(!any && std::abs(s.move_x)<0.3f && std::abs(s.move_y)<0.3f)armed_=true;return result;}
-    bool press_accept=accept&&!old_accept&&!s.mouse[1]&&!s.mouse[2],press_cancel=cancel&&!old_cancel&&!s.mouse[2];
-    // A remapped mouse cancel is also committed on release, never on press.
-    if(old.mouse[2]&&!s.mouse[2]&&draft_.bindings[unsigned(input::Action::Cancel)].mouse==2)press_cancel=true;
+    const auto mouse_release=[&](input::Action action){
+        const auto button=draft_.bindings[unsigned(action)].mouse;
+        return button&&old.mouse[button]&&!s.mouse[button];
+    };
+    // Left confirm uses release-inside hit testing below. Other remapped
+    // pointer buttons act on the selection, but never activate at mouse-down.
+    bool press_accept=(accept&&!old_accept)||
+        (draft_.bindings[unsigned(input::Action::Confirm)].mouse!=1&&mouse_release(input::Action::Confirm));
+    bool press_cancel=(cancel&&!old_cancel)||mouse_release(input::Action::Cancel);
     if(capture_ && question_.empty()){
-        if(s.keys[27]){capture_.reset();armed_=false;return result;}
         input::Binding binding{};
         for(unsigned k=1;k<256;++k)if(s.keys[k]&&!old.keys[k]){binding.key=k;break;}
         for(unsigned k=1;k<6;++k)if(s.mouse[k]&&!old.mouse[k]){binding.mouse=k;break;}
@@ -229,7 +236,9 @@ Result Model::update(const input::Snapshot& s,double now){
             else {candidate.key=binding.key;candidate.alternate=0;candidate.mouse=binding.mouse;}
             bool conflict=false;
             for(unsigned i=0;i<input::action_count;++i)if(i!=unsigned(*capture_)&&is_menu_action(i)==is_menu_action(unsigned(*capture_))&&overlaps(binding,draft_.bindings[i]))conflict=true;
-            if(conflict){candidate_=candidate;confirm("duplicate",Command::None);}
+            // Escape is a bindable key too. Its explicit choice also retains
+            // a keyboard-only way to leave capture without changing anything.
+            if(conflict||binding.key==27){candidate_=candidate;confirm(conflict?"duplicate":"bind_escape",Command::None);}
             else {draft_.bindings[unsigned(*capture_)]=candidate;capture_.reset();armed_=false;result.changed=true;}
         }
         return result;
@@ -249,8 +258,8 @@ Result Model::update(const input::Snapshot& s,double now){
             confirm_=pressed_confirmation_!=0;press_accept=true;
         }
         if(press_accept||press_cancel){
-            const bool commit=press_accept&&confirm_;
-            if(question_=="duplicate" && capture_ && candidate_){
+            const bool commit=press_accept&&!press_cancel&&confirm_;
+            if((question_=="duplicate"||question_=="bind_escape") && capture_ && candidate_){
                 if(commit){
                     const auto target=unsigned(*capture_);const auto b=*candidate_;
                     // Only remove the changed device's assignment.

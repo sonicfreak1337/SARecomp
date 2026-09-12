@@ -23,6 +23,12 @@ def replace(before, after):
 
 replace('#include "native_port_audio_execution_domain.hpp"',
         '#include "native_port_audio_execution_domain.hpp"\n#include "sonic_audio_device.hpp"\n#include <cstdio>')
+replace('        if (background_test_mode_requested())\n            std::fill_n(pending.block->samples.begin(), samples.size(), 0);',
+        '        if (background_test_mode_requested()) {\n'
+        '            const auto* test = ::sonic::audio_device::test_api.load();\n'
+        '            if(test && test->observe_pcm) test->observe_pcm(samples);\n'
+        '            std::fill_n(pending.block->samples.begin(), samples.size(), 0);\n'
+        '        }')
 # Extract the original pool/format initialization as one reusable function.
 start = source.index("        completion_wake_ = std::make_unique<CompletionWakeState>();")
 end = source.index('\n#else\n        fail(1u, "unsupported-host");', start)

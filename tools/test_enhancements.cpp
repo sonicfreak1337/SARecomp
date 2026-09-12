@@ -52,7 +52,10 @@ int main(int argc,char** argv){
         presentation::initialize(root/"game.exe");auto changed=settings;changed.master_volume=50;changed.music_volume=20;changed.voice_volume=80;changed.effects_volume=40;changed.vsync=1;changed.width=2560;changed.mouse_camera=1;
         presentation::apply_live(changed);check(presentation::settings().width==settings.width&&presentation::settings().vsync==settings.vsync,"restart fields leaked live");
         check(std::abs(audio::factor(audio::Bus::Music)-.1f)<1e-6&&std::abs(audio::factor(audio::Bus::Voice)-.4f)<1e-6&&std::abs(audio::factor(audio::Bus::Effects)-.2f)<1e-6,"audio buses compounded");
-        check(audio::adx_bus("EVENT_ADX_US.AFS")==audio::Bus::Voice&&audio::collection_bus("sa-pal-v1003-mlt-119")==audio::Bus::Voice,"audio identity routing");
+        check(audio::adx_bus("EVENT_ADX_US.AFS")==audio::Bus::Voice&&audio::program_bus("sa-pal-v1003-mlt-119",6,0)==audio::Bus::Voice,"audio identity routing");
+        check(audio::program_bus("sa-pal-v1003-mlt-001",3,0)==audio::Bus::Effects&&audio::program_bus("sa-pal-v1003-mlt-001",6,0)==audio::Bus::Voice,"mixed Chao collection routed as one bus");
+        check(audio::program_bus("sa-pal-v1003-mlt-013",4,0)==audio::Bus::Effects&&audio::program_bus("sa-pal-v1003-mlt-013",1,0)==audio::Bus::Voice,"ALT relocated voice bank lost");
+        check(audio::program_bus("sa-pal-v1003-mlt-107",1,29)==audio::Bus::Voice&&audio::program_bus("sa-pal-v1003-mlt-108",1,30)==audio::Bus::Voice&&audio::program_bus("sa-pal-v1003-mlt-107",1,31)==audio::Bus::Effects,"Sky Deck localized announcements not separated");
         presentation::apply_live(settings);
         auto readable=settings;readable.subtitle_background=1;
         const auto authored=subtitles::layout(42,390,340,40,readable);
@@ -89,6 +92,31 @@ int main(int argc,char** argv){
             check(sync.value().presentation_fps!=120,"restored FPS control remains inactive");
             presentation::save_settings(root/"vsync-roundtrip.ini",v);
             check(presentation::read_settings(root/"vsync-roundtrip.ini")==v,"VSync destroyed persisted FPS limit");
+        }
+        for(int language=0;language<5;++language){
+            auto v=settings;v.text_language=language;menu::Model keys(v,language,false);keys.choose("bindings",{});Driver controls;controls.tick(keys);
+            for(unsigned i=0;i<unsigned(input::Action::A);++i)controls.key(keys,40);
+            controls.key(keys,13);controls.key(keys,27);
+            check(keys.modal()&&!keys.capturing()&&keys.dialog()!=L"?","Escape remains unbindable or has no localized choice");
+            controls.key(keys,13); // Default No: leave capture, keep the mapping.
+            check(!keys.modal()&&!keys.dirty(),"Escape cancel path changed the binding");
+            controls.key(keys,13);controls.key(keys,27);controls.key(keys,37);controls.key(keys,13);
+            check(!keys.modal()&&keys.value().bindings[unsigned(input::Action::A)].key==27,"Escape assignment failed");
+        }
+        for(unsigned button=2;button<=5;++button){
+            auto v=settings;v.master_volume=50;v.bindings[unsigned(input::Action::Confirm)].mouse=button;v.bindings[unsigned(input::Action::Cancel)].mouse=0;
+            menu::Model pointer(v,4,false);pointer.choose("audio",{});Driver clicks;clicks.tick(pointer);
+            clicks.s.mouse[button]=true;check(!clicks.tick(pointer).changed&&pointer.value().master_volume==50,"remapped mouse confirm fired on press");
+            clicks.s.mouse[button]=false;check(clicks.tick(pointer).changed&&pointer.value().master_volume==55,"remapped mouse confirm missed release");
+        }
+        for(unsigned button=1;button<=5;++button){
+            auto v=settings;v.bindings[unsigned(input::Action::Cancel)].mouse=button;v.bindings[unsigned(input::Action::Confirm)].mouse=0;
+            menu::Model pointer(v,4,false);pointer.choose("audio",{});Driver clicks;clicks.tick(pointer);
+            clicks.s.mouse[button]=true;clicks.tick(pointer);check(pointer.rows()[0].id=="master_volume","remapped mouse cancel fired on press");
+            clicks.s.mouse[button]=false;clicks.tick(pointer);check(pointer.rows()[0].id=="display","remapped mouse cancel missed release");
+            pointer.ask("overwrite",menu::Command::Restore);clicks.tick(pointer);clicks.key(pointer,37);
+            clicks.s.mouse[button]=true;check(clicks.tick(pointer).command==menu::Command::None&&pointer.modal(),"mouse press dismissed confirmation");
+            clicks.s.mouse[button]=false;check(clicks.tick(pointer).command==menu::Command::None&&!pointer.modal(),"mouse cancel confirmed destructive action");
         }
         for(int language=0;language<5;++language)for(auto page:{"title","display","audio","camera","controls","bindings","interface","profiles","system"}){
             auto v=settings;v.text_language=language;menu::Model localized(v,language,true);localized.choose(page,{});check(localized.heading()!=L"?","missing heading");

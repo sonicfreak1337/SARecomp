@@ -94,7 +94,7 @@ stderr=(run/'stderr.log').read_text(errors='replace')
 stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
 steady=[r for r in gameplay if int(r['elapsed_ms'])>=10000]
-result={'schema':'sarecomp-stage-performance-v1','exe_sha256':exe_sha,**vars(args),
+result={'schema':'sarecomp-stage-performance-v2','exe_sha256':exe_sha,**vars(args),
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
     'hidden':True,'muted':True,'captures':False,'input_profile':3,'cpu_samples':samples,
     'gameplay_samples':gameplay,'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in stderr,
@@ -103,12 +103,17 @@ result={'schema':'sarecomp-stage-performance-v1','exe_sha256':exe_sha,**vars(arg
 if len(steady)>1:
     a,b=steady[0],steady[-1]
     seconds=(int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9
-    result.update(sim_fps=(int(b['frame'])-int(a['frame']))/seconds,
+    # A title boundary can repeat an existing image. Neither this counter nor
+    # a new draw proves an additional gameplay/simulation update.
+    result.update(title_boundary_fps=(int(b['frame'])-int(a['frame']))/seconds,
+        new_draw_fps=(int(b['drawn_frames'])-int(a['drawn_frames']))/seconds,
         presentation_fps=(int(b['presentations'])-int(a['presentations']))/seconds)
+    result['cadence_witnesses']=[{key:row[key] for key in ('active_video_hz','release_slots','logical_delta')}
+        for row in steady if row.get('cadence_readable')=='1']
 cpu=[r for r in samples if r['elapsed_ms']>=10000]
 if len(cpu)>1:
     a,b=cpu[0],cpu[-1]
-    result.update(cpu_ms_per_frame=(b['cpu_ms']-a['cpu_ms'])/(b['frame']-a['frame']),
+    result.update(cpu_ms_per_title_boundary=(b['cpu_ms']-a['cpu_ms'])/(b['frame']-a['frame']),
         cpu_core_equivalents=(b['cpu_ms']-a['cpu_ms'])/(b['observer_ms']-a['observer_ms']))
 for line in stdout.splitlines():
     if line.startswith('KATANA_NATIVE_PERFORMANCE_SNAPSHOT '):

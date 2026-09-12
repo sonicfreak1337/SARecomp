@@ -18,13 +18,13 @@ source = sources["native_port_platform.cpp"].decode("utf-8")
 anchor = "#include \"native_port_input_policy.hpp\""
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform include layout changed")
-source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"')
+source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"')
 anchor = "            if ((capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n"
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform Sony axis layout changed")
 correction = """            // Port-local opt-in correction, after identity-bound Sony admission.
-            // XInput, Original camera, movement, buttons and trigger semantics
-            // retain the pinned SDK paths. Replay returns before live polling.
+            // XInput, Original camera, movement and buttons retain the pinned
+            // SDK paths. Sony Z must never also become a phantom trigger.
             if (identity->kind == NativeGamepadSourceKind::DualSense &&
                 ::sonic::presentation::settings().camera_style == ::sonic::camera::Style::Recompiled) {
                 const auto axes = (capabilities.wCaps & (JOYCAPS_HASZ | JOYCAPS_HASR)) == (JOYCAPS_HASZ | JOYCAPS_HASR)
@@ -40,7 +40,13 @@ correction = """            // Port-local opt-in correction, after identity-boun
                 }
             }
 """
-source = source.replace(anchor, correction+anchor)
+# DualSense Z is the proven right-stick X axis, not a combined trigger.
+# Do not guess U/V semantics from capability flags. Dedicated analog trigger
+# admission needs identity-bound endpoint evidence; existing digital shoulder
+# bindings and all XInput/DualShock paths remain untouched.
+trigger_guard = ("            if (identity->kind != NativeGamepadSourceKind::DualSense &&\n"
+                 "                (capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n")
+source = source.replace(anchor, correction+trigger_guard)
 def replace_once(before, after):
     global source
     if source.count(before) != 1:
@@ -59,6 +65,7 @@ replace_once('            const auto& previous = input_snapshot_.gamepads[slot];
     '            if (placement[slot].has_value()) {')
 for field in ('low_frequency','high_frequency'):
     replace_once('vibration.'+field+" * 65'535.0f",'vibration.'+field+" * (::sonic::presentation::settings().vibration / 100.0f) * 65'535.0f")
+
 
 # A paused host dialog must not advance the guest replay cursor or append
 # physical menu navigation to its recording. Retain a separate physical
@@ -96,6 +103,27 @@ replace_once('    NativePortInputSnapshot input_snapshot_;\n',
              '    NativePortInputSnapshot input_snapshot_;\n'
              '    NativePortInputSnapshot physical_input_snapshot_;\n'
              '    bool physical_input_initialized_ = false;\n')
+# Native PuruPuru deadlines cannot depend on game/presentation progress. The
+# worker only calls the already-loaded XInput transport, never guest state.
+# It is joined before that DLL/owner is destroyed. Hidden tests emit nothing.
+replace_once('        if (!input_replay_mode_) initialize_physical_input();\n    }',
+    '        if (!input_replay_mode_) initialize_physical_input();\n'
+    '        const auto* background = std::getenv("KATANA_PORT_BACKGROUND_TEST");\n'
+    '        if (!input_replay_mode_ && !(background && *background && *background != \'0\') && xinput_.set_state)\n'
+    '            ::sonic::rumble::engine().attach(&xinput_, [](void* opaque, unsigned endpoint, std::uint16_t low, std::uint16_t high) noexcept {\n'
+    '                auto& api = *static_cast<XInputApi*>(opaque);\n'
+    '                XINPUT_VIBRATION vibration{low, high};\n'
+    '                return api.set_state(endpoint, &vibration) == ERROR_SUCCESS;\n'
+    '            });\n    }')
+replace_once('        stop_joystick_identity_worker();\n',
+    '        ::sonic::rumble::engine().detach(&xinput_);\n        stop_joystick_identity_worker();\n')
+replace_once('    void finalize_clean_shutdown() {\n        require_owner_thread();',
+    '    void finalize_clean_shutdown() {\n        require_owner_thread();\n        ::sonic::rumble::engine().detach(&xinput_);')
+replace_once('        physical_input_snapshot_ = result;\n',
+    '        for (unsigned slot = 0; slot < native_port_gamepad_count; ++slot) {\n'
+    '            const auto endpoint = vibration_xinput_slot(input_device_ids_[slot]);\n'
+    '            ::sonic::rumble::engine().bind(slot, input_device_ids_[slot], endpoint ? int(*endpoint) : -1);\n'
+    '        }\n        physical_input_snapshot_ = result;\n')
 sources["native_port_platform.cpp"] = source.encode("utf-8")
 destination.mkdir(parents=True, exist_ok=True)
 for name, value in sources.items():

@@ -12,7 +12,12 @@ remains the original ADVERTISE screen 5, returning to new Options screen 8.
       remapped prompts, translations, restart labels and preserved Sound Test.
 - [x] Out-of-process display confirmation/rollback, including failed startup.
 - [x] Action remapping, mouse camera, per-axis sensitivity/inversion,
-      configurable deadzones, vibration and original-camera return delay.
+      configurable deadzones and original-camera return delay.
+- [x] Original PuruPuru requests and automatic stops on the XInput vibration
+      backend, with configurable strength. Native PlayStation output is not
+      implemented; the translated menu help states this limitation.
+- [ ] Original baked tutorial/button hints need per-owner physical-binding
+      substitution. New native menu/quit prompts already follow remapping.
 - [x] Separate music/voice/effects, background mute, subtitle size/backplate,
       original language persistence.
 - [x] Consistent story+Chao profile snapshots, immutable versioned backups,

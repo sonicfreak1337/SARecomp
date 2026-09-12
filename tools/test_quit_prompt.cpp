@@ -73,6 +73,16 @@ int main(int argc,char** argv) {
         require(!controls.sample(physical,remapped,true,confirm_box,cancel_box).back,"focus loss retained pending click");
         physical.pad=1u<<13;physical.connection_changed=true;
         require(!controls.sample(physical,remapped,true).accept,"reconnection pulse confirmed quit");
+        for(unsigned button=1;button<=5;++button){
+            auto mapping=sonic::input::default_bindings;mapping[unsigned(sonic::input::Action::Cancel)].mouse=button;
+            Controls mouse;sonic::input::Snapshot clicks;clicks.focused=true;clicks.cursor_x=40;clicks.cursor_y=40;
+            mouse.sample(clicks,mapping,true,confirm_box,cancel_box);
+            Prompt dialog;dialog.sample(Screen::PressStart,{});dialog.sample(Screen::PressStart,{true,false});dialog.presented();dialog.sample(Screen::PressStart,{});
+            clicks.mouse[button]=true;const auto pressed=mouse.sample(clicks,mapping,true,confirm_box,cancel_box);
+            require(!pressed.back&&!pressed.accept,"remapped mouse cancelled/confirmed quit at press");
+            clicks.mouse[button]=false;const auto released=mouse.sample(clicks,mapping,true,confirm_box,cancel_box);
+            require(released.back&&dialog.sample(Screen::PressStart,released)==Decision::Cancelled,"remapped mouse cancel could confirm quit");
+        }
 
         CpuState cpu{.memory=Memory{0u}};
         require(read_screen(cpu,true)==Screen::None,"unmapped memory is not a title screen");
