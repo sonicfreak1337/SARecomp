@@ -151,7 +151,7 @@ inline constexpr std::string_view
         // Master gain preserves decoder timestamps, stream ends and counts.
         // Settings cap internal rendering at 100 percent. No AOT regeneration.
         // Render interpolation is compiled out; retired INI keys are ignored.
-        "sha256:616621b2542fbce3aff031a2d7682474ecd2876734cba348f1f180edcadb8fc5"};
+        "sha256:520bf060ba82d23267ab62745b77b041e1e8e3a62ff72c3f30e2c5d7fd537873"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

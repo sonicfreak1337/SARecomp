@@ -18,7 +18,7 @@ source = sources["native_port_platform.cpp"].decode("utf-8")
 anchor = "#include \"native_port_input_policy.hpp\""
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform include layout changed")
-source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"')
+source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"\n#include "sonic_sony_input.hpp"')
 anchor = "            if ((capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n"
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform Sony axis layout changed")
@@ -40,12 +40,12 @@ correction = """            // Port-local opt-in correction, after identity-boun
                 }
             }
 """
-# DualSense Z is the proven right-stick X axis, not a combined trigger.
-# Do not guess U/V semantics from capability flags. Dedicated analog trigger
-# admission needs identity-bound endpoint evidence; existing digital shoulder
-# bindings and all XInput/DualShock paths remain untouched.
-trigger_guard = ("            if (identity->kind != NativeGamepadSourceKind::DualSense &&\n"
-                 "                (capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n")
+# The legacy fallback admits only the known Sony layout. Its button bits 6/7
+# provide binary L2/R2; Z must not also become a phantom combined trigger.
+# The complete SDL path below supplies independently mapped analog pressures.
+trigger_guard = ("            destination.left_trigger_raw = (info.dwButtons & (1u << 6u)) ? 255 : 0;\n"
+                 "            destination.right_trigger_raw = (info.dwButtons & (1u << 7u)) ? 255 : 0;\n"
+                 "            if (false && (capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n")
 source = source.replace(anchor, correction+trigger_guard)
 def replace_once(before, after):
     global source
@@ -80,7 +80,8 @@ replace_once('        if (!input_replay_mode_) {\n'+initialization+'\n        }'
              '        if (!input_replay_mode_) initialize_physical_input();')
 replace_once('    [[nodiscard]] NativePortInputSnapshot poll_gamepads() {\n        require_owner_thread();\n        if (input_initial_state_pending_) {',
     '    void initialize_physical_input() {\n'
-    '        if (physical_input_initialized_) return;\n'+initialization+'\n'
+    '        if (physical_input_initialized_) return;\n'
+    '        if (sony_input_.initialize()) { physical_input_initialized_ = true; return; }\n'+initialization+'\n'
     '        physical_input_initialized_ = true;\n    }\n\n'
     '    [[nodiscard]] NativePortInputSnapshot poll_gamepads() {\n        require_owner_thread();\n'
     '        const bool host_poll = ::sonic::input::host_poll_active();\n'
@@ -88,7 +89,17 @@ replace_once('    [[nodiscard]] NativePortInputSnapshot poll_gamepads() {\n     
 replace_once('        if (input_replay_mode_) {\n            input_snapshot_ = input_trace_->next();',
              '        if (input_replay_mode_ && !host_poll) {\n            input_snapshot_ = input_trace_->next();')
 replace_once('        std::vector<NativeGamepadCandidate> candidates;\n',
-             '        initialize_physical_input();\n        std::vector<NativeGamepadCandidate> candidates;\n')
+             '        initialize_physical_input();\n        std::vector<NativeGamepadCandidate> candidates;\n'
+             '        sony_input_.update();\n'
+             '        for (const auto& sample : sony_input_.samples()) {\n'
+             '            NativeGamepadCandidate candidate;\n'
+             '            candidate.device_id = joystick_device_domain | sample.identity;\n'
+             '            candidate.kind = sample.dualsense ? NativeGamepadSourceKind::DualSense : NativeGamepadSourceKind::DualShock;\n'
+             '            candidate.state = sample.state;\n'
+             '            candidates.push_back(candidate);\n'
+             '        }\n')
+replace_once('        const auto joystick_count = joyGetNumDevs();\n',
+             '        const auto joystick_count = sony_input_.active() ? 0u : joyGetNumDevs();\n')
 replace_once('        NativePortInputSnapshot result = input_snapshot_;\n        saturating_increment(result.poll_sequence);',
              '        NativePortInputSnapshot result = physical_input_snapshot_;\n        if (!host_poll) saturating_increment(result.poll_sequence);')
 replace_once('            const auto& previous = input_snapshot_.gamepads[slot];',
@@ -104,26 +115,32 @@ replace_once('    NativePortInputSnapshot input_snapshot_;\n',
              '    NativePortInputSnapshot physical_input_snapshot_;\n'
              '    bool physical_input_initialized_ = false;\n')
 # Native PuruPuru deadlines cannot depend on game/presentation progress. The
-# worker only calls the already-loaded XInput transport, never guest state.
-# It is joined before that DLL/owner is destroyed. Hidden tests emit nothing.
+# worker only calls the identity-bound native transport, never guest state.
+# It is joined before either backend is destroyed. Hidden tests emit nothing.
 replace_once('        if (!input_replay_mode_) initialize_physical_input();\n    }',
     '        if (!input_replay_mode_) initialize_physical_input();\n'
     '        const auto* background = std::getenv("KATANA_PORT_BACKGROUND_TEST");\n'
-    '        if (!input_replay_mode_ && !(background && *background && *background != \'0\') && xinput_.set_state)\n'
-    '            ::sonic::rumble::engine().attach(&xinput_, [](void* opaque, unsigned endpoint, std::uint16_t low, std::uint16_t high) noexcept {\n'
-    '                auto& api = *static_cast<XInputApi*>(opaque);\n'
-    '                XINPUT_VIBRATION vibration{low, high};\n'
-    '                return api.set_state(endpoint, &vibration) == ERROR_SUCCESS;\n'
+    '        if (!input_replay_mode_ && !(background && *background && *background != \'0\'))\n'
+    '            ::sonic::rumble::engine().attach(this, [](void* opaque, unsigned endpoint, std::uint16_t low, std::uint16_t high) noexcept {\n'
+    '                return static_cast<Impl*>(opaque)->send_native_rumble(endpoint, low, high);\n'
     '            });\n    }')
 replace_once('        stop_joystick_identity_worker();\n',
-    '        ::sonic::rumble::engine().detach(&xinput_);\n        stop_joystick_identity_worker();\n')
+    '        ::sonic::rumble::engine().detach(this);\n        sony_input_.shutdown();\n        stop_joystick_identity_worker();\n')
 replace_once('    void finalize_clean_shutdown() {\n        require_owner_thread();',
-    '    void finalize_clean_shutdown() {\n        require_owner_thread();\n        ::sonic::rumble::engine().detach(&xinput_);')
+    '    void finalize_clean_shutdown() {\n        require_owner_thread();\n        ::sonic::rumble::engine().detach(this);\n        sony_input_.shutdown();')
 replace_once('        physical_input_snapshot_ = result;\n',
     '        for (unsigned slot = 0; slot < native_port_gamepad_count; ++slot) {\n'
     '            const auto endpoint = vibration_xinput_slot(input_device_ids_[slot]);\n'
-    '            ::sonic::rumble::engine().bind(slot, input_device_ids_[slot], endpoint ? int(*endpoint) : -1);\n'
+    '            const auto sony_endpoint = (input_device_ids_[slot] & input_device_domain_mask) == joystick_device_domain\n'
+    '                ? sony_input_.endpoint(input_device_ids_[slot] & ~input_device_domain_mask) : -1;\n'
+    '            ::sonic::rumble::engine().bind(slot, input_device_ids_[slot], endpoint ? int(*endpoint) : sony_endpoint);\n'
     '        }\n        physical_input_snapshot_ = result;\n')
+replace_once('    XInputApi xinput_;\n',
+    '    bool send_native_rumble(unsigned endpoint, std::uint16_t low, std::uint16_t high) noexcept {\n'
+    '        if (endpoint >= 4) return sony_input_.rumble(endpoint, low, high);\n'
+    '        XINPUT_VIBRATION vibration{low, high};\n'
+    '        return xinput_.set_state && xinput_.set_state(endpoint, &vibration) == ERROR_SUCCESS;\n'
+    '    }\n\n    XInputApi xinput_;\n    ::sonic::sony::Backend sony_input_;\n')
 sources["native_port_platform.cpp"] = source.encode("utf-8")
 destination.mkdir(parents=True, exist_ok=True)
 for name, value in sources.items():

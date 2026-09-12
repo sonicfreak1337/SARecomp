@@ -30,6 +30,7 @@ void set_modal(bool) noexcept;
 void set_camera_active(bool) noexcept;
 std::array<float,2> consume_mouse_look() noexcept;
 void note_controller(unsigned slot,bool sony,bool connected) noexcept;
+GlyphStyle resolved_glyph_style() noexcept;
 void set_replay(bool) noexcept;
 bool replay() noexcept;
 std::wstring binding_name(const Binding&,GlyphStyle);

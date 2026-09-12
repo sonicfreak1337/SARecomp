@@ -1,5 +1,9 @@
 # Options input and audio completion
 
+The later [Sony and tutorial integration](sony-input-and-tutorial-integration.md)
+supersedes the direct-Sony limitations below. This report preserves the
+earlier batch's evidence and measurement scope.
+
 This port-only continuation preserves the frozen r354 SDK, AOT pack and VMU
 namespace. Interpolation, HUD customization and replay development remain
 withdrawn. Accepted subtitles are unchanged.

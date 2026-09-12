@@ -44,6 +44,7 @@
 #include "sonic_sdk_color.hpp"
 #include "sonic_model_uv.hpp"
 #include "sonic_camera_policy.hpp"
+#include "sonic_tutorial_prompt.hpp"
 #include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
@@ -1935,6 +1936,10 @@ struct SonicNativeTitleState final {
     bool diagnostic_previous_basic_draw_bound = false;
     SonicNativeExecutableTransitionAuthority executable_transition_authority;
     katana::runtime::NativePortTextureHandle font_texture;
+    katana::runtime::NativePortTextureHandle tutorial_prompt_texture;
+    sonic::tutorial::Labels tutorial_prompt_labels;
+    std::uint64_t tutorial_prompt_generation = 0;
+    unsigned tutorial_prompt_visible_width = 0;
     std::uint32_t font_source_address = 0u;
     std::uint32_t font_dimension = 0u;
     std::uint32_t font_format = 0u;
@@ -5126,6 +5131,7 @@ void flush_native_draw_queues(katana::runtime::NativePortContext& context) {
         return pixel_format == Format::Argb1555 ||
                pixel_format == Format::Argb4444;
     };
+    if (texture == sonic_native_title_state.tutorial_prompt_texture) return true;
     if (texture == sonic_native_title_state.font_texture)
         return sonic_native_title_state.font_format ==
                sonic_ninja_font_argb1555_twiddled;
@@ -8176,6 +8182,14 @@ void release_native_font_texture(
 
 void release_native_dynamic_surfaces(
     katana::runtime::NativePortContext& context) {
+    if (sonic_native_title_state.tutorial_prompt_texture) {
+        if (!context.graphics) throw std::runtime_error("tutorial-graphics-missing");
+        retire_or_destroy_native_dynamic_texture(context,
+            sonic_native_title_state.tutorial_prompt_texture,
+            katana::runtime::NativePortTextureAssetPixelFormat::Argb4444);
+        sonic_native_title_state.tutorial_prompt_texture = {};
+        sonic_native_title_state.tutorial_prompt_generation = 0;
+    }
     if (context.graphics == nullptr &&
         (!sonic_native_title_state.dynamic_texture_views.empty() ||
          !sonic_native_title_state.dynamic_surfaces.empty() ||
@@ -15637,6 +15651,7 @@ void report_native_registered_texture_failure(
 
 struct SonicNativeRegisteredTextureSelection final {
     std::array<std::uint32_t, 4u> words{};
+    std::uint32_t source_descriptor = 0u; // First selected SDK row, including duplicate-key order.
 };
 
 [[nodiscard]] bool resolve_native_registered_texture(
@@ -15798,6 +15813,7 @@ struct SonicNativeRegisteredTextureSelection final {
         // 605CEC -> 606948 -> 606AA6 -> 605D4A transaction owns both the
         // selected packet and its persistent RAM effects.
         selection.words[0] = texture_key;
+        selection.source_descriptor = *descriptor;
         selection.words[1] = descriptor_word1;
         if (!reader.u32(*descriptor + 8u, selection.words[2]) ||
             !reader.u32(*descriptor + 12u, selection.words[3])) return false;
@@ -37346,6 +37362,8 @@ finish_native_immediate_state(
     }
 }
 
+#include "sonic_tutorial_prompt_adapter.inc"
+
 [[nodiscard]] katana::runtime::NativePortHookResult
 draw_pretransformed_stream(
     katana::runtime::NativePortContext& context,
@@ -37489,6 +37507,8 @@ draw_pretransformed_stream(
         binding.resolved_asset_bound =
             binding.resolved_asset_identity != 0u;
     }
+    if (textured && texture_bound)
+        sonic_native_apply_tutorial_prompt(context, reader, selection, source, count, texture, vertices);
     auto result = draw_packet(
         context,
         (texture_bound ? ninja_flag_use_texture : 0u) |

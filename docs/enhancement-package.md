@@ -13,11 +13,13 @@ remains the original ADVERTISE screen 5, returning to new Options screen 8.
 - [x] Out-of-process display confirmation/rollback, including failed startup.
 - [x] Action remapping, mouse camera, per-axis sensitivity/inversion,
       configurable deadzones and original-camera return delay.
-- [x] Original PuruPuru requests and automatic stops on the XInput vibration
-      backend, with configurable strength. Native PlayStation output is not
-      implemented; the translated menu help states this limitation.
+- [x] Original PuruPuru requests and automatic stops on XInput and native
+      Sony SDL3 backends, with configurable strength. Sony input/output share
+      one report owner, including independent analog triggers.
 - [ ] Original baked tutorial/button hints need per-owner physical-binding
-      substitution. New native menu/quit prompts already follow remapping.
+      substitution. The common SUMMARY Next/Back bar is implemented, with
+      its actual-game visit still unobserved; character-specific diagrams
+      and in-world hint text remain. Native menu/quit prompts follow remapping.
 - [x] Separate music/voice/effects, background mute, subtitle size/backplate,
       original language persistence.
 - [x] Consistent story+Chao profile snapshots, immutable versioned backups,

@@ -61,6 +61,12 @@ target_sources(katana_native_title_adapter PRIVATE src/sonic_quit_prompt.cpp src
 target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp src/sonic_options_display.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_input.cpp src/sonic_menu.cpp
     src/sonic_menu_image.cpp src/sonic_menu_text.cpp src/sonic_menu_runtime.cpp src/sonic_profiles.cpp src/sonic_restart.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp)
+add_executable(sonic_tutorial_prompt_tests EXCLUDE_FROM_ALL tools/test_tutorial_prompt.cpp
+    src/sonic_tutorial_prompt.cpp src/sonic_input.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_tutorial_prompt_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_tutorial_prompt_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_tutorial_prompt_tests PRIVATE KatanaRecomp::native_port_runtime user32 gdi32 gdiplus)
 target_link_libraries(katana_native_title_adapter PUBLIC user32 gdi32 gdiplus)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
@@ -150,6 +156,19 @@ target_include_directories(sonic_camera_platform PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_camera_platform PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_camera_platform PRIVATE KatanaRecomp::native_port_runtime)
 target_sources(game PRIVATE $<TARGET_OBJECTS:sonic_camera_platform>)
+add_library(sonic_sony_input STATIC src/sonic_sony_input.cpp)
+file(SHA256 "${SONIC_ROOT}/third_party/sdl3/lib/x64/SDL3.dll" sonic_sdl_runtime_sha256)
+if(NOT sonic_sdl_runtime_sha256 STREQUAL "1f98969319302a100931f4385e5918a0bd53ab07773040682d22e7edb54858c0")
+    message(FATAL_ERROR "Pinned SDL 3.4.16 x64 runtime identity changed")
+endif()
+target_include_directories(sonic_sony_input PRIVATE "${SONIC_ROOT}/third_party/sdl3/include")
+target_compile_options(sonic_sony_input PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_sony_input PRIVATE KatanaRecomp::native_port_runtime)
+target_link_libraries(game PRIVATE sonic_sony_input)
+add_executable(sonic_sony_input_tests EXCLUDE_FROM_ALL tools/test_sony_input.cpp)
+target_include_directories(sonic_sony_input_tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_ROOT}/third_party/sdl3/include")
+target_compile_options(sonic_sony_input_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_sony_input_tests PRIVATE sonic_sony_input KatanaRecomp::native_port_runtime)
 
 # Port-local endpoint replacement; preserve the frozen stream/domain ABI.
 set(audio_output "${CMAKE_BINARY_DIR}/generated/audio-output")
@@ -194,6 +213,7 @@ add_executable(sonic_input_poll_tests EXCLUDE_FROM_ALL tools/test_input_poll.cpp
 target_include_directories(sonic_input_poll_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_input_poll_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_input_poll_tests PRIVATE KatanaRecomp::native_port_runtime user32)
+target_link_libraries(sonic_input_poll_tests PRIVATE sonic_sony_input)
 target_link_libraries(game PRIVATE sonic_vulkan)
 target_include_directories(game BEFORE PRIVATE "${SONIC_WORKING}/generated/include")
 target_include_directories(game PRIVATE "${SONIC_ROOT}/src")
@@ -214,6 +234,11 @@ add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL
     "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp")
 add_dependencies(game katana_native_port_link_audit)
 add_custom_command(TARGET game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SONIC_ROOT}/third_party/sdl3/lib/x64/SDL3.dll" "$<TARGET_FILE_DIR:game>/SDL3.dll"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:game>/licenses/sdl3"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SONIC_ROOT}/third_party/sdl3/LICENSE.txt" "$<TARGET_FILE_DIR:game>/licenses/sdl3/LICENSE.txt"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:game>/assets/ui"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SONIC_ROOT}/assets/ui/options-background.png"
         "$<TARGET_FILE_DIR:game>/assets/ui/options-background.png"

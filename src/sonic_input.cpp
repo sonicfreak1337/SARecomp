@@ -187,4 +187,8 @@ std::wstring binding_name(const Binding& b,GlyphStyle style) {
     if(b.mouse)return L"Mouse "+std::to_wstring(b.mouse);
     return L"—";
 }
+GlyphStyle resolved_glyph_style() noexcept {
+    const auto preference=presentation::settings().glyph_style;
+    return preference?GlyphStyle(preference):last_device.load();
+}
 }

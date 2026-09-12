@@ -1,4 +1,21 @@
-# Additional renderer dependencies
+# Additional native dependencies
+
+## SDL3 (Sony controller input and vibration)
+
+Unmodified headers and x64 runtime from the official SDL 3.4.16 VC package.
+Copyright (C) 1997-2026 Sam Lantinga and contributors, zlib license.
+
+- Release: https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16
+- Package: `SDL3-devel-3.4.16-VC.zip`.
+- Package SHA-256: `1a784cb2a5c64d56fe7a62090fe9d242d9865f235e4ea9678f1a6ba4e693e7de`.
+- Included: upstream `include/`, `lib/x64/SDL3.dll`, `LICENSE.txt`.
+- x64 DLL SHA-256: `1f98969319302a100931f4385e5918a0bd53ab07773040682d22e7edb54858c0` (checked at configure).
+- Packaged license: `licenses/sdl3/LICENSE.txt`.
+- Only Sony PS4/PS5 HIDAPI drivers are enabled. Window, audio and Xbox input
+  remain owned by the existing native host. The DLL is loaded from the game
+  directory, with an exact version check; unavailable SDL retains legacy input.
+
+## Renderer dependencies
 
 The Vulkan renderer uses the following pinned upstream components. Their
 copyright notices and full licenses are included in this source tree and
