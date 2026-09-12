@@ -29,6 +29,7 @@
 #include "sonic_presentation.hpp"
 #include "sonic_camera.hpp"
 #include "sonic_startup.hpp"
+#include "sonic_quit_prompt.hpp"
 #include "sonic_sdk_color.hpp"
 
 #include <algorithm>
@@ -16960,6 +16961,8 @@ void apply_sonic_native_gameplay_probe_input(
 
     auto input = context.platform->poll_gamepads();
     apply_sonic_native_gameplay_probe_input(context, input);
+    sonic::quit_prompt::sample_input(context,input,suppress_all || suppress_edges ||
+        sonic_native_private::scenario_menu_open(context));
     sonic::camera::sample_input(context,input,suppress_all);
     constexpr auto slot_count = katana::runtime::native_port_gamepad_count;
     std::array<std::uint32_t, slot_count> existing_pointers{};
@@ -28169,6 +28172,7 @@ sonic_native_render_command_arena_configure(
 
 void release_sonic_native_title_host_providers(
     katana::runtime::NativePortContext& context) noexcept {
+    sonic::quit_prompt::release(context);
     auto& state = sonic_native_title_state;
     // The stopped guest cannot resume. Preserve the original failure's bounded
     // transcript; teardown of retired publications must not overwrite it.
@@ -39347,6 +39351,44 @@ void sonic_native_private_draw_scenario_overlay(
     }
 }
 
+void run_sonic_quit_modal(katana::runtime::NativePortContext& context) {
+    using namespace katana::runtime;
+    // The already-completed title frame contains the popup. Repeat it without
+    // advancing any guest task, demo timer, save operation or original audio.
+    const auto guest_instructions=context.cpu->retired_guest_instructions;
+    const auto guest_frame=context.frame_index;
+    auto* audio=sonic_native_title_state.native_audio_processor_running?
+        sonic_native_title_state.audio_engine.get():nullptr;
+    if(audio)audio->set_output_paused(true);
+    struct Resume {NativePortContext& context;decltype(audio) engine;
+        ~Resume(){try{if(engine)engine->set_output_paused(false);}catch(...){}sonic::quit_prompt::release(context);}
+    } resume{context,audio};
+    while(context.stop_reason==NativePortStopReason::None && sonic::quit_prompt::visible()) {
+        if(try_accept_native_port_host_stop(context))break;
+        if(context.host_deadline_nanoseconds && context.host->monotonic_time_nanoseconds()>=context.host_deadline_nanoseconds) {
+            (void)request_native_port_host_stop(context,NativePortStopReason::HostDeadline);break;
+        }
+        const auto life=context.host->poll_lifecycle();
+        if(life==NativePortLifecycleState::Shutdown) {
+            (void)request_native_port_host_stop(context,NativePortStopReason::HostRequested);break;
+        }
+        const auto decision=sonic::quit_prompt::poll_modal(context,life!=NativePortLifecycleState::Paused);
+        if(decision==sonic::quit_prompt::Decision::Confirmed) {
+            (void)request_native_port_host_stop(context,NativePortStopReason::HostRequested);break;
+        }
+        if(decision==sonic::quit_prompt::Decision::Cancelled)break;
+        if(life==NativePortLifecycleState::Paused)std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        else context.host->present_frame(context.frame_index);
+    }
+    // Fresh normal sampling consumes the closing button until its release.
+    sonic_native_title_state.native_input_frame_index=std::numeric_limits<std::uint64_t>::max();
+    sonic_native_title_state.frame_producer_next_deadline_nanoseconds=0u;
+    sonic_native_title_state.frame_producer_deferred_deadline_nanoseconds=0u;
+    std::cerr<<"SONIC_QUIT modal_end guest_instructions_delta="
+             <<(context.cpu->retired_guest_instructions-guest_instructions)
+             <<" guest_frame_delta="<<(context.frame_index-guest_frame)<<'\n';
+}
+
 [[nodiscard]] bool run_private_scenario_modal(
     katana::runtime::NativePortContext& context) {
     using namespace sonic_native_private;
@@ -39618,7 +39660,12 @@ sonic_native_frame_begin(
                 sonic_native_timer_ticks(context),
                 katana::runtime::CodeWriteSource::Copy);
 
+            if(sonic::quit_prompt::pending() && sonic_native_title_state.frame_open) {
+                flush_native_draw_queues(context);
+                if(sonic::quit_prompt::draw(context))sonic_native_title_state.draw_calls_this_frame+=2;
+            }
             static_cast<void>(complete_native_frame(context, "frame-begin", true, title_cadence_owned));
+            if(!sonic::quit_prompt::visible())sonic::quit_prompt::release(context);
             if (context.stop_reason ==
                     katana::runtime::NativePortStopReason::None &&
                 sonic_native_title_state.development_state_restart_requested)
@@ -39659,6 +39706,11 @@ sonic_native_frame_begin(
 
         if (context.stop_reason != katana::runtime::NativePortStopReason::None)
             return finish_frame_hook();
+
+        if(sonic::quit_prompt::visible()) {
+            run_sonic_quit_modal(context);
+            if(context.stop_reason!=katana::runtime::NativePortStopReason::None)return finish_frame_hook();
+        }
 
         // 0x8C641E40 (and its 0x8C641E7E MMU/TA write) is intentionally not
         // called. The displaced second service was the complete 24-slot SDK

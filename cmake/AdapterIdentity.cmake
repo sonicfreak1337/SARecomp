@@ -11,6 +11,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_camera_style.hpp sonic_camera_orbit.hpp sonic_camera_policy.hpp sonic_camera.hpp sonic_camera.cpp
     sonic_camera_collision.hpp sonic_camera_world.hpp sonic_camera_input.hpp
     sonic_startup.hpp sonic_startup.cpp
+    sonic_quit_prompt.hpp sonic_quit_prompt.cpp sonic_quit_prompt_image.cpp
     ../tools/prepare-camera-platform.py)
 set(hashes)
 foreach(component IN LISTS components)

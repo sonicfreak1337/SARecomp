@@ -57,6 +57,7 @@ add_library(katana_native_title_adapter STATIC
     src/sonic_native_transform_stream.cpp
     src/sonic_private_scenario_launcher.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_presentation.cpp src/sonic_render_culling.cpp src/sonic_language.cpp src/sonic_camera.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp)
 target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_compile_options(katana_native_title_adapter PRIVATE /W4 /permissive- /EHsc /utf-8 /fp:strict)
 target_link_libraries(katana_native_title_adapter PUBLIC KatanaRecomp::native_port_runtime sonic_startup)
@@ -148,6 +149,15 @@ endif()
 add_executable(sonic_presentation_tests EXCLUDE_FROM_ALL tools/test_presentation.cpp src/sonic_presentation.cpp)
 target_include_directories(sonic_presentation_tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_BASE}/sdk/include" "${SONIC_BASE}/sdk/generated/include")
 target_compile_options(sonic_presentation_tests PRIVATE /EHsc /fp:strict)
+
+add_executable(sonic_quit_prompt_tests EXCLUDE_FROM_ALL tools/test_quit_prompt.cpp
+    src/sonic_quit_prompt.cpp src/sonic_quit_prompt_image.cpp src/sonic_presentation.cpp)
+target_include_directories(sonic_quit_prompt_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_quit_prompt_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_quit_prompt_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime gdi32 user32)
 
 add_executable(sonic_camera_tests EXCLUDE_FROM_ALL tools/test_camera.cpp
     src/sonic_camera.cpp src/sonic_presentation.cpp)

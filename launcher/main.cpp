@@ -994,6 +994,14 @@ int main(int argc, char** argv) {
                       << definition.acceptance.milestone_id << '\n';
             return 0;
         }
+        if (context.stop_reason == katana::runtime::NativePortStopReason::HostRequested) {
+            // Leaving at the title is a successful user action even before
+            // the diagnostic FirstVisibleGameFrame acceptance milestone.
+            // Report that distinction; do not claim the game gate passed.
+            std::cout << "SARECOMP_USER_EXIT clean=1 game_gate_reached="
+                      << context.acceptance_reached() << '\n';
+            return 0;
+        }
         std::cerr << "KATANA_NATIVE_PRODUCT_GATE status=not-reached milestone="
                   << definition.acceptance.milestone_id
                   << " stop_reason="

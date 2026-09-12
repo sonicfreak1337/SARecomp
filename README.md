@@ -39,6 +39,10 @@ The development build is **`out/experimental/game.exe`**. Keep its DLLs,
 configuration files and the installed content at their current locations.
 Double-clicking the executable resolves content through `katana-content-root.txt`.
 
+At the title screen, **B / Circle / Escape** opens a localized quit prompt.
+**A / Cross / Enter** confirms; **B / Circle / Escape** cancels. See
+`docs/title-quit.md` for the title-only scope and verification.
+
 Run `./tools/start.ps1` for experiments or
 `./tools/start.ps1 -Mode baseline` for an independent r354 run copy.
 Both seed separate profiles from the local save backup. Directly launching

@@ -45,6 +45,10 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   and caches D3D shader bytecode / Vulkan driver data and pipeline recipes.
   Cache failures must remain optional. Keep OS-cold/reboot measurements
   distinct from an empty application cache. See `docs/startup-performance.md`.
+- Title quitting is host-owned: B/Circle/Escape opens; A/Cross/Enter confirms;
+  B/Circle/Escape cancels. Preserve exact ADVERTISE title-state guards,
+  neutral release, modal guest freeze and normal shutdown. No OS input
+  injection in tests. See `docs/title-quit.md`.
 - The optional native Vulkan renderer lives in `src/renderer/` alongside the
   retained D3D11 path. Selection is in the native Options menu and requires a
   restart. Keep D3D11 and the accepted baseline available. See
