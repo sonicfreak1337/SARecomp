@@ -33,6 +33,12 @@ target_include_directories(sonic_pacing_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_pacing_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_pacing_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
 
+add_executable(sonic_render_completion_tests EXCLUDE_FROM_ALL tools/test_render_completion.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_render_completion_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_render_completion_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_render_completion_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+
 add_executable(sonic_fullscreen_effect_tests EXCLUDE_FROM_ALL tools/test_fullscreen_effects.cpp
     src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
 target_include_directories(sonic_fullscreen_effect_tests PRIVATE "${SONIC_ROOT}/src")

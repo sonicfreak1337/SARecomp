@@ -8,6 +8,10 @@ completion callback. It supersedes the earlier missing-live-proof statements
 and the one-second-callback interpretation in this historical audit. It does
 not complete a timing-faithful60-frame rendering enhancement.
 
+The subsequent [native render-completion candidate](render-completion-experiment.md)
+passes an isolated Sonic run without retiming those updates. It remains a
+default-off correctness experiment, not a measured speedup or60-image solution.
+
 Read-only audit for Eggman, 2026-09-12. Repository: Sonic Adventure Recompiled,
 branch `enhancements/ingame-settings`; inspected HEAD
 `d1e1a2246bd2258a09fb642667870af8ca767122` with concurrent Options/Audio/Input

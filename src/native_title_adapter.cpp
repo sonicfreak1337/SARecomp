@@ -48,6 +48,7 @@
 #include "sonic_tutorial_art.hpp"
 #include "sonic_execution_clock.hpp"
 #include "sonic_update_timing_probe.hpp"
+#include "sonic_render_completion.hpp"
 #include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
@@ -1866,6 +1867,10 @@ struct SonicNativeTitleState final {
     std::uint64_t frame_producer_deadline_remainder = 0u;
     std::uint64_t frame_producer_deadline_rebases = 0u;
     std::uint64_t periodic_callbacks_dispatched = 0u;
+    sonic::render_completion::Channel render_completions;
+    std::uint32_t render_completion_last_callback = 0u;
+    std::uint32_t render_completion_last_counter = 0u;
+    std::uint64_t render_completion_nonzero_callbacks = 0u;
     std::uint32_t periodic_reload_ticks = 0u;
     std::uint64_t begun_frames = 0u;
     bool completed_native_frame_available = false;
@@ -2180,6 +2185,25 @@ struct SonicNativeTitleState final {
 };
 
 thread_local SonicNativeTitleState sonic_native_title_state;
+
+[[nodiscard]] bool sonic_render_completion_experiment_enabled() noexcept {
+    static const bool enabled = [] {
+        const auto* flag = std::getenv("SARECOMP_RENDER_COMPLETION_EXPERIMENT");
+        const auto* background = std::getenv("KATANA_PORT_BACKGROUND_TEST");
+        return flag && std::string_view(flag) == "1" &&
+               background && std::string_view(background) == "1";
+    }();
+    return enabled;
+}
+
+[[nodiscard]] sonic::render_completion::Channel* sonic_guest_render_channel(
+    const std::string_view owner) noexcept {
+    if (!sonic_render_completion_experiment_enabled() ||
+        !sonic_native_title_state.periodic_clock_initialized) return nullptr;
+    return owner == "frame-begin" || owner == "frame-turnover" ||
+           owner == "kamui-drain" || owner == "movie-handoff"
+        ? &sonic_native_title_state.render_completions : nullptr;
+}
 
 void bind_sonic_native_video_refresh(const std::uint32_t rate_hz,
                                     const char* const owner,
@@ -5578,17 +5602,21 @@ void retire_native_frame_graphics(
         !repeated && sonic_native_title_state.draw_calls_this_frame != 0u;
     if (!repeated) flush_native_draw_queues(context);
     report_native_frame_boundary(owner, context, repeated);
-    if (title_cadence_owned) {
-        auto* cadence = dynamic_cast<katana::runtime::NativePortTitleCadenceHost*>(
-            context.host);
-        if (cadence == nullptr || !cadence->title_cadence_available())
-            throw std::runtime_error("sonic-title-cadence-host-unavailable");
-        cadence->present_frame_after_title_cadence(context.frame_index);
-    } else {
-        context.host->present_frame(context.frame_index);
-        sonic_native_title_state.frame_producer_next_deadline_nanoseconds = 0u;
-        sonic_native_title_state.frame_producer_deferred_deadline_nanoseconds = 0u;
-        sonic_native_title_state.frame_producer_deadline_remainder = 0u;
+    {
+        const sonic::render_completion::Submission submission(
+            repeated ? nullptr : sonic_guest_render_channel(owner));
+        if (title_cadence_owned) {
+            auto* cadence = dynamic_cast<katana::runtime::NativePortTitleCadenceHost*>(
+                context.host);
+            if (cadence == nullptr || !cadence->title_cadence_available())
+                throw std::runtime_error("sonic-title-cadence-host-unavailable");
+            cadence->present_frame_after_title_cadence(context.frame_index);
+        } else {
+            context.host->present_frame(context.frame_index);
+            sonic_native_title_state.frame_producer_next_deadline_nanoseconds = 0u;
+            sonic_native_title_state.frame_producer_deferred_deadline_nanoseconds = 0u;
+            sonic_native_title_state.frame_producer_deadline_remainder = 0u;
+        }
     }
     sonic_native_title_state.completed_native_frame_available = true;
     report_native_graphics_contract_telemetry(context);
@@ -17657,6 +17685,7 @@ void emit_sonic_native_gameplay_probe_sample(
                              ? now - probe.active_nanoseconds
                              : 0u;
     const auto presentations = context.host->presented_frames();
+    const auto render_completions = sonic_native_title_state.render_completions.counters();
     SonicGuestReader reader(*context.cpu);
     std::uint32_t release=0,delta=0,tv_mode=0;
     const bool cadence_readable=reader.u32(sonic_frame_producer_release,release) && reader.u32(0x8C754E04u,delta);
@@ -17694,6 +17723,13 @@ void emit_sonic_native_gameplay_probe_sample(
               << " update_timer_setups=" << probe.update_timing.setups
               << " periodic_epoch_ns=" << sonic_native_title_state.periodic_epoch_nanoseconds
               << " periodic_callbacks=" << sonic_native_title_state.periodic_callbacks_dispatched
+              << " render_completion_experiment=" << int(sonic_render_completion_experiment_enabled())
+              << " guest_render_submitted=" << render_completions.submitted
+              << " guest_render_completed=" << render_completions.completed
+              << " guest_render_dispatched=" << render_completions.dispatched
+              << " guest_render_callback=" << sonic_native_title_state.render_completion_last_callback
+              << " guest_render_counter=" << sonic_native_title_state.render_completion_last_counter
+              << " guest_render_nonzero_callbacks=" << sonic_native_title_state.render_completion_nonzero_callbacks
               << " update_unreadable=" << probe.update_timing.unreadable
               << " execution_thread_id=" << clock.thread_id
               << " execution_cpu_valid=" << int(clock.thread_valid)
@@ -19149,7 +19185,8 @@ apply_sonic_native_private_stage_tuple_override(
 
 [[nodiscard]] bool invoke_frame_aot_interrupt_service(
     katana::runtime::NativePortContext& context,
-    const std::uint32_t entry) noexcept {
+    const std::uint32_t entry,
+    const std::uint32_t* const argument_r4) noexcept {
     if (context.cpu == nullptr) return false;
 
     // The completion owner is registered as an asynchronous SDK callback.
@@ -19194,6 +19231,7 @@ apply_sonic_native_private_stage_tuple_override(
     const auto tlb_load_count = cpu.tlb_load_count;
     const auto exception_generation = cpu.exception_generation;
 
+    if (argument_r4 != nullptr) cpu.r[4] = *argument_r4;
     const bool complete = invoke_frame_aot_service(context, entry) &&
                           cpu.prefetch_count == prefetch_count &&
                           cpu.tlb_load_count == tlb_load_count &&
@@ -19232,6 +19270,12 @@ apply_sonic_native_private_stage_tuple_override(
     cpu.last_prefetch_address = saved_prefetch_address;
     cpu.last_prefetch_was_store_queue = saved_prefetch_was_store_queue;
     return complete;
+}
+
+[[nodiscard]] bool invoke_frame_aot_interrupt_service(
+    katana::runtime::NativePortContext& context,
+    const std::uint32_t entry) noexcept {
+    return invoke_frame_aot_interrupt_service(context, entry, nullptr);
 }
 
 enum class SonicFrameProducerFailure : std::uint32_t {
@@ -19659,9 +19703,41 @@ enum class SonicPeriodicHostTimeFailure : std::uint32_t {
     return false;
 }
 
+[[nodiscard]] bool service_sonic_render_completions(
+    katana::runtime::NativePortContext& context) {
+    auto& channel = sonic_native_title_state.render_completions;
+    const auto frontier = channel.counters();
+    if (frontier.dispatched > frontier.completed || frontier.completed > frontier.submitted)
+        return false;
+    // Counter sampling belongs at interrupt delivery, just as the original
+    // C118 reads TCNT1 when its callback executes. Rendering does not reset
+    // the timer. A setup in between submission and delivery owns the epoch.
+    for (auto next = frontier.dispatched; next < frontier.completed; ++next) {
+        SonicPeriodicCounterSnapshot sample;
+        if (!periodic_counter_snapshot(context, sample)) return false;
+        SonicGuestReader reader(*context.cpu);
+        std::uint32_t callback = 0u;
+        if (!reader.valid() || !reader.u32(sonic_periodic_callback_slot, callback)) return false;
+        katana::runtime::guest_write_u32(*context.cpu, sonic_periodic_observed_counter,
+            sample.counter, katana::runtime::CodeWriteSource::Copy);
+        if (!invoke_frame_aot_interrupt_service(context, sonic_periodic_callback_service,
+                                               &sample.counter) || !channel.acknowledge())
+            return false;
+        auto& state = sonic_native_title_state;
+        state.render_completion_last_callback = callback;
+        state.render_completion_last_counter = sample.counter;
+        state.render_completion_nonzero_callbacks += callback != 0u;
+    }
+    return true;
+}
+
 [[nodiscard]] bool service_periodic_host_time(
     katana::runtime::NativePortContext& context) {
     static_cast<void>(service_sonic_host_resume(context));
+    // Private correction to the source-authenticated render-done owner. The
+    // former one-second callback path remains the unchanged product default.
+    if (sonic_render_completion_experiment_enabled())
+        return service_sonic_render_completions(context);
     if (!sonic_native_title_state.periodic_clock_initialized)
         return true;
     if (sonic_native_title_state.periodic_reload_ticks == 0u)
@@ -26180,6 +26256,11 @@ capture_sonic_native_development_state(
 
     context.graphics->finish();
     collect_native_pvm_allocations(context);
+    // A quiescent snapshot must include the RAM effects of all completed
+    // guest renders. Tickets themselves are host lifetime data, not saves.
+    if (sonic_render_completion_experiment_enabled() &&
+        !service_sonic_render_completions(context))
+        throw std::runtime_error("development-state-render-completion");
     SonicNativeDevelopmentState result;
     const auto now = context.host->monotonic_time_nanoseconds();
     result.saved_frame_index = context.frame_index;
@@ -31264,6 +31345,8 @@ sonic_native_play_movie(
             // This seals the GPU command frame in order. host->present_frame
             // and complete_native_frame would also register a simulation tick,
             // advance title audio and service gameplay safepoints here.
+            const sonic::render_completion::Submission submission(
+                sonic_guest_render_channel("movie-handoff"));
             context.graphics->present();
             sonic_native_title_state.completed_native_frame_available = true;
             retire_native_frame_graphics(context);
@@ -40463,6 +40546,9 @@ sonic_native_kamui_present_drain(
         return graphics_abort(sonic_native_graphics_error_context);
     const auto prefetch_count_on_entry = context.cpu->prefetch_count;
     try {
+        if (sonic_render_completion_experiment_enabled() &&
+            !service_sonic_render_completions(context))
+            return graphics_abort(sonic_native_frame_error_periodic_time);
         // This exact whole-function replacement is the only present/drain
         // sink in the private bring-up path.  It deliberately has no TA/PVR
         // work to drain: earlier verified NINJA hooks submit NativePortDrawPacket

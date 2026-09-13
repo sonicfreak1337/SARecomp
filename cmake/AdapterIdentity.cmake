@@ -8,7 +8,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp
     sonic_render_culling.hpp sonic_render_culling.cpp sonic_sdk_color.hpp sonic_model_uv.hpp renderer/sonic_motion.hpp renderer/sonic_motion_view.hpp
     sonic_language.hpp sonic_language.cpp renderer/renderer_selection.hpp
-    sonic_motion_owner.hpp sonic_dispatch_memo.hpp sonic_execution_clock.hpp ../tools/prepare-motion-dispatch.py
+    sonic_motion_owner.hpp sonic_dispatch_memo.hpp sonic_execution_clock.hpp sonic_render_completion.hpp ../tools/prepare-motion-dispatch.py
     sonic_camera_style.hpp sonic_camera_orbit.hpp sonic_camera_policy.hpp sonic_camera.hpp sonic_camera.cpp
     sonic_camera_collision.hpp sonic_camera_world.hpp sonic_camera_input.hpp
     sonic_startup.hpp sonic_startup.cpp

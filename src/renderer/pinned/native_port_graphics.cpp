@@ -8,6 +8,7 @@
 #include "../../sonic_startup.hpp"
 #include "../../sonic_input.hpp"
 #include "../../sonic_presentation.hpp"
+#include "../../sonic_render_completion.hpp"
 #include "../sonic_motion.hpp"
 
 #include <algorithm>
@@ -7652,6 +7653,8 @@ class NativePortGraphicsDevice::Impl final {
                 },
                 NativePortGraphicsFailure::InvalidFrame,
                 "present-command-encode");
+            batch_render_completion_ = {batch_command_count_ - 1u,
+                                        sonic::render_completion::capture()};
             // Retire the preceding submitted frame before publishing this one.
             // The just-published frame remains asynchronous, so simulation can
             // build the next frame while the consumer renders it. This admits
@@ -7807,6 +7810,11 @@ class NativePortGraphicsDevice::Impl final {
             NativePortLifecycleState::Running;
         std::uint64_t state_revision = 0u;
         std::uint32_t failed_ordinal = 0u;
+    };
+
+    struct RenderCompletion final {
+        std::uint64_t ordinal = 0u;
+        sonic::render_completion::Ticket ticket;
     };
 
     static void saturating_add_value(
@@ -8362,6 +8370,11 @@ class NativePortGraphicsDevice::Impl final {
         NativePortGraphicsBackend& backend,
         NativePortFrameReadLease& lease) noexcept {
         const auto sequence = lease.sequence();
+        // Producer writes this sidecar before queue publication (release).
+        // Acquiring the matching read lease makes it visible; the reply must
+        // be retired before this depth-2 slot can be reused by the producer.
+        const auto render_completion = render_completions_[
+            static_cast<std::size_t>((sequence - 1u) % render_completions_.size())];
         std::vector<sonic::motion::Annotation> annotations;
         if constexpr(sonic::presentation::Settings::interpolation) {
             const std::lock_guard lock(motion_annotations_mutex_);
@@ -8395,6 +8408,11 @@ class NativePortGraphicsDevice::Impl final {
                 if(annotation_index<annotations.size()&&annotations[annotation_index].ordinal==ordinal)
                     annotation=&annotations[annotation_index++];
                 shutdown = execute_command(backend, *command,annotation) || shutdown;
+                if (render_completion.ticket && render_completion.ordinal == ordinal) {
+                    if (command->kind != NativePortGraphicsCommandKind::Present ||
+                        !render_completion.ticket.complete())
+                        fail_facade("guest-render-completion-order");
+                }
                 // Long draw leases must not monopolize the immediate context
                 // for several output periods. Bound clock/atomic checks to
                 // one per 16 commands and keep any failure inside this lease's
@@ -8614,6 +8632,8 @@ class NativePortGraphicsDevice::Impl final {
 
         const auto sequence = batch_sequence_;
         const auto command_count = batch_command_count_;
+        render_completions_[static_cast<std::size_t>(
+            (sequence - 1u) % render_completions_.size())] = batch_render_completion_;
         if(sonic::presentation::Settings::interpolation && !motion_annotations_.empty()){
             const std::lock_guard lock(motion_annotations_mutex_);
             motion_published_annotations_.emplace(sequence,std::move(motion_annotations_));
@@ -8632,6 +8652,8 @@ class NativePortGraphicsDevice::Impl final {
         batch_lease_.reset();
         batch_sequence_ = 0u;
         batch_command_count_ = 0u;
+
+        batch_render_completion_ = {};
 
         saturating_atomic_add(recorded_commands_, command_count);
         last_recorded_sequence_.store(sequence, std::memory_order_release);
@@ -8653,6 +8675,7 @@ class NativePortGraphicsDevice::Impl final {
     }
 
     void abort_open_batch() noexcept {
+        batch_render_completion_ = {};
         motion_annotations_.clear();
         if (batch_writer_.has_value()) batch_writer_->abort();
         batch_writer_.reset();
@@ -9159,6 +9182,8 @@ class NativePortGraphicsDevice::Impl final {
         NativePortLifecycleState::Running;
     std::uint64_t startup_state_revision_ = 0u;
     std::array<ReplySlot, native_port_frame_queue_depth> reply_slots_;
+    std::array<RenderCompletion, native_port_frame_queue_depth> render_completions_;
+    RenderCompletion batch_render_completion_;
     std::optional<NativePortFrameWriteLease> batch_lease_;
     std::optional<NativePortGraphicsCommandWriter> batch_writer_;
     std::uint64_t batch_sequence_ = 0u;

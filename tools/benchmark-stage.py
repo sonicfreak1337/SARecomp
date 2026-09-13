@@ -20,6 +20,7 @@ parser.add_argument('--height', type=int, default=1332)
 parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
 parser.add_argument('--update-timing', action='store_true', help='Private read-only original update/timer trace; diagnostic timing')
+parser.add_argument('--render-completion', action='store_true', help='Private native guest-render completion experiment')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
@@ -60,6 +61,7 @@ env.update({
 })
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
 if args.update_timing: env['SARECOMP_UPDATE_TIMING_TRACE']='1'
+if args.render_completion: env['SARECOMP_RENDER_COMPLETION_EXPERIMENT']='1'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
@@ -191,12 +193,26 @@ if args.update_timing:
         result['task_traversals_per_title_boundary']=(int(b['update_tasks'])-int(a['update_tasks']))/(int(b['frame'])-int(a['frame']))
         elapsed_calls=int(b['update_elapsed'])-int(a['update_elapsed'])
         result['elapsed_extra_fraction']=(int(b['update_elapsed_extra'])-int(a['update_elapsed_extra']))/elapsed_calls if elapsed_calls else None
+if args.render_completion:
+    def valid_completions(row):
+        submitted=int(row.get('guest_render_submitted','0'))
+        completed=int(row.get('guest_render_completed','0'))
+        dispatched=int(row.get('guest_render_dispatched','0'))
+        return (row.get('render_completion_experiment')=='1' and
+            submitted >= completed >= dispatched > 0 and submitted-dispatched <= 2 and
+            0 <= int(row.get('guest_render_counter','-1')) <= 12500000 and
+            row.get('periodic_callbacks')=='0')
+    result['render_completion_passed']=bool(steady) and all(map(valid_completions,steady))
+    if len(steady)>1:
+        a,b=steady[0],steady[-1]
+        result['render_notifications_per_second']=(int(b['guest_render_dispatched'])-int(a['guest_render_dispatched']))/((int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9)
 # This probe requests a graceful deadline at 60 seconds of gameplay. Exit 1
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
     and len(steady) > 1 and len(cpu) > 1 and result['profile_passed']
     and (not args.update_timing or result['update_timing_passed'])
+    and (not args.render_completion or result['render_completion_passed'])
     and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))

@@ -1,5 +1,10 @@
 # Original update cadence: live evidence and callback ownership
 
+Follow-up: the [isolated render-completion experiment](render-completion-experiment.md)
+now implements the source-authenticated notification owner and passes a hidden
+Sonic run plus D3D11/Vulkan components. It remains default-off; the original
+counter arithmetic, PAL update sequence and production callback path are intact.
+
 The current hidden Emerald Coast fixture executes about **59.63 original task
 traversals/s**, while producing **17.74 new images/s** and **143.73 output/s**.
 These are three separate counters. This is not a completed 60-frame rendering

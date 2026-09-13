@@ -54,6 +54,29 @@ void until(CpuState& cpu,std::uint32_t end,unsigned limit=24) {
 auto registers(const CpuState& cpu) {
     return std::tuple(cpu.r,cpu.fr,cpu.xf,cpu.pc,cpu.pr,cpu.sr,cpu.macl,cpu.mach,cpu.t,cpu.read_fpscr());
 }
+void render_completion_contract(CpuState& cpu) {
+    // Execute the byte-bound original notification service. The counter read
+    // and interrupt epilogue are outside this hardware-free component.
+    constexpr auto returned=0x8CF80000u, fixture=0x8CF80020u;
+    for (const bool callback : {false,true}) {
+        cpu.pc=0x8C604486u;cpu.pr=returned;cpu.write_sr(sr_md_mask);cpu.write_fpscr(0u);
+        cpu.exception_generation=0;cpu.trap_pending=false;
+        cpu.r[15]=0x8CF00000u;cpu.r[14]=0xABCDEF01u;cpu.r[4]=0x00BC1234u;
+        cpu.memory.write_u32(0x0C6733B8u,callback?fixture:0u);
+        cpu.memory.write_u32(0x0C88F710u,1u);cpu.memory.write_u32(0x0C88F718u,0u);
+        until(cpu,callback?fixture:returned,64u);
+        require(cpu.memory.read_u32(0x0C88F710u)==0u && cpu.memory.read_u32(0x0C88F718u)==1u,
+            "render flags not published before callback");
+        require(cpu.r[4]==0x00BC1234u,"render counter argument corrupted");
+        if(callback) {
+            require(cpu.pr==0x8C6044A2u,"render callback return changed");
+            cpu.pc=cpu.pr;until(cpu,returned);
+        }
+        require(cpu.r[15]==0x8CF00000u && cpu.r[14]==0xABCDEF01u,"render service callee-save corrupted");
+    }
+    std::cout<<"SONIC_ORIGINAL_RENDER_COMPLETION_OK flags_before_callback=1 counter_argument=1 null_and_registered=1\n";
+}
+
 struct LoopResult {
     std::vector<unsigned> iterations, waits;
     std::string sequence;
@@ -256,6 +279,7 @@ int main(int argc,char** argv) {
                 vertical==(mode==1?0x0270035Fu:0x020C0359u),"original video constructor tuple changed");
         }
         update_loop_contract(cpu);
+        render_completion_contract(cpu);
         std::cout<<"SONIC_LEGACY_VIDEO_TESTS_OK retail_calls="<<cases<<" apply=test=restore=ok cpu_ram_preserved=1 menu_continuation=ok clock_arguments=4 constructors=2 update_loop=ok\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
