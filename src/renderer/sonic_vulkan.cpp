@@ -822,6 +822,18 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
         }
     }
     // Finish any partial simulation submission without resolving its live OIT list.
+    // A repeated image must not wait for a fenced submission slot that the
+    // GPU/present queue still owns. Keep the live prefix intact and retry at
+    // the next output deadline; normal simulation commands retain their fences.
+    if(nonblocking) {
+        const auto next=(p.submission_index+(p.current?1u:0u))%p.submissions.size();
+        const auto& slot=p.submissions[next];
+        if(slot.pending) {
+            const auto status=vkGetFenceStatus(p.device,slot.fence);
+            if(status==VK_NOT_READY) return false;
+            check(status,"vulkan-present-fence-status");
+        }
+    }
     p.submit(); p.start();
     unsigned index=0;
     auto acquired=vkAcquireNextImageKHR(p.device,p.swapchain,nonblocking?0:UINT64_MAX,p.current->acquire,{},&index);

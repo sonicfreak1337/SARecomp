@@ -110,6 +110,12 @@ int main(int argc,char** argv) {
         RECT recovery_original{},recovery_after{};GetWindowRect(recovery_window,&recovery_original);
         const auto recovery_visible=IsWindowVisible(recovery_window);
         const auto recovery_focus=GetForegroundWindow();
+        const auto same_size_resizes=device.snapshot().swap_chain_resizes;
+        SendMessageW(recovery_window,WM_DISPLAYCHANGE,32,MAKELPARAM(128,128));
+        device.begin_frame();device.draw(packet);device.present();device.finish();
+        if(sonic::rendering::selected_renderer==sonic::rendering::Renderer::D3D11 &&
+            device.snapshot().swap_chain_resizes<=same_size_resizes)
+            throw std::runtime_error("Same-size display transition skipped flip buffer recreation");
         SetWindowPos(recovery_window,nullptr,100000,100000,0,0,SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER);
         SendMessageW(recovery_window,WM_DISPLAYCHANGE,32,MAKELPARAM(1920,1080));
         // poll_events is a nonblocking mailbox read in Parallel mode. Finish
@@ -123,7 +129,7 @@ int main(int argc,char** argv) {
             SWP_NOACTIVATE|SWP_NOZORDER);
         static_cast<void>(device.poll_events());
         std::cout<<"SONIC_DISPLAY_RECOVERY_OK hidden=1 focus_unchanged=1 offscreen_rehomed=1 render_after_change=1\n";
-        if (sonic::rendering::selected_renderer==sonic::rendering::Renderer::Vulkan) {
+        {
             HWND window=nullptr;
             EnumWindows([](HWND candidate,LPARAM context)->BOOL {
                 DWORD pid=0; GetWindowThreadProcessId(candidate,&pid);
@@ -149,15 +155,15 @@ int main(int argc,char** argv) {
             if (!EqualRect(&after,&monitor.rcMonitor) || GetMenu(window) ||
                 client.right!=after.right-after.left || client.bottom!=after.bottom-after.top ||
                 IsWindowVisible(window)!=visible)
-                throw std::runtime_error("Vulkan fullscreen did not fill the monitor invisibly");
+                throw std::runtime_error("Fullscreen did not fill the monitor invisibly");
             static_cast<void>(device.poll_events()); device.begin_frame(); device.draw(packet); device.present(); device.finish();
             SendMessageW(window,WM_SYSKEYDOWN,VK_RETURN,alt);
             GetWindowRect(window,&after);
             if (!EqualRect(&before,&after) || GetMenu(window)!=menu ||
                 GetWindowLongPtrW(window,GWL_STYLE)!=style || IsWindowVisible(window)!=visible)
-                throw std::runtime_error("Vulkan fullscreen did not restore its window/menu");
+                throw std::runtime_error("Fullscreen did not restore its window/menu");
             static_cast<void>(device.poll_events()); device.begin_frame(); device.draw(packet); device.present(); device.finish();
-            std::cout<<"SONIC_VULKAN_FULLSCREEN_TEST_OK enter=1 repeat_ignored=1 restore=1 swapchain_resizes="
+            std::cout<<"SONIC_FULLSCREEN_TEST_OK backend="<<argv[1]<<" enter=1 repeat_ignored=1 restore=1 swapchain_resizes="
                      <<device.snapshot().swap_chain_resizes<<'\n';
         }
         return 0;

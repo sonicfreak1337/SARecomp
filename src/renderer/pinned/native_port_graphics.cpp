@@ -1523,6 +1523,7 @@ class NativePortGraphicsBackend final {
             // Re-query surface/present-mode support even when two monitors
             // happen to have equal pixel dimensions. Guest render size stays.
             if(vulkan_)vulkan_->resize(output_extent_);
+            else if(flip_swap_chain_) swap_chain_resize_required_=true;
         }
         apply_pending_resize();
         if(display_rate_dirty_)refresh_display_rate();
@@ -1545,8 +1546,13 @@ class NativePortGraphicsBackend final {
     [[nodiscard]] std::uint32_t effective_presentation_rate(std::uint32_t manual) const noexcept {
         return config_.synchronize_present ? display_rate_hz_ : manual;
     }
+    [[nodiscard]] bool nonblocking_output_enabled() const noexcept {
+        return allow_nonblocking_present_ && (vulkan_ || flip_swap_chain_) &&
+            runtime_options_ && runtime_options_->independent_presentation_enabled.load(
+                std::memory_order_acquire);
+    }
     [[nodiscard]] bool driver_paces_output() const noexcept {
-        return config_.synchronize_present && !minimized_ &&
+        return config_.synchronize_present && !nonblocking_output_enabled() && !minimized_ &&
             window_ && IsWindowVisible(window_);
     }
 
@@ -3268,8 +3274,7 @@ if (!vulkan_) {
                 inject_present_failure_once_ = false;
                 fail(NativePortGraphicsFailure::DeviceLost, static_cast<std::uint32_t>(E_FAIL), operation);
             }
-            const bool nonblocking = sonic::presentation::settings().vsync!=1 && allow_nonblocking_present_ && runtime_options_ != nullptr &&
-                runtime_options_->independent_presentation_enabled.load(std::memory_order_acquire);
+            const bool nonblocking = nonblocking_output_enabled();
             if (nonblocking && inject_present_busy_once_) {
                 inject_present_busy_once_ = false;
                 return NativePortBackendPresentOutcome::Deferred;
@@ -3342,11 +3347,9 @@ if (!vulkan_) {
         // SerialReference presentation retain their established contract.
         // Flycast's D3D11 presenter uses the same flag/result pair in
         // core/rend/dx11/dx11context.cpp.
-        const bool nonblocking =
-            sonic::presentation::settings().vsync!=1 && allow_nonblocking_present_ && flip_swap_chain_ &&
-            runtime_options_ != nullptr &&
-            runtime_options_->independent_presentation_enabled.load(
-                std::memory_order_acquire);
+        // VSync controls scanout, not whether this shared render owner may
+        // sleep while the simulation awaits a resource/completion reply.
+        const bool nonblocking = nonblocking_output_enabled();
         // A single queued frame causes DO_NOT_WAIT to reject otherwise
         // useful output deadlines while DWM still owns the preceding image.
         // Bound independent output to two frames; the serial path keeps one.
@@ -3367,7 +3370,7 @@ if (!vulkan_) {
             result = DXGI_ERROR_WAS_STILL_DRAWING;
         } else {
             result = swap_chain_->Present(
-                nonblocking ? 0u : (config_.synchronize_present ? 1u : 0u),
+                config_.synchronize_present ? 1u : 0u,
                 nonblocking ? DXGI_PRESENT_DO_NOT_WAIT : 0u);
         }
         if (present_wait_timer.has_value()) present_wait_timer->stop();
@@ -3653,17 +3656,17 @@ if (!vulkan_) {
         if(sonic::input::window_message(window,message,word,data))return 0;
         switch (message) {
         case WM_SYSKEYDOWN:
-            if ((self->vulkan_ || sonic::rendering::selected_window_mode != sonic::rendering::WindowMode::Windowed) && word == VK_RETURN &&
+            if (word == VK_RETURN &&
                 (static_cast<std::uintptr_t>(data) & (std::uintptr_t{1u} << 29u))) {
                 if ((static_cast<std::uintptr_t>(data) & (std::uintptr_t{1u} << 30u)) == 0u &&
                     !self->toggle_window_mode())
-                    std::fprintf(stderr,"SONIC_VULKAN_FULLSCREEN_ERROR win32=%lu\n",GetLastError());
+                    std::fprintf(stderr,"SONIC_FULLSCREEN_ERROR win32=%lu\n",GetLastError());
                 return 0;
             }
             return DefWindowProcW(window, message, word, data);
         case WM_SYSCHAR:
         case WM_SYSKEYUP:
-            if ((self->vulkan_ || sonic::rendering::selected_window_mode != sonic::rendering::WindowMode::Windowed) && word == VK_RETURN) return 0;
+            if (word == VK_RETURN) return 0;
             return DefWindowProcW(window, message, word, data);
         case WM_KEYDOWN:
             if (word == VK_F1 && (GetKeyState(VK_CONTROL) & 0x8000)) {
@@ -3705,6 +3708,12 @@ if (!vulkan_) {
         case WM_DISPLAYCHANGE:
             self->display_change_pending_=true;
             return 0;
+        case WM_ACTIVATEAPP:
+            // DXGI can relinquish exclusive ownership on focus loss even
+            // without changing pixel dimensions. Rebind before next Present.
+            if(self->d3d_exclusive_ && self->flip_swap_chain_)
+                self->swap_chain_resize_required_=true;
+            return DefWindowProcW(window, message, word, data);
         case WM_DPICHANGED:
             if(!self->fullscreen_.active()&&data) {
                 const auto& r=*reinterpret_cast<const RECT*>(data);
@@ -3733,15 +3742,17 @@ if (!vulkan_) {
 
     bool toggle_window_mode() noexcept {
         if (d3d_exclusive_) {
-            if (FAILED(swap_chain_->SetFullscreenState(FALSE,nullptr))) return false;
+            if (swap_chain_->SetFullscreenState(FALSE,nullptr)!=S_OK) return false;
             d3d_exclusive_=false;
+            swap_chain_resize_required_=flip_swap_chain_;
         }
         if (!fullscreen_.toggle(window_)) return false;
         if (fullscreen_.active() && swap_chain_ &&
             sonic::rendering::selected_window_mode==sonic::rendering::WindowMode::Fullscreen &&
             !background_test_mode_requested()) {
             const auto result=swap_chain_->SetFullscreenState(TRUE,nullptr);
-            d3d_exclusive_=SUCCEEDED(result);
+            d3d_exclusive_=result==S_OK;
+            if(d3d_exclusive_) swap_chain_resize_required_=flip_swap_chain_;
             if (!d3d_exclusive_)
                 std::fprintf(stderr,"SONIC_FULLSCREEN_FALLBACK backend=d3d11 mode=borderless result=%ld\n",result);
         }
@@ -4327,6 +4338,14 @@ if (!vulkan_) {
                  static_cast<std::uint32_t>(result),
                  "d3d11-device");
         feature_level_ = selected;
+        // Alt+Enter is owned by our window handler for both backends. DXGI's
+        // implicit toggle would bypass the required flip-buffer invalidation.
+        ComPtr<IDXGIFactory> factory;
+        result=swap_chain_->GetParent(IID_PPV_ARGS(factory.GetAddressOf()));
+        if(SUCCEEDED(result)) result=factory->MakeWindowAssociation(window_,DXGI_MWA_NO_ALT_ENTER);
+        if(FAILED(result))
+            fail(NativePortGraphicsFailure::ResourceCreation,
+                 static_cast<std::uint32_t>(result),"swap-chain-window-association");
         if (SUCCEEDED(device_.As(&dxgi_device_))) {
             if (SUCCEEDED(dxgi_device_->SetMaximumFrameLatency(1u)))
                 applied_present_queue_limit_ = 1u;
@@ -4771,7 +4790,7 @@ if (!vulkan_) {
     void apply_pending_resize() {
         if (pending_output_extent_.width == 0u ||
             pending_output_extent_.height == 0u ||
-            (pending_output_extent_.width == output_extent_.width &&
+            (!swap_chain_resize_required_ && pending_output_extent_.width == output_extent_.width &&
              pending_output_extent_.height == output_extent_.height))
             return;
         if (!valid_extent(pending_output_extent_))
@@ -4799,6 +4818,7 @@ if (!vulkan_) {
             fail(NativePortGraphicsFailure::DeviceLost,
                  static_cast<std::uint32_t>(result),
                  "swap-chain-resize");
+        swap_chain_resize_required_=false;
         output_extent_ = pending_output_extent_;
         refresh_layout();
         create_swap_chain_target();
@@ -7029,6 +7049,7 @@ if (!vulkan_) {
     bool inject_present_failure_once_ = false;
     bool inject_present_busy_once_ = false;
     bool flip_swap_chain_ = false;
+    bool swap_chain_resize_required_ = false;
     bool allow_nonblocking_present_ = true;
     UINT present_queue_limit_ = 2u;
     UINT applied_present_queue_limit_ = 0u;
@@ -8194,7 +8215,8 @@ class NativePortGraphicsDevice::Impl final {
         for (;;) {
             if (auto lease = queue_->try_begin_consume(); lease.has_value()) {
                 if (consume_lease(*backend, *lease)) break;
-                if (!service_idle_presentation(*backend)) break;
+                // Drain queued resources/geometry before repeating an old
+                // image. Producer replies must not wait behind idle output.
                 continue;
             }
             // ShowWindow/DispatchMessage can deliver resize state
@@ -8287,7 +8309,10 @@ class NativePortGraphicsDevice::Impl final {
             consumer_presentation_deadline_=now;
             consumer_presentation_remainder_=0u;
         }
-        if (wait && now < consumer_presentation_deadline_) {
+        const bool wait_for_output = wait &&
+            (sonic::presentation::settings().gameplay_timing==0u ||
+             !backend.nonblocking_output_enabled());
+        if (wait_for_output && now < consumer_presentation_deadline_) {
             wait_until_monotonic_nanoseconds(consumer_presentation_deadline_);
             now = presentation_now();
         }
@@ -8435,6 +8460,7 @@ class NativePortGraphicsDevice::Impl final {
                 // normal atomic abort/skip-rest-of-frame handling.
                 if (command->kind == NativePortGraphicsCommandKind::Draw &&
                     (ordinal & 15u) == 15u &&
+                    backend.nonblocking_output_enabled() &&
                     autonomous_presentation_active(backend) &&
                     backend.completed_image_available())
                     present_on_consumer_deadline(backend, false);

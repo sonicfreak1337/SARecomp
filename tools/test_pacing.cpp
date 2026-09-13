@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "sonic_presentation.hpp"
 #include <cstdlib>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -22,7 +23,7 @@ int main(int argc,char** argv){
         NativePortFramePacingConfig pacing;pacing.simulation_rate_hz=30;pacing.presentation_rate_hz=settings.presentation_fps;pacing.maximum_presentation_rate_hz=144;
         NativePortDesktopHost host(graphics,pacing);
         if(!host.title_cadence_available())throw std::runtime_error("independent presentation disabled");
-        for(unsigned rate: settings.gameplay_timing==0 ? std::initializer_list<unsigned>{25u,60u,30u,50u} : std::initializer_list<unsigned>{30u}){
+        for(unsigned rate: settings.gameplay_timing==0 ? std::initializer_list<unsigned>{25u,60u,30u,50u} : std::initializer_list<unsigned>{30u,60u}){
             // Original output must follow changing scene cadence with the same
             // live render owner, while Recompiled repeats this 30-Hz fixture.
             std::uint64_t start=0,presented=0,repeated=0;
@@ -32,7 +33,18 @@ int main(int argc,char** argv){
                 NativePortFrameConfig config;config.clear_color={float(frame%2),0,0,1};
                 // Match the game: publish to the independent render owner.
                 // A finish/GPU fence on every frame would serialize both clocks.
-                host.graphics().begin_frame(config);host.present_frame_after_title_cadence(frame);
+                host.graphics().begin_frame(config);
+                // Streaming stages synchronously resolve resources during an
+                // open frame. These prefixes must not each wait for a vblank.
+                std::array<std::byte,16> pixels{};
+                NativePortTextureConfig texture;texture.extent={2,2};
+                NativePortImageView image;image.extent={2,2};image.stride_bytes=8;
+                image.format=NativePortTextureFormat::Rgba8Unorm;image.pixels=pixels;
+                for(unsigned prefix=0;prefix<4;++prefix){
+                    const auto handle=host.graphics().create_texture(texture,&image);
+                    host.graphics().destroy_texture(handle);
+                }
+                host.present_frame_after_title_cadence(frame);
                 if(frame==6){const auto s=host.frame_pacing_snapshot();start=host.monotonic_time_nanoseconds();presented=s.presentation_frames;repeated=s.repeated_presentations;}
             }
             host.graphics().finish();
