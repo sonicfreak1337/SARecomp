@@ -1543,10 +1543,10 @@ class NativePortGraphicsBackend final {
     }
 
     [[nodiscard]] std::uint32_t effective_presentation_rate(std::uint32_t manual) const noexcept {
-        return sonic::presentation::settings().vsync==1 ? display_rate_hz_ : manual;
+        return config_.synchronize_present ? display_rate_hz_ : manual;
     }
     [[nodiscard]] bool driver_paces_output() const noexcept {
-        return sonic::presentation::settings().vsync==1 && !minimized_ &&
+        return config_.synchronize_present && !minimized_ &&
             window_ && IsWindowVisible(window_);
     }
 
@@ -7408,9 +7408,6 @@ class NativePortGraphicsDevice::Impl final {
 
     [[nodiscard]] std::uint32_t
     requested_presentation_rate_nonblocking() const noexcept {
-        const auto desired=sonic::presentation::settings().presentation_fps;
-        const auto previous=last_options_presentation_fps_.exchange(desired,std::memory_order_relaxed);
-        if(previous && previous!=desired)runtime_options_.requested_presentation_rate_hz.store(desired,std::memory_order_release);
         return runtime_options_.requested_presentation_rate_hz.load(
             std::memory_order_acquire);
     }
@@ -8284,6 +8281,12 @@ class NativePortGraphicsDevice::Impl final {
                                       const char* const operation = "repeat-present") {
         update_presentation_deadline(backend);
         auto now = presentation_now();
+        if (wait && sonic::presentation::settings().gameplay_timing==0u) {
+            // Original title/movie/UI commands already own their frame rate.
+            // Do not quantize 25/30/50-Hz delivery onto a second 60-Hz clock.
+            consumer_presentation_deadline_=now;
+            consumer_presentation_remainder_=0u;
+        }
         if (wait && now < consumer_presentation_deadline_) {
             wait_until_monotonic_nanoseconds(consumer_presentation_deadline_);
             now = presentation_now();
@@ -8329,6 +8332,7 @@ class NativePortGraphicsDevice::Impl final {
         const NativePortGraphicsBackend& backend) const noexcept {
         return backend.lifecycle_state() == NativePortLifecycleState::Running &&
             independent_presentation_enabled() &&
+            (sonic::presentation::settings().gameplay_timing!=0u || !consumer_completed_image_presented_) &&
             !presentation_shutdown_.load(std::memory_order_acquire) &&
             !presentation_paused_.load(std::memory_order_acquire) &&
             !consumer_presentation_faulted_ &&
@@ -8366,6 +8370,7 @@ class NativePortGraphicsDevice::Impl final {
         const NativePortGraphicsBackend& backend) const noexcept {
         if (backend.lifecycle_state() != NativePortLifecycleState::Running ||
             !independent_presentation_enabled() ||
+            (sonic::presentation::settings().gameplay_timing==0u && consumer_completed_image_presented_) ||
             presentation_shutdown_.load(std::memory_order_acquire) ||
             presentation_paused_.load(std::memory_order_acquire) ||
             consumer_presentation_faulted_ || consumer_presentation_deadline_ == 0u)
@@ -9175,7 +9180,6 @@ class NativePortGraphicsDevice::Impl final {
     std::uint64_t development_probe_count_ = 0u;
     std::uint64_t development_probe_next_ = 0u;
     mutable NativePortRuntimeOptionsBridge runtime_options_;
-    mutable std::atomic<unsigned> last_options_presentation_fps_{0};
     std::unique_ptr<NativePortGraphicsBackend> serial_backend_;
     std::unique_ptr<NativePortFrameQueue> queue_;
     std::thread consumer_thread_;

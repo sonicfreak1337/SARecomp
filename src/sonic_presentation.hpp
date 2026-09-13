@@ -14,7 +14,9 @@ struct Settings {
     unsigned width = 1920;
     unsigned height = 1080;
     unsigned render_percent = 100;
-    unsigned presentation_fps = 144;
+    // Product output is fixed at 60 without VSync. Original cadence outputs
+    // only title-requested images; VSync otherwise follows the display.
+    static constexpr unsigned presentation_fps = 60;
     rendering::WindowMode window_mode = rendering::WindowMode::Windowed;
     camera::Style camera_style = camera::Style::Original;
     int text_language = -1;

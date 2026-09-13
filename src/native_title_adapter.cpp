@@ -47,6 +47,7 @@
 #include "sonic_subtitles.hpp"
 #include "sonic_sdk_color.hpp"
 #include "sonic_model_uv.hpp"
+#include "sonic_fpu_scratch.hpp"
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
 #include "sonic_tutorial_art.hpp"
@@ -2283,11 +2284,13 @@ thread_local SonicNativeTitleState sonic_native_title_state;
 }
 
 // Direct experimental/game.exe uses the user-accepted gameplay path. The
-// original cadence remains available for diagnosis, without touching r354.
+// original cadence is a restart-only option, without touching r354. Keep the
+// environment override for matched diagnostic runs.
 [[nodiscard]] bool sonic_standard_sixty_enabled() noexcept {
     static const bool enabled=[] {
         const auto* original=std::getenv("SARECOMP_ORIGINAL_CADENCE");
-        return !original || std::string_view(original)!="1";
+        return sonic::presentation::settings().gameplay_timing==1u &&
+            (!original || std::string_view(original)!="1");
     }();
     return enabled && !sonic_sixty_frame_fixture_enabled();
 }
@@ -34312,13 +34315,13 @@ extern "C" katana::runtime::NativePortHookResult
 sonic_native_triangle_contacts(katana::runtime::NativePortContext& context) noexcept {
     using namespace katana::runtime;
     auto& probe=sonic_native_title_state.gameplay_probe;
-    if (!sonic_sixty_frame_fixture_enabled() || !probe.active ||
-        !probe.sixty_frame_configured || !context.cpu)
+    if (!sonic_native_gameplay_math_active() || !context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_TRIANGLE_CONTACTS");
         return flag && std::string_view(flag)=="1";
     }();
+    if (!enabled) return {NativePortHookAction::ContinueOriginal,0u,0u};
     try {
         auto* const services=katana_port_generated::runtime_dispatch_detail::active_services;
         const sonic::triangle_contacts::RetainedCallBridge bridge{
@@ -34342,13 +34345,13 @@ static katana::runtime::NativePortHookResult
 sonic_native_atan_impl(katana::runtime::NativePortContext& context,std::size_t index) noexcept {
     using namespace katana::runtime;
     auto& probe=sonic_native_title_state.gameplay_probe;
-    if (!sonic_sixty_frame_fixture_enabled() || !probe.active ||
-        !probe.sixty_frame_configured || !context.cpu)
+    if (!sonic_native_gameplay_math_active() || !context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_ATAN_MATH");
         return flag && std::string_view(flag)=="1";
     }();
+    if (!enabled) return {NativePortHookAction::ContinueOriginal,0u,0u};
     try {
         auto* const services=katana_port_generated::runtime_dispatch_detail::active_services;
         if (enabled && services &&
@@ -35281,14 +35284,14 @@ sonic_native_ninja_model_draw_impl(
                 *model_transform);
         const auto normal_transform = sonic_affine_transform(
             sonic_native_title_state.transformed_view);
-        std::optional<katana::runtime::CpuState> env_fpu;
+        thread_local sonic::FpuScratch env_fpu_slot;
+        std::optional<sonic::FpuScratch::Lease> env_fpu_lease;
+        katana::runtime::CpuState* env_fpu=nullptr;
         std::optional<std::array<float, 4u>> env_clip_parameters;
         const auto ensure_env_fpu = [&]() {
             if (env_fpu) return;
-            env_fpu.emplace(katana::runtime::CpuState{
-                .memory = katana::runtime::Memory{0u,
-                    katana::runtime::MemoryAlignmentPolicy::Permissive}});
-            env_fpu->fpscr = cpu.fpscr;
+            env_fpu_lease.emplace(env_fpu_slot,cpu.fpscr);
+            env_fpu=&env_fpu_lease->get();
             for (std::size_t i = 0u; i < 16u; ++i)
                 env_fpu->xf[i] = std::bit_cast<std::uint32_t>(normal_transform.values[i]);
             sonic_native_title_state.model_env_normal_scratch.resize(point_count);
@@ -35960,16 +35963,16 @@ sonic_native_ninja_model_draw_impl(
         // Its 611384 light preparation projects the direction into that same
         // object space. Recompute each scalar once, then apply each mesh's
         // float Face color in the bound 617D86 writer family below.
-        std::optional<katana::runtime::CpuState> sdk_color_fpu;
+        thread_local sonic::FpuScratch sdk_color_fpu_slot;
+        std::optional<sonic::FpuScratch::Lease> sdk_color_fpu_lease;
+        katana::runtime::CpuState* sdk_color_fpu=nullptr;
         auto& sdk_intensities = sonic_native_title_state.model_sdk_intensity_scratch;
         std::array<std::uint32_t, 4u> sdk_light{};
         if (model_has_sdk_float_colors ||
             (material_owner == SonicNativeBasicMaterialOwner::ResidentSdk &&
              (sdk_material_control & 0x30u) != 0u)) {
-            sdk_color_fpu.emplace(katana::runtime::CpuState{
-                .memory = katana::runtime::Memory{0u,
-                    katana::runtime::MemoryAlignmentPolicy::Permissive}});
-            sdk_color_fpu->fpscr = cpu.fpscr;
+            sdk_color_fpu_lease.emplace(sdk_color_fpu_slot,cpu.fpscr);
+            sdk_color_fpu=&sdk_color_fpu_lease->get();
         }
         if (model_has_sdk_float_colors) {
             if (model_normal_scratch.size() != point_count ||

@@ -23,7 +23,9 @@ SONIC_SETTING(glyph_style,0,0,3)
 SONIC_SETTING(subtitle_scale,100,100,200)
 SONIC_SETTING(subtitle_background,0,0,1)
 SONIC_SETTING(anisotropy,1,1,16)
-SONIC_SETTING(vsync,0,0,2)
+SONIC_SETTING(vsync,2,1,2)
+// 0: original scene-owned cadence, 1: Recompiled 60-FPS gameplay (restart).
+SONIC_SETTING(gameplay_timing,1,0,1)
 // Withdrawn by the user: ignore old INI keys and never serialize this option.
 // SONIC_SETTING(interpolation,0,0,1)
 SONIC_SETTING(automatic_backups,1,0,1)

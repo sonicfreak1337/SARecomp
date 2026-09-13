@@ -18,7 +18,7 @@ std::wstring environment(const wchar_t* key){const auto size=GetEnvironmentVaria
 std::wstring token(){auto value=environment(L"SARECOMP_DISPLAY_TRIAL");if(value.size()>80||value.find_first_not_of(L"0123456789-")!=value.npos)return {};return value;}
 std::wstring event_name(std::wstring_view id,std::wstring_view suffix){return L"Local\\SARecomp-display-"+std::wstring(id)+L"-"+std::wstring(suffix);}
 std::filesystem::path rollback_path(const std::filesystem::path& path){return std::filesystem::path(path.wstring()+L".display-rollback.ini");}
-bool display_changed(const presentation::Settings& a,const presentation::Settings& b){auto same_profile=b;same_profile.active_profile=a.active_profile;return presentation::needs_restart(a,same_profile);}
+bool display_changed(const presentation::Settings& a,const presentation::Settings& b){auto same_display=b;same_display.active_profile=a.active_profile;same_display.gameplay_timing=a.gameplay_timing;return presentation::needs_restart(a,same_display);}
 bool child_trial(){const auto id=token();if(id.empty())return false;Handle ready(OpenEventW(EVENT_MODIFY_STATE,FALSE,event_name(id,L"ready").c_str()));return ready.value!=nullptr;}
 void start(const std::filesystem::path& executable,PROCESS_INFORMATION& process){
     std::wstring command=GetCommandLineW();STARTUPINFOW startup{sizeof(startup)};

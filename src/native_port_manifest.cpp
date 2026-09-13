@@ -162,7 +162,14 @@ inline constexpr std::string_view
         // Original scripted cadence is classified before closed-frame checks;
         // pending native cadence changes defer to a closed presentation boundary.
         // Subtitle size/background controls are retired; old values use defaults.
-        "sha256:f9dc65029e7772a5f8f35482789dcb543cf48c9f7b0f603b93b9da089880624c"};
+        // Restart-only Original/Recompiled cadence selection. Renderer FPU
+        // scratch retains only empty memory lookup capacity, resetting all CPU
+        // state per draw and isolating nested leases; arithmetic is unchanged.
+        // Anisotropy UI retired. The existing private contact/atan switches
+        // admit standard Recompiled gameplay too; both remain off by default.
+        // Fixed product output: 60 without VSync, monitor-paced with VSync;
+        // Original timing is authoritative for both update and output cadence.
+        "sha256:900178f3aadade181696b2f4b7e1e9ce61f29c9207cba25f23d478a644b73240"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -3006,9 +3013,9 @@ int main(const int argc, char* argv[]) {
             images,
             hooks,
             hardware_resolutions,
-            // Sonic's simulation cadence stays title-authored. Dev products
-            // start at the user-selected 144-Hz presentation rate; the host
-            // may repeat completed frames without accelerating game time.
+            // Preserve the retained AOT artifact's timing metadata. The
+            // launcher explicitly selects the product's 60-Hz default from
+            // Settings; VSync and Original output are owned by the renderer.
             {30u, 144u, 144u},
             native_provider_semantic_contracts,
             katana::runtime::NativePortProviderSemanticCoverage::

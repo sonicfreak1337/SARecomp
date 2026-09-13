@@ -36,12 +36,21 @@ int main(int argc,char** argv){
         SetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",L"1");SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",nullptr);
         presentation::Settings settings;settings.setup_complete=true;settings.text_language=4;settings.renderer=rendering::Renderer::Vulkan;
         presentation::save_settings(root/"sonic-display.ini",settings);check(presentation::read_settings(root/"sonic-display.ini")==settings,"settings roundtrip");
+        check(settings.gameplay_timing==1,"Recompiled timing must remain the default");
+        auto original_timing=settings;original_timing.gameplay_timing=0;
+        presentation::save_settings(root/"original-timing.ini",original_timing);
+        check(presentation::read_settings(root/"original-timing.ini")==original_timing,"original cadence roundtrip");
+        check(presentation::needs_restart(settings,original_timing),"cadence switch must require restart");
         {std::ofstream legacy(root/"sonic-display.ini",std::ios::app);legacy<<"hud_scale=150\nhud_margin_x=48\nhud_margin_y=36\n";}
         check(presentation::read_settings(root/"sonic-display.ini")==settings,"retired HUD settings affected configuration");
         {std::ofstream legacy(root/"sonic-display.ini",std::ios::app);legacy<<"interpolation=1\n";}
         check(presentation::read_settings(root/"sonic-display.ini")==settings,"retired interpolation affected configuration");
+        {std::ofstream legacy(root/"sonic-display.ini",std::ios::app);legacy<<"anisotropy=16\n";}
+        check(presentation::read_settings(root/"sonic-display.ini")==settings,"retired anisotropy remained enabled");
         static_assert(presentation::Settings::interpolation==0);
-        check(settings.presentation_fps==144,"interpolation removal changed presentation rate");
+        {std::ofstream legacy(root/"sonic-display.ini",std::ios::app);legacy<<"presentation_fps=144\n";}
+        check(presentation::read_settings(root/"sonic-display.ini")==settings,"retired FPS limit remained active");
+        check(settings.presentation_fps==60,"default output must be 60 FPS without VSync");
         {std::ofstream legacy(root/"sonic-display.ini",std::ios::app);legacy<<"render_percent=200\n";}
         check(presentation::read_settings(root/"sonic-display.ini")==settings,"retired supersampling did not migrate to 100 percent");
         auto unsupported_scale=settings;unsupported_scale.render_percent=125;
@@ -50,8 +59,10 @@ int main(int argc,char** argv){
         const auto serialized=read(root/"sonic-display.ini");
         check(std::string_view(reinterpret_cast<const char*>(serialized.data()),serialized.size()).find("hud_")==std::string_view::npos,"retired HUD settings saved again");
         check(std::string_view(reinterpret_cast<const char*>(serialized.data()),serialized.size()).find("interpolation")==std::string_view::npos,"retired interpolation saved again");
+        check(std::string_view(reinterpret_cast<const char*>(serialized.data()),serialized.size()).find("presentation_fps")==std::string_view::npos,"retired FPS selection saved again");
         presentation::initialize(root/"game.exe");auto changed=settings;changed.master_volume=50;changed.music_volume=20;changed.voice_volume=80;changed.effects_volume=40;changed.vsync=1;changed.width=2560;changed.mouse_camera=1;
-        presentation::apply_live(changed);check(presentation::settings().width==settings.width&&presentation::settings().vsync==settings.vsync,"restart fields leaked live");
+        changed.gameplay_timing=0;
+        presentation::apply_live(changed);check(presentation::settings().width==settings.width&&presentation::settings().vsync==settings.vsync&&presentation::settings().gameplay_timing==settings.gameplay_timing,"restart fields leaked live");
         check(std::abs(audio::factor(audio::Bus::Music)-.1f)<1e-6&&std::abs(audio::factor(audio::Bus::Voice)-.4f)<1e-6&&std::abs(audio::factor(audio::Bus::Effects)-.2f)<1e-6,"audio buses compounded");
         check(audio::adx_bus("EVENT_ADX_US.AFS")==audio::Bus::Voice&&audio::program_bus("sa-pal-v1003-mlt-119",6,0)==audio::Bus::Voice,"audio identity routing");
         check(audio::program_bus("sa-pal-v1003-mlt-001",3,0)==audio::Bus::Effects&&audio::program_bus("sa-pal-v1003-mlt-001",6,0)==audio::Bus::Voice,"mixed Chao collection routed as one bus");
@@ -76,23 +87,23 @@ int main(int argc,char** argv){
         d.s.connected=true;d.s.connection_changed=true;d.s.pad=1u<<10;check(d.tick(reconnect).command==menu::Command::None,"reconnect activated selection");d.s.connection_changed=false;d.s.pad=0;d.tick(reconnect);
         menu::Model binds(settings,4,false);binds.choose("bindings",{});d.s={};d.s.focused=true;d.tick(binds);for(unsigned i=0;i<4;++i)d.key(binds,40);d.key(binds,13);d.key(binds,'Z');check(binds.value().bindings[unsigned(input::Action::A)].key=='Z',"binding capture");
         for(int language=0;language<5;++language){
-            auto v=settings;v.vsync=1;v.presentation_fps=120;v.text_language=language;
+            auto v=settings;v.text_language=language;menu::Model timing(v,language,true);timing.choose("display",{});Driver controls;controls.tick(timing);
+            for(unsigned i=0;i<6;++i)controls.key(timing,40);
+            check(timing.rows()[6].id=="gameplay_timing"&&timing.rows()[6].restart&&timing.description()!=L"?","cadence row missing restart/localization");
+            controls.key(timing,39);
+            check(timing.value().gameplay_timing==0,"original cadence option did not activate");
+        }
+        for(int language=0;language<5;++language){
+            auto v=settings;v.vsync=1;v.text_language=language;
             menu::Model sync(v,language,true);sync.choose("display",{});Driver controls;controls.tick(sync);
             for(unsigned i=0;i<5;++i)controls.key(sync,40);
-            check(sync.rows()[5].id=="presentation_fps"&&!sync.rows()[5].enabled&&sync.rows()[5].value!=L"?"&&sync.description()!=L"?","VSync FPS control not visibly disabled/localized");
-            controls.key(sync,39);controls.key(sync,13);
-            check(sync.value().presentation_fps==120&&!sync.dirty(),"disabled FPS field changed via keyboard");
-            controls.s.connected=true;controls.s.connection_changed=true;controls.tick(sync);controls.s.connection_changed=false;
-            controls.s.pad=1u<<10;controls.tick(sync);controls.s.pad=0;controls.tick(sync);
-            const auto rect=sync.row_rect(5,1920,1080);controls.s.cursor_x=rect.right-10;controls.s.cursor_y=rect.top+10;
-            controls.s.mouse[1]=true;controls.tick(sync);controls.s.mouse[1]=false;controls.tick(sync);
-            check(sync.value().presentation_fps==120&&!sync.dirty(),"disabled FPS field changed via controller/mouse");
-            controls.key(sync,40);controls.key(sync,39);
-            check(sync.value().vsync==2&&sync.rows()[5].enabled&&sync.value().presentation_fps==120,"VSync off did not restore saved FPS");
-            controls.key(sync,38);controls.key(sync,39);
-            check(sync.value().presentation_fps!=120,"restored FPS control remains inactive");
+            check(sync.rows()[5].id=="vsync"&&sync.rows()[5].value!=L"?"&&sync.description()!=L"?","VSync control missing/localization");
+            controls.key(sync,39);
+            check(sync.value().vsync==2&&sync.value().gameplay_timing==1,"VSync off changed gameplay cadence");
+            controls.key(sync,39);
+            check(sync.value().vsync==1,"VSync on did not wrap without Automatic");
             presentation::save_settings(root/"vsync-roundtrip.ini",v);
-            check(presentation::read_settings(root/"vsync-roundtrip.ini")==v,"VSync destroyed persisted FPS limit");
+            check(presentation::read_settings(root/"vsync-roundtrip.ini")==v,"VSync roundtrip failed");
         }
         for(int language=0;language<5;++language){
             auto v=settings;v.text_language=language;menu::Model keys(v,language,false);keys.choose("bindings",{});Driver controls;controls.tick(keys);
@@ -125,6 +136,8 @@ int main(int argc,char** argv){
                 check(row.label!=L"?"&&row.value!=L"?","missing translation");
                 check(!row.id.starts_with("hud_"),"retired HUD control visible");
                 check(row.id!="interpolation","retired interpolation control visible");
+                check(row.id!="anisotropy","retired anisotropy control visible");
+                check(row.id!="presentation_fps","retired FPS selection visible");
             }check(localized.description()!=L"?","missing help");
         }
         for(int language=0;language<5;++language){

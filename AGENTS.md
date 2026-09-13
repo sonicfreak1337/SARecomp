@@ -63,8 +63,14 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 
 - Work autonomously within the user's authorization; no repeated permissions.
 - Prefer incremental performance builds; retain the r354 compiled AOT pack
-  for adapter-only changes. Keep 144 presentation FPS independent of title
-  cadence. Do not regenerate AOT for display settings.
+  for adapter-only changes. Do not regenerate AOT for display settings.
+- Latest user output policy (2026-09-13) replaces the previous 144-FPS default:
+  Recompiled targets 60 simulation FPS and outputs 60 without VSync; VSync
+  follows the display. Original retains both original scene cadence and
+  title-requested output, without autonomous repeats. Game timing is a
+  restart-only Original/Recompiled selector. No numeric FPS or anisotropy UI;
+  old INI values are ignored. Interpolation remains retired. Windows performance
+  work is active; Linux is paused and the release candidate is not approved.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

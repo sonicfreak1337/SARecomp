@@ -12,7 +12,6 @@ constexpr Field fields[]{
 #define SONIC_SETTING(name,initial,minimum,maximum) {#name,&Settings::name,minimum,maximum,maximum>40?5u:1u},
 #include "sonic_settings_fields.inc"
 #undef SONIC_SETTING
-    {"presentation_fps",&Settings::presentation_fps,30,144,1},
     {"render_percent",&Settings::render_percent,25,100,25}
 };
 const Field* field(std::string_view id){for(const auto& f:fields)if(f.id==id)return &f;return nullptr;}
@@ -29,18 +28,17 @@ std::wstring value_text(std::string_view id,const Settings& s,int l,input::Glyph
     if(id=="widescreen")return copy(s.widescreen?"on":"original",l);
     if(id=="window_mode")return copy(std::array{"windowed","borderless","fullscreen"}[unsigned(s.window_mode)],l);
     if(id=="camera_style")return copy(s.camera_style==camera::Style::Original?"original":"recompiled",l);
+    if(id=="gameplay_timing")return copy(s.gameplay_timing?"recompiled":"original",l);
     if(id=="text_language")return s.text_language<0?copy("game",l):languages[s.text_language];
     if(id=="voice_language")return s.voice_language<0?copy("game",l):languages[s.voice_language];
     if(id=="subtitles")return copy(s.subtitles<0?"game":s.subtitles?"on":"off",l);
     if(id=="glyph_style")return s.glyph_style==0?copy("automatic",l):s.glyph_style==1?L"Xbox":s.glyph_style==2?L"PlayStation":copy("keyboard",l);
-    if(id=="vsync")return copy(s.vsync==0?"automatic":s.vsync==1?"on":"off",l);
-    if(id=="presentation_fps"&&s.vsync==1)return copy("display_controlled",l);
+    if(id=="vsync")return copy(s.vsync==1?"on":"off",l);
     if(id=="camera_return_seconds")return s.camera_return_seconds?std::to_wstring(s.camera_return_seconds)+L" "+copy("seconds",l):copy("never",l);
     if(const auto f=field(id)){
         const auto v=s.*(f->member);
         if(f->max==1)return copy(v?"on":"off",l);
-        return std::to_wstring(v)+(id=="anisotropy"?L"×":id=="presentation_fps"?L" FPS":
-            id=="backup_limit"?L"":L"%");
+        return std::to_wstring(v)+(id=="backup_limit"?L"":L"%");
     }
     return L"";
 }
@@ -85,7 +83,7 @@ std::vector<Row> Model::rows()const{
         group({"display","audio","camera","controls","interface","profiles","system"});add("sound_test",false,title_);group({"about","save","back"});
     }else if(page_=="display"){
         for(auto id:{"renderer","resolution","window_mode","widescreen","render_percent"})add(id,true);
-        add("presentation_fps",false,draft_.vsync!=1);add("vsync",true);group({"anisotropy","back"});
+        add("vsync",true);add("gameplay_timing",true);add("back");
     }else if(page_=="audio"){
         group({"master_volume","music_volume","voice_volume","effects_volume","mute_background"});
         status("audio_status","audio_"+std::string(recovery::name(audio_status_)));add("back");
@@ -119,7 +117,7 @@ std::wstring Model::description()const{
     for(const auto& c:choices_)if(c.id==id&&!c.details.empty())return c.details;
     // Interpolation was withdrawn; its prototype is no longer a menu option.
     if(id=="vsync")return copy("vsync_help",language());
-    if(id=="presentation_fps")return copy(draft_.vsync==1?"fps_vsync_help":"fps_help",language());
+    if(id=="gameplay_timing")return copy("gameplay_timing_help",language());
     if(id=="export_diagnostics")return copy("diagnostics_help",language());
     if(id=="sound_test"&&!title_)return copy("title_only",language());
     if(page_=="display")return copy("display_help",language());
@@ -202,7 +200,6 @@ Result Model::activate(const Row& row,int direction){
     }else if(const auto f=field(id)){
         auto& value=draft_.*(f->member);
         if(f->max<=3)value=unsigned(change(int(value),int(f->min),int(f->max)));
-        else if(id=="anisotropy")value=direction<0?(value<=1?16:std::max(1u,value/2)):(value>=16?1:std::min(16u,value*2));
         else value=direction<0?unsigned(std::max(int(f->min),int(value)-int(f->step))):std::min(f->max,value+f->step);
     }else {page(id);return result;}
     result.changed=true;return result;

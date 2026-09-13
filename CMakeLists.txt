@@ -424,6 +424,13 @@ target_link_libraries(sonic_sdk_color_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
 
+add_executable(sonic_fpu_scratch_tests EXCLUDE_FROM_ALL tools/test_fpu_scratch.cpp)
+target_include_directories(sonic_fpu_scratch_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_fpu_scratch_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_fpu_scratch_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+
 add_executable(sonic_texture_sentinel_tests EXCLUDE_FROM_ALL tools/test_texture_sentinel.cpp)
 add_executable(sonic_contour_tests EXCLUDE_FROM_ALL tools/test_contour.cpp)
 target_include_directories(sonic_contour_tests PRIVATE "${SONIC_ROOT}/src")

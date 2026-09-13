@@ -77,7 +77,6 @@ void validate(const Settings& value) {
     if (value.width<640 || value.width>7680 || value.height<480 || value.height>4320 ||
         value.render_percent<25 || value.render_percent>100 ||
         (value.widescreen && value.width*3<value.height*4) ||
-        value.presentation_fps<30 || value.presentation_fps>144 ||
         value.text_language < -1 || value.text_language > 4 ||
         value.voice_language < -1 || value.voice_language > 1 ||
         value.subtitles < -1 || value.subtitles > 1 || unsigned(value.window_mode)>2 ||
@@ -123,18 +122,19 @@ std::uint64_t revision() noexcept {return settings_revision.load(std::memory_ord
 void validate_settings(const Settings& value){validate(value);}
 bool needs_restart(const Settings& a,const Settings& b) noexcept {
     return a.width!=b.width || a.height!=b.height || a.render_percent!=b.render_percent ||
-        a.renderer!=b.renderer || a.widescreen!=b.widescreen || a.window_mode!=b.window_mode || a.active_profile!=b.active_profile || a.vsync!=b.vsync;
+        a.renderer!=b.renderer || a.widescreen!=b.widescreen || a.window_mode!=b.window_mode || a.active_profile!=b.active_profile || a.vsync!=b.vsync || a.gameplay_timing!=b.gameplay_timing;
 }
 void apply_live(const Settings& value) {
     validate(value);std::lock_guard guard(settings_mutex);
     const auto active_vsync=current.vsync;
+    const auto active_timing=current.gameplay_timing;
 #define SONIC_SETTING(name,initial,minimum,maximum) current.name=value.name;
 #include "sonic_settings_fields.inc"
 #undef SONIC_SETTING
     current.vsync=active_vsync;
+    current.gameplay_timing=active_timing;
     current.camera_style=value.camera_style;current.bindings=value.bindings;
     current.text_language=value.text_language;current.voice_language=value.voice_language;current.subtitles=value.subtitles;
-    current.presentation_fps=value.presentation_fps;
     settings_revision.fetch_add(1,std::memory_order_release);
 }
 std::filesystem::path configuration_path(const std::filesystem::path& executable) {
@@ -170,12 +170,15 @@ Settings read_settings(const std::filesystem::path& path) {
             selected.camera_style = value == "recompiled" ? camera::Style::Recompiled : camera::Style::Original;
         }
         else if (key == "height") selected.height = number(value);
+        else if (key == "vsync") {
+            // Retired Automatic used the renderer's VSync-on default.
+            const auto sync=number(value);selected.vsync=sync==0u?1u:sync;
+        }
         else if (key == "render_percent") {
             const auto scale=number(value);
             // Migrate the retired experimental supersampling range safely.
             selected.render_percent=scale>100 && scale<=200?100:scale;
         }
-        else if (key == "presentation_fps") selected.presentation_fps = number(value);
         else if (key == "setup_complete") {
             if (value!="0" && value!="1") throw std::runtime_error("Invalid setup flag");
             selected.setup_complete=value=="1";
@@ -192,7 +195,7 @@ Settings read_settings(const std::filesystem::path& path) {
         else if(key=="schema_version") {if(number(value)>2)throw std::runtime_error("Configuration comes from a newer version");}
         else if(key=="active_profile")selected.active_profile=std::string(value);
         else if(key=="hud_scale" || key=="hud_margin_x" || key=="hud_margin_y" || key=="interpolation" ||
-                key=="subtitle_scale" || key=="subtitle_background") {
+                key=="subtitle_scale" || key=="subtitle_background" || key=="anisotropy" || key=="presentation_fps") {
             // Retired experimental keys: accept old INIs without enabling them.
             (void)number(value);
         }
@@ -222,7 +225,7 @@ void save_settings(const std::filesystem::path& path,const Settings& value) {
         output<<"# Sonic Adventure: Recompiled configuration.\nschema_version=2\n"
             <<"setup_complete="<<value.setup_complete<<"\nmode="<<(value.widescreen?"widescreen":"original")
             <<"\nwidth="<<value.width<<"\nheight="<<value.height<<"\nrender_percent="<<value.render_percent
-            <<"\nrenderer="<<rendering::name(value.renderer)<<"\npresentation_fps="<<value.presentation_fps
+            <<"\nrenderer="<<rendering::name(value.renderer)
             <<"\nwindow_mode="<<window_modes[unsigned(value.window_mode)]
             <<"\ncamera_style="<<camera::name(value.camera_style)
             <<"\ntext_language="<<(value.text_language<0?"game":text_languages[value.text_language])
@@ -250,7 +253,8 @@ void initialize(const std::filesystem::path& executable) {
               << " renderer=" << rendering::name(current.renderer)
               << " camera=" << camera::name(current.camera_style)
               << " render_percent=" << current.render_percent
-              << " x_scale=" << horizontal_scale() << " timing=unchanged\n";
+              << " x_scale=" << horizontal_scale()
+              << " gameplay_timing=" << (current.gameplay_timing?"recompiled":"original") << '\n';
 }
 void configure(katana::runtime::NativePortGraphicsConfig& config) {
     const auto& current=settings();

@@ -11,7 +11,11 @@ Normal gameplay and pause in main states4/5/9, scene15/16 with no pending
 transition can promote original2/2 scheduling to1/1. The complete original
 PAL051760 setter installs callbacks and resets its iteration/ready state.
 PAL658744 installs the authenticated 60-Hz video registers when required.
-Presentation remains separately configured at144; interpolation stays disabled.
+The latest user policy replaces the old 144-output default: Recompiled outputs
+60 FPS without VSync, or follows display refresh with VSync. Interpolation stays
+disabled. There is no numeric FPS selector in either settings UI, and old INI
+FPS values are ignored. VSync is On/Off, with Off the new default; legacy
+Automatic migrates to the renderer's original VSync-on default.
 
 The initially omitted main4 caused Action Stages to stay at30 while Adventure
 Fields reached the new path. Original main4 and main9 both dispatch04CA40;
@@ -21,6 +25,16 @@ family correction, not a per-level address exception.
 Original2/1 script and1/1 menu/minigame requests retain their meaning. Leaving
 the eligible gameplay frame restores the last original request through the
 complete setter. `SARECOMP_ORIGINAL_CADENCE=1` retains the old scheduling path.
+The Options → Display → Game timing selector now exposes this as Original /
+Recompiled in all five text languages. Recompiled remains the default. Changing
+it is staged until a confirmed restart; live audio/camera edits cannot change
+cadence mid-frame. Original retains scene-dependent timing, including original
+menu and cutscene rates, rather than imposing a global 30-FPS cap. Original
+also disables autonomous render-thread repeats and avoids quantizing authored
+frame boundaries onto a second 60-Hz output timer. Deferred output still retries;
+the render thread retains its event pump and original title-clock service.
+Save profiles are unchanged. The older environment override still forces only
+original simulation cadence for matched diagnostic comparisons.
 Unknown-rate legacy quicksaves retain their previous cadence until a real
 video-mode owner supplies evidence.
 

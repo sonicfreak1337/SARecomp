@@ -40,9 +40,10 @@ parser.add_argument('--hardware-input', choices=('fallback','isolated'), default
     help='Isolated skips physical devices but retains the same forward probe and normal remapping')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
+parser.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 # Render interpolation was withdrawn; benchmark the original frame stream.
-parser.add_argument('--vsync', type=int, choices=(0,1,2), default=0)
-parser.add_argument('--anisotropy', type=int, choices=(1,2,4,8,16), default=1)
+parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
+parser.add_argument('--anisotropy', type=int, choices=(1,), default=1, help='Retired product control; original filtering only')
 args = parser.parse_args()
 if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
@@ -56,8 +57,7 @@ if args.native_matrix_stack and not args.sixty_frame_fixture: parser.error('Nati
 if args.matrix_write_batch and not args.native_matrix_stack: parser.error('Matrix store batching requires --native-matrix-stack')
 if args.native_collision_math and not args.sixty_frame_fixture: parser.error('Native collision math requires the private60-frame fixture')
 if args.native_matrix_inverse and not args.sixty_frame_fixture: parser.error('Native inverse requires the private60-frame fixture')
-if args.native_triangle_contacts and not args.sixty_frame_fixture: parser.error('Native contacts require the private60-frame fixture')
-if args.native_atan_math and not args.sixty_frame_fixture: parser.error('Native atan requires the private60-frame fixture')
+if (args.native_triangle_contacts or args.native_atan_math) and args.gameplay_timing!='recompiled': parser.error('Private native math experiments require Recompiled timing')
 sampler_exe = root/'build-performance/sonic_execution_sampler.exe'
 if args.profile_ms and not sampler_exe.is_file(): parser.error('Build sonic_execution_sampler first')
 busy = subprocess.run(['powershell.exe','-NoProfile','-Command',
@@ -69,7 +69,7 @@ run.mkdir()
 saves = run/'user-data'
 shutil.copytree(root/'.local/baseline/r354/saves', saves, copy_function=shutil.copyfile)
 display = run/'sonic-display.ini'
-display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\n')
+display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\ngameplay_timing={int(args.gameplay_timing=="recompiled")}\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',
@@ -119,7 +119,7 @@ with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
     startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = 0
     process = subprocess.Popen([str(exe),'--bringup-incomplete-hardware-closure','--content-root',
-        str(root/'.local/baseline/r354/native-content'),'--presentation-fps','144'],
+        str(root/'.local/baseline/r354/native-content')],
         cwd=root/'out/experimental',env=env,stdout=out,stderr=err,stdin=subprocess.DEVNULL,
         startupinfo=startup,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.BELOW_NORMAL_PRIORITY_CLASS)
     print(f'SONIC_BENCHMARK_STARTED pid={process.pid} tag={args.tag} hidden=1 muted=1',flush=True)
@@ -228,7 +228,7 @@ if args.update_timing:
             and row.get('logical_delta')=='1' and row.get('release_slots')=='1'
             and row.get('active_video_hz')=='60' and row.get('tv_mode_word')=='0'
             for row in steady)
-    else:
+    elif steady:
         result['update_timing_passed'] &= int(steady[-1].get('update_elapsed','0')) > 0
     if len(steady)>1:
         a,b=steady[0],steady[-1]
@@ -329,7 +329,7 @@ if args.sixty_frame_fixture:
     result['sixty_frame_target_passed'] = result['passed'] and args.update_timing and all(
         59.5 <= result.get(key,0) <= 60.5 for key in
         ('new_draw_fps','task_traversals_per_second','game_timer_ticks_per_second')) \
-        and 142 <= result.get('presentation_fps',0) <= 146 \
+        and (args.vsync==1 or 59.5 <= result.get('presentation_fps',0) <= 60.5) \
         and result.get('frame_samples',0)>0 and not result.get('frame_samples_truncated',True) \
         and 0 < result.get('p95_frame_ms',0) <= 17.5
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')

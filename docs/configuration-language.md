@@ -6,8 +6,12 @@ opens it only when `setup_complete` is absent/false; cancellation exits before
 game initialization. `KATANA_PORT_BACKGROUND_TEST=1` bypasses the popup.
 No controller setting is disabled by configuration.
 
-Display mode, resolution, renderer, aspect, render scale and 30–144 output FPS
-are host settings. Text, voice and subtitles additionally have an explicit
+Display mode, resolution, renderer, aspect, render scale and VSync are host
+settings. Numeric output FPS selection was retired on 2026-09-13. Game timing
+selects Original (scene-owned update/output cadence) or Recompiled (60-FPS
+gameplay target, 60-FPS output without VSync, display-paced output with VSync).
+Changing timing or VSync requires a restart. Legacy FPS and anisotropy INI
+values are ignored. Text, voice and subtitles additionally have an explicit
 **Use game setting** state. That state performs no guest-memory reads/writes
 and continues every original entry. Explicit language choices apply at startup
 and after a save load; the next normal game save persists them. There is no

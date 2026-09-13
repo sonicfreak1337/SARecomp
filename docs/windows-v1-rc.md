@@ -19,6 +19,10 @@ Release polish:
 - Subtitle size and background are no longer listed in any menu language.
   Legacy INI values are accepted but ignored, preserving original subtitle
   presentation. Text language, voice language and subtitle on/off remain.
+- Numeric output FPS and anisotropy controls are retired. Game timing selects
+  Original/Recompiled, with a required restart. Recompiled outputs 60 FPS without
+  VSync; VSync follows the monitor. Original retains original simulation and
+  output rates per scene. Both settings UIs expose timing and VSync.
 - Share / Create / View no longer opens the private scenario menu. Ctrl+F10
   remains its opening shortcut; normal controller navigation inside it remains.
 - The game window has no attached native Options / Developer tools menu bar,
@@ -33,9 +37,10 @@ The preceding Amy hammer callback fix is recorded in
 recorded in `super-sonic-cadence-crash.md`. Native 60 Hz gameplay remains the default.
 Personal saves and the frozen r354 AOT archive are not modified by this polish.
 
-The user's latest instruction excludes additional tests/game runs. Verification
-for this polish consists of source review, incremental compilation and the
-mandatory link audits; no new runtime/visual acceptance is claimed.
+The earlier polish-only instruction excluded additional game runs. The later
+performance task authorizes focused hidden/muted measurements again; it does
+not authorize release promotion. Current measurement evidence is tracked
+separately from this earlier candidate checkpoint.
 
 Initial candidate incremental build: 75.426 seconds, zero AOT recompiles. The native port
 link audit and both FPU link checks pass. Windows artifacts are preserved in

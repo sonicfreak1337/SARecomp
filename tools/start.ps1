@@ -56,12 +56,13 @@ if ($Mode -eq 'experimental') {
     # Menu choices persist across starts. Explicit command-line choices alone
     # replace the corresponding settings in an existing profile.
     $values=[ordered]@{mode=$Aspect;width=$Width;height=$Height;render_percent=100;renderer=$Renderer;
-        presentation_fps=144;window_mode='windowed';text_language='game';voice_language='game';
+        gameplay_timing=1;vsync=2;window_mode='windowed';text_language='game';voice_language='game';
         subtitles='game';setup_complete=0;camera_style=$CameraStyle}
     $exists=Test-Path -LiteralPath $display
     if ($exists) {
         foreach ($line in Get-Content -LiteralPath $display) {
-            if ($line -match '^\s*(mode|width|height|render_percent|renderer|presentation_fps|window_mode|text_language|voice_language|subtitles|setup_complete|camera_style)\s*=\s*(.*?)\s*$') {
+            if ($line -match '^\s*([a-z][a-z0-9_]*)\s*=\s*(.*?)\s*$' -and
+                $Matches[1] -notin @('presentation_fps','anisotropy')) {
                 $values[$Matches[1]]=$Matches[2]
             }
         }
