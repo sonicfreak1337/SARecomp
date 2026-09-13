@@ -102,6 +102,45 @@ sampler. It does not establish the intended TV enum, PAL compensation,
 credits timing, or equal state after one delta=2 versus two delta=1 updates.
 Those are still prerequisites for a timing-faithful 60-update enhancement.
 
+### Original TV enum and constructor mapping
+
+`tools/test_legacy_video.cpp` now executes the original ADVERTISE argument
+branch and the two original SDK timing constructors against isolated RAM.
+It stops before the hardware-facing apply function; all device accesses are
+test failures. The five existing Apply/Test/restore interception cases still
+pass. Four persistence cases and both constructor cases pass in
+`.local/menu-preview/video-clock-contract-04.log`.
+
+| Menu argument | Persisted TV word | Argument to 8C604900 | Constructor | Horizontal / vertical / border |
+| --- | ---: | ---: | --- | --- |
+| 1 | 1 | 58 (0x3A) | 8C658500, PAL50 | 008D034B / 0270035F / 002C026C |
+| 2 | 0 | 56 (0x38) | 8C658744, 60-Hz profile | 007E0345 / 020C0359 / 00240204 |
+
+Without the persistence flag, neither branch changes the stored word. The
+original Test caller supplies menu argument 2. The stored value and menu
+index are different domains; the enum is now decoded by executed original
+code instead of inferred from a symbol's misleading name.
+
+The constructor component supplies the already decoded display-mode argument,
+executes its original low-bit AND/publication at 8C65263E and full-mode
+publication at 8C6526CA, then runs the original selector at 8C652756. Its
+selected constructor and original RAM-copy helper build the actual stack
+record consumed by 8C658220. This component does not claim to execute full
+system/config-file initialization or apply a physical video mode.
+
+Two setup corrections were made before the final passing check: the initial
+expectation inverted the retail BF/S condition, and the initial constructor
+fixture omitted the full-mode publication, producing the original half-height
+PAL tuple (0138035F). Source inspection identified both issues; the final
+fixture executes the missing original publication and checks the complete
+tuple rather than broadening the assertion to accept the wrong setup.
+
+The live checkpoint's TV word 1 and applied PAL tuple are therefore consistent
+on the original default path. There is no demonstrated saved-60/applied-50
+mismatch in that run. Changing it to 60 is a change of the original regional
+mode, not an established timing-preserving CPU optimization. Higher update
+frequency still needs the delta/substep/event equivalence proof below.
+
 Latest local evidence was checked explicitly:
 
 | Evidence | What it actually proves |

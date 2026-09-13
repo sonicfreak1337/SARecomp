@@ -76,3 +76,15 @@ runtime regression case. Local evidence is under `runs/legacy-frequency-*`.
 
 Final `out/experimental/game.exe` SHA-256:
 `570eb31fc2f0e92988bfc3d3575897aac21252d4014059a05d4c6259b9ba6a1a`.
+
+## Original clock mapping, September 13
+
+The component test additionally executes the original TV persistence branch
+and both SDK packet constructors in isolated RAM, stopping before hardware
+apply. It confirms menu 1 -> stored word 1 -> mode 58 -> PAL50 constructor,
+and menu 2 -> stored word 0 -> mode 56 -> 60-Hz constructor. Apply/Test/restore
+interception still passes all five existing cases; four persistence cases
+and two original constructor packets pass. See `docs/sixty-hz-feasibility.md`
+for the exact tuples, component boundaries and setup corrections.
+No game, personal save, display setting or product clock was changed by this
+check. Only `sonic_legacy_video_tests` was incrementally compiled.

@@ -30,8 +30,8 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
     std::ifstream file(path,std::ios::binary);require(bool(file),"retail source missing");
     return {std::istreambuf_iterator<char>(file),{}};
 }
-void until(CpuState& cpu,std::uint32_t end) {
-    for(unsigned n=0;cpu.pc!=end && n<24;++n) {
+void until(CpuState& cpu,std::uint32_t end,unsigned limit=24) {
+    for(unsigned n=0;cpu.pc!=end && n<limit;++n) {
         (void)execute_dynamic_sh4_block(cpu,services,1u);
         require(cpu.exception_generation==0u,"retail caller exception");
     }
@@ -83,7 +83,54 @@ int main(int argc,char** argv) {
                 "original menu did not continue after disabled TV action");
             ++cases;
         }
-        std::cout<<"SONIC_LEGACY_VIDEO_TESTS_OK retail_calls="<<cases<<" apply=test=restore=ok cpu_ram_preserved=1 menu_continuation=ok\n";
+        // Decode the original menu/persistence mapping by executing only its
+        // retail argument-construction branch. Stop before the original SDK
+        // display constructor: this check cannot issue video/device writes.
+        const auto tv_address=cpu.memory.read_u32(0x0C90E3D0u);
+        const auto display_owner=cpu.memory.read_u32(0x0C90E3D4u);
+        require(tv_address==0x8C754B44u,"retail TV-mode destination changed");
+        for(unsigned mode=1;mode<=2;++mode)for(unsigned persist=0;persist<=1;++persist) {
+            cpu.r[15]=0x8CF00000u;cpu.sr=sr_md_mask;cpu.t=false;
+            cpu.exception_generation=0u;cpu.trap_pending=false;
+            cpu.memory.write_u32(0x0CF00000u,persist);
+            cpu.memory.write_u32(0x0CF00004u,mode);
+            cpu.memory.write_u32(tv_address&0x1fffffffu,0x13579BDFu);
+            cpu.pc=0x8C90E2C0u;
+            until(cpu,display_owner);
+            require(cpu.r[4]==(mode==1?58u:56u) && cpu.r[5]==0u && cpu.r[6]==1u,
+                "retail display constructor arguments changed");
+            const auto stored=cpu.memory.read_u32(tv_address&0x1fffffffu);
+            require(stored==(persist?2u-mode:0x13579BDFu),"retail TV-mode mapping changed");
+            std::cout<<"SONIC_RETAIL_VIDEO_MAPPING menu="<<mode<<" persist="<<persist
+                <<" stored="<<stored<<" display_mode="<<cpu.r[4]
+                <<" owner=0x"<<std::hex<<display_owner<<std::dec<<'\n';
+        }
+        for(unsigned mode=1;mode<=2;++mode) {
+            // Separate constructor component: feed the original decoded mode
+            // argument into its retail low-bit publication and selector.
+            // This does not stub/run the rest of system initialization.
+            cpu.r[15]=0x8CF00000u;cpu.r[12]=mode==1?58u:56u;
+            cpu.exception_generation=0u;cpu.trap_pending=false;
+            cpu.pc=0x8C65263Eu;until(cpu,0x8C652648u);
+            require(cpu.memory.read_u32(0x0C8A2CB4u)==(mode==1?2u:0u),"display mode low bits changed");
+            cpu.pc=0x8C6526CAu;until(cpu,0x8C6526CEu);
+            require(cpu.memory.read_u32(0x0C8A2CB8u)==(mode==1?58u:56u),"full display mode not published");
+            cpu.pc=0x8C652756u;
+            const auto constructor=mode==1?0x8C658500u:0x8C658744u;
+            until(cpu,constructor);
+            // The constructors and their original RAM-only argument copy
+            // finish before the hardware-facing apply owner is entered.
+            until(cpu,0x8C658220u,2048u);
+            const auto argument=[&](unsigned offset){return cpu.memory.read_u32((cpu.r[15]+offset)&0x1fffffffu);};
+            const auto horizontal=((argument(0)&0x3ffu)<<16u)|(argument(4)&0x3ffu);
+            const auto vertical=((argument(0x14)&0x3ffu)<<16u)|(argument(8)&0x3ffu);
+            const auto border=((argument(0x0c)&0x3ffu)<<16u)|(argument(0x10)&0x3ffu);
+            std::cout<<"SONIC_RETAIL_VIDEO_CONSTRUCTOR menu="<<mode<<" owner=0x"<<std::hex<<constructor
+                <<" horizontal=0x"<<horizontal<<" vertical=0x"<<vertical<<" border=0x"<<border<<std::dec<<'\n';
+            require(horizontal==(mode==1?0x008D034Bu:0x007E0345u) &&
+                vertical==(mode==1?0x0270035Fu:0x020C0359u),"original video constructor tuple changed");
+        }
+        std::cout<<"SONIC_LEGACY_VIDEO_TESTS_OK retail_calls="<<cases<<" apply=test=restore=ok cpu_ram_preserved=1 menu_continuation=ok clock_arguments=4 constructors=2\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }
