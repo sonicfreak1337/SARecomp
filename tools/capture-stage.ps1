@@ -7,6 +7,8 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Tag='wide-16x9',
       [string] $Executable='',
       [ValidateSet('d3d11','vulkan')][string] $Renderer='d3d11',
+      [ValidateSet('original','recompiled')][string] $GameplayTiming='original',
+      [ValidateSet(1,2)][Nullable[int]] $VSync=$null,
       [ValidateSet('original','recompiled')][string] $CameraStyle='original',
       [switch] $CameraTest,
       [switch] $CameraCollisionTest,
@@ -44,7 +46,8 @@ foreach ($directory in Get-ChildItem -LiteralPath (Join-Path $root '.local/basel
 }
 Get-ChildItem -LiteralPath $saves -File -Recurse | ForEach-Object {$_.IsReadOnly=$false}
 $display=Join-Path $run 'sonic-display.ini'
-"setup_complete=1`nmode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer`ncamera_style=$CameraStyle" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
+"setup_complete=1`nmode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer`ngameplay_timing=$([int]($GameplayTiming -eq 'recompiled'))`ncamera_style=$CameraStyle" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
+if ($null -ne $VSync) { "vsync=$VSync" | Add-Content -LiteralPath $display -Encoding utf8NoBOM }
 $envs=@{
     KATANA_PORT_BACKGROUND_TEST='1'; KATANA_PORT_IGNORE_FOCUS='1'
     KATANA_USER_DATA_ROOT=$saves; KATANA_PORT_FINAL_PROGRESS='1'
@@ -82,10 +85,10 @@ $game=if ($Executable) {[IO.Path]::GetFullPath($Executable)} else {Join-Path $pr
 if (-not (Test-Path -LiteralPath $game -PathType Leaf)) { throw 'Capture executable is missing.' }
 $content=Join-Path $root '.local/baseline/r354/native-content'
 $process=Start-Process -FilePath $game -WorkingDirectory $product `
-    -ArgumentList @('--bringup-incomplete-hardware-closure','--content-root',('"'+$content+'"'),'--presentation-fps','144') `
+    -ArgumentList @('--bringup-incomplete-hardware-closure','--content-root',('"'+$content+'"')) `
     -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'stdout.log') `
     -RedirectStandardError (Join-Path $run 'stderr.log') -PassThru
 $process.PriorityClass='BelowNormal'
-[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;camera_style=$CameraStyle;camera_test=[bool]$CameraTest;camera_collision_test=[bool]$CameraCollisionTest;camera_trace=[bool]$CameraTrace;startup_trace=[bool]$StartupTrace;code_prefetch=(-not $DisableCodePrefetch);startup_cache=(-not $DisableStartupCache);cache_root=$envs.SARECOMP_CACHE_ROOT} |
+[ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;gameplay_timing=$GameplayTiming;vsync=$VSync;camera_style=$CameraStyle;camera_test=[bool]$CameraTest;camera_collision_test=[bool]$CameraCollisionTest;camera_trace=[bool]$CameraTrace;startup_trace=[bool]$StartupTrace;code_prefetch=(-not $DisableCodePrefetch);startup_cache=(-not $DisableStartupCache);cache_root=$envs.SARECOMP_CACHE_ROOT} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'run.json')
 Write-Host "SONIC_CAPTURE_STARTED pid=$($process.Id) run=$run hidden=1 muted=1"

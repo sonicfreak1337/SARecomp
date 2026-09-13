@@ -32,6 +32,8 @@ parser.add_argument('--native-matrix-inverse', action='store_true', help='Privat
 parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
 parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
+parser.add_argument('--indexed-corners', choices=('on','off'), default='off', help='Transient authored-corner reuse experiment')
+parser.add_argument('--verify-indexed-corners', action='store_true', help='Compare every reused corner with the original game vertex builder')
 parser.add_argument('--original-math-families', action='store_true', help='Compare against retained atan/contact owners')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
@@ -75,6 +77,8 @@ display = run/'sonic-display.ini'
 display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\ngameplay_timing={int(args.gameplay_timing=="recompiled")}\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env['SARECOMP_NATIVE_MATRIX_VECTORS']='1' if args.matrix_vectors=='native' else '0'
+env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
+env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '0'
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',
     'KATANA_USER_DATA_ROOT':str(saves), 'KATANA_PORT_FINAL_PROGRESS':'1',

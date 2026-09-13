@@ -1,5 +1,5 @@
 # Keep r354's exact component ordering for baseline source compatibility.
-set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
+set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_scenario_launcher.hpp
     sonic_private_scenario_launcher.cpp sonic_private_stage_scenarios.inc
     sonic-native-event-adx-catalog.inc sonic_native_input_policy.hpp
     sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp sonic_palette_lighting.hpp sonic_palette_lighting.cpp

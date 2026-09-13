@@ -137,6 +137,11 @@ headroom on weaker processors.
 
 ## Other findings and rejected work
 
+Transient authored-corner reuse subsequently reduced the matched Gamma
+execution CPU time from 18.434 to 18.106 ms/draw (1.8%), with exact repeated
+vertex comparisons. See `transient-corner-indices.md` for admission, renderer
+checks and measurement limits. Gamma still does not sustain 60 actual draws/s.
+
 - A conditional MXCSR restore was tested in the global FPU epoch destructor.
   All 131,896 differential cases passed, but the extra read/branch made the
   epoch microbenchmark slower: outer 10.287 to 14.801 ns, nested 8.459 to

@@ -47,6 +47,7 @@
 #include "sonic_subtitles.hpp"
 #include "sonic_sdk_color.hpp"
 #include "sonic_model_uv.hpp"
+#include "sonic_corner_indices.hpp"
 #include "sonic_fpu_scratch.hpp"
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
@@ -2024,6 +2025,7 @@ struct SonicNativeTitleState final {
     std::uint32_t font_dimension = 0u;
     std::uint32_t font_format = 0u;
     std::vector<katana::runtime::NativePortVertex> transient_vertices;
+    sonic::geometry::CornerIndices model_corner_indices;
     // Optional slots keep indices stable for the digest multimap.  Cache
     // entries retain the exact expanded vertex/index stream so a digest
     // collision or mutable guest source can never produce a false hit.
@@ -3195,6 +3197,10 @@ void report_native_graphics_contract_telemetry(
     const auto& fallback = cache.fallback_by_reason;
     std::cerr
         << "SONIC_NATIVE_GRAPHICS_CACHE frame=" << context.frame_index
+        << " indexed_meshes=" << sonic_native_title_state.model_corner_indices.meshes
+        << " indexed_logical_corners=" << sonic_native_title_state.model_corner_indices.logical_corners
+        << " indexed_stored_vertices=" << sonic_native_title_state.model_corner_indices.stored_vertices
+        << " indexed_verified_reuses=" << sonic_native_title_state.model_corner_indices.verified_reuses
         << " mesh_cache_eligible=" << cache.eligible
         << " mesh_cache_hits=" << cache.hits
         << " mesh_cache_misses=" << cache.misses
@@ -6721,7 +6727,8 @@ sonic_render_state(
     const std::optional<katana::runtime::NativePortDrawBatchClass> batch_override =
         std::nullopt,
     const sonic::presentation::Role presentation_role = sonic::presentation::Role::Interface,
-    const sonic::motion::DrawTag motion_tag = {})
+    const sonic::motion::DrawTag motion_tag = {},
+    const std::span<const std::uint32_t> transient_indices = {})
     noexcept {
     if (!valid_sonic_native_context(context))
         return graphics_abort(sonic_native_graphics_error_context);
@@ -6761,8 +6768,10 @@ sonic_render_state(
         const bool collect_graphics_diagnostics =
             sonic_native_graphics_diagnostics_enabled();
         packet.mesh = mesh;
-        if (!packet.mesh)
+        if (!packet.mesh) {
             packet.vertices = sonic_native_title_state.transient_vertices;
+            packet.indices = transient_indices;
+        }
         packet.vertex_space =
             depth_mapping ==
                     katana::runtime::NativePortDepthCoordinateMode::
@@ -36786,6 +36795,22 @@ sonic_native_ninja_model_draw_impl(
             std::uint16_t bad_source_index = 0u;
             std::array<float, 3u> bad_source_raw{}, bad_source_selected{};
             const auto corner_direct_reads = cpu.memory.direct_linear_memory_guard(false);
+            static const bool indexed_corners_requested = [] {
+                const auto* flag = std::getenv("SARECOMP_INDEXED_CORNERS");
+                return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+            }();
+            static const bool indexed_corners_verify =
+                sonic_native_diagnostic_enabled("SARECOMP_INDEXED_CORNERS_VERIFY");
+            const bool indexed_corners =
+                indexed_corners_requested && sonic_native_gameplay_math_active() &&
+                polygon_type != 0u && model_transform.has_value() &&
+                !environment_mapping && !flat_shading && !observe_normal_draw &&
+                !native_mesh_cache_diagnostics_active() && corner_direct_reads &&
+                material_owner == SonicNativeBasicMaterialOwner::TitleBasic &&
+                !sdk_exceptional_header_color && !sdk_constant_colors && !sdk_float_colors &&
+                !sdk_exceptional_vertex_color;
+            auto& corner_indices = sonic_native_title_state.model_corner_indices;
+            corner_indices.begin_mesh();
             struct PendingModelCorner final {
                 std::vector<katana::runtime::NativePortVertex>* output;
                 ~PendingModelCorner() {
@@ -37232,6 +37257,43 @@ sonic_native_ninja_model_draw_impl(
                         }
                         return invalid_raster;
                     }
+                    const bool requires_near_clip = !environment_mapping && std::ranges::any_of(
+                        indices, [&](const std::uint16_t point_index) {
+                            return point_index >= sonic_native_title_state.transformed_point_clipped.size() ||
+                                sonic_native_title_state.transformed_point_clipped[point_index] != 0u;
+                        });
+                    if (indexed_corners) {
+                        // Keep the original expanded-stream budget, including
+                        // the three temporary corners before near clipping.
+                        if (!corner_indices.fits(3u, max_native_draw_vertices)) return false;
+                        if (!requires_near_clip) {
+                            // Optional real-game oracle: reconstruct reused
+                            // corners through the unchanged original builder.
+                            // The direct-reader admission excludes observers.
+                            if (indexed_corners_verify) {
+                                for (std::size_t i = 0; i < 3u; ++i) {
+                                    const auto key = static_cast<std::size_t>(corners[i] - corner_cursor);
+                                    if (key >= corner_indices.corners.size()) return false;
+                                    const auto cached = corner_indices.corners[key];
+                                    if (cached == sonic::geometry::CornerIndices::missing) continue;
+                                    if (!append_corner(indices[i], corners[i])) return false;
+                                    static_assert(sizeof(katana::runtime::NativePortVertex) == 19u * sizeof(float));
+                                    const bool exact = std::memcmp(&vertices[cached], &vertices.back(),
+                                                                 sizeof(vertices.back())) == 0;
+                                    vertices.pop_back();
+                                    if (!exact) return false;
+                                    ++corner_indices.verified_reuses;
+                                }
+                            }
+                            return corner_indices.append_shared(vertices,
+                                {static_cast<std::size_t>(corners[0]-corner_cursor),
+                                 static_cast<std::size_t>(corners[1]-corner_cursor),
+                                 static_cast<std::size_t>(corners[2]-corner_cursor)},
+                                max_native_draw_vertices, [&](std::size_t i) {
+                                    return append_corner(indices[i], corners[i]);
+                                });
+                        }
+                    }
                     const auto first_vertex = vertices.size();
                     for (std::size_t corner = 0u; corner < indices.size();
                          ++corner) {
@@ -37242,15 +37304,6 @@ sonic_native_ninja_model_draw_impl(
                     }
                     if (environment_mapping)
                         return append_env_triangle(indices, first_vertex);
-                    const bool requires_near_clip = std::ranges::any_of(
-                        indices, [&](const std::uint16_t point_index) {
-                            return point_index >=
-                                       sonic_native_title_state
-                                           .transformed_point_clipped.size() ||
-                                   sonic_native_title_state
-                                           .transformed_point_clipped
-                                               [point_index] != 0u;
-                        });
                     if (!requires_near_clip) return true;
                     expanded_geometry_clipped = true;
 
@@ -37265,6 +37318,8 @@ sonic_native_ninja_model_draw_impl(
                         return false;
                     if (clipped_count < 3u) return true;
                     const auto output_vertices = (clipped_count - 2u) * 3u;
+                    if (indexed_corners && !corner_indices.fits(output_vertices, max_native_draw_vertices))
+                        return false;
                     if (output_vertices >
                         max_native_draw_vertices - vertices.size())
                         return false;
@@ -37284,6 +37339,8 @@ sonic_native_ninja_model_draw_impl(
                         }
                         vertices.push_back(last);
                     }
+                    if (indexed_corners)
+                        return corner_indices.append_expanded(first_vertex, output_vertices, max_native_draw_vertices);
                     return true;
                 };
             enum class DerivedPolygonNormalResult : std::uint8_t {
@@ -37374,6 +37431,7 @@ sonic_native_ninja_model_draw_impl(
                     max_native_draw_vertices)
                     return graphics_abort(context, sonic_native_graphics_error_budget);
                 polygon_indices.clear();
+                if (indexed_corners) corner_indices.begin_polygon(vertices_in_polygon);
                 polygon_indices.reserve(vertices_in_polygon);
                 for (std::uint32_t corner = 0u;
                      corner < vertices_in_polygon; ++corner) {
@@ -37663,7 +37721,14 @@ sonic_native_ninja_model_draw_impl(
             katana::runtime::NativePortMeshHandle persistent_mesh;
             auto& cache_telemetry =
                 sonic_native_title_state.mesh_cache_telemetry;
-            if (environment_mapping) {
+            if (indexed_corners) {
+                ++corner_indices.meshes;
+                corner_indices.logical_corners += corner_indices.indices.size();
+                corner_indices.stored_vertices += vertices.size();
+            }
+            if (indexed_corners || environment_mapping) {
+                // Indexed corner reuse is intentionally transient and cannot
+                // use the retained cache's expanded-stream identity.
                 // Scene screen-space table fog consumes per-vertex q. The
                 // existing PVR-screen packet route deliberately uses transient
                 // vertices for that normalization, not persistent mesh handles.
@@ -37806,7 +37871,8 @@ sonic_native_ninja_model_draw_impl(
                  environment_mapping
                      ? std::optional{katana::runtime::NativePortDrawBatchClass::Scene3D}
                      : std::nullopt,
-                 sonic::presentation::Role::World,motion_tag);
+                 sonic::presentation::Role::World,motion_tag,
+                 indexed_corners ? std::span<const std::uint32_t>(corner_indices.indices) : std::span<const std::uint32_t>{});
             if (result.action != katana::runtime::NativePortHookAction::Return)
                 return result;
             if (sonic_native_texlist_binding_diagnostic_enabled()) {
