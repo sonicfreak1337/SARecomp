@@ -47,6 +47,7 @@
 #include "sonic_tutorial_prompt.hpp"
 #include "sonic_tutorial_art.hpp"
 #include "sonic_execution_clock.hpp"
+#include "sonic_update_timing_probe.hpp"
 #include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
@@ -1818,6 +1819,7 @@ enum class SonicNativeGameplayInputPhase : std::uint32_t {
 };
 
 struct SonicNativeGameplayProbe final {
+    sonic::diagnostics::UpdateTimingProbe update_timing;
     const sonic_native_private::ScenarioDescriptor* descriptor = nullptr;
     std::uint32_t input_profile = sonic_native_gameplay_input_profile;
     std::uint64_t queued_nanoseconds = 0u;
@@ -17578,6 +17580,72 @@ constexpr std::uint32_t sonic_private_staffroll_character_count = 7u;
         entry.lifecycle_generation != 0u;
 }
 
+[[nodiscard]] bool sonic_native_update_timing_enabled() noexcept {
+    static const bool enabled =
+        sonic_native_diagnostic_enabled("SARECOMP_UPDATE_TIMING_TRACE") &&
+        sonic_native_diagnostic_enabled("KATANA_PORT_BACKGROUND_TEST") &&
+        sonic_native_diagnostic_enabled("KATANA_SONIC_GAMEPLAY_PROBE");
+    return enabled;
+}
+
+void observe_sonic_native_update_timing(
+    const katana::runtime::NativePortContext& context,
+    const sonic::diagnostics::UpdateTimingEvent event,
+    const std::uint32_t value = 0u) noexcept {
+    using Event = sonic::diagnostics::UpdateTimingEvent;
+    if (!sonic_native_update_timing_enabled()) return;
+    auto& probe = sonic_native_title_state.gameplay_probe;
+    if (!probe.active || probe.complete || probe.interrupted ||
+        context.cpu == nullptr || context.host == nullptr) return;
+    auto& trace = probe.update_timing;
+    const auto& cpu = *context.cpu;
+    const auto pr = katana::runtime::unrelocate_code_address(cpu.pr);
+    // Both samples are unconditional in the authenticated 8C04E714 body.
+    // The first follows coroutine scheduling and the complete task traversal;
+    // the second follows 8C09DEA4. They are not two separate updates.
+    if ((event == Event::TasksCompleted && pr != 0x8C04E73Cu) ||
+        (event == Event::TailSample && pr != 0x8C04E782u) ||
+        (event == Event::Elapsed && pr != 0x8C04EB18u && pr != 0x8C04E9DEu) ||
+        (event == Event::Wait && pr != 0x8C04EB38u && pr != 0x8C04E9FEu)) return;
+    sonic::diagnostics::UpdateTimingRecord record{};
+    record.event = event;
+    record.pr = pr;
+    record.value = value;
+    record.threshold = event == Event::Elapsed ? cpu.fr[15] : 0u;
+    record.frame = context.frame_index;
+    SonicGuestReader reader(cpu);
+    std::uint8_t phase = 0u;
+    if (!reader.u32(0x8C754E08u, record.iteration) ||
+        !reader.u8(0x8C19DD6Cu, phase) ||
+        !reader.u32(0x8C754E04u, record.delta) ||
+        !reader.u32(sonic_frame_producer_ready, record.ready) ||
+        !reader.u32(sonic_frame_producer_release, record.release) ||
+        ((event == Event::TasksCompleted || event == Event::TailSample) &&
+         !reader.u32(cpu.r[15], record.caller))) {
+        ++trace.unreadable;
+        return;
+    }
+    record.phase = phase;
+    record.caller = katana::runtime::unrelocate_code_address(record.caller);
+    record.nanoseconds = context.host->monotonic_time_nanoseconds();
+    switch (event) {
+    case Event::TasksCompleted:
+        ++trace.tasks;
+        trace.main_tasks += record.caller == 0x8C04EA94u;
+        trace.alternate_tasks += record.caller == 0x8C04E9A0u;
+        break;
+    case Event::TailSample: ++trace.tails; break;
+    case Event::Elapsed:
+        ++trace.elapsed;
+        trace.elapsed_extra += !(std::bit_cast<float>(record.threshold) > std::bit_cast<float>(value));
+        break;
+    case Event::Wait: ++trace.waits; break;
+    case Event::ImageBoundary: ++trace.boundaries; break;
+    }
+    if (trace.size < trace.records.size()) trace.records[trace.size++] = record;
+    else ++trace.dropped;
+}
+
 void emit_sonic_native_gameplay_probe_sample(
     katana::runtime::NativePortContext& context,
     const std::uint64_t now,
@@ -17615,6 +17683,18 @@ void emit_sonic_native_gameplay_probe_sample(
               << " clock_bound_frame=" << sonic_native_title_state.active_video_refresh_frame
               << " tv_mode_readable=" << int(tv_mode_readable) << " tv_mode_word=" << tv_mode
               << " release_slots=" << release << " logical_delta=" << delta
+              << " update_timing=" << int(sonic_native_update_timing_enabled())
+              << " update_tasks=" << probe.update_timing.tasks
+              << " update_tails=" << probe.update_timing.tails
+              << " update_main_tasks=" << probe.update_timing.main_tasks
+              << " update_alternate_tasks=" << probe.update_timing.alternate_tasks
+              << " update_waits=" << probe.update_timing.waits
+              << " update_elapsed=" << probe.update_timing.elapsed
+              << " update_elapsed_extra=" << probe.update_timing.elapsed_extra
+              << " update_timer_setups=" << probe.update_timing.setups
+              << " periodic_epoch_ns=" << sonic_native_title_state.periodic_epoch_nanoseconds
+              << " periodic_callbacks=" << sonic_native_title_state.periodic_callbacks_dispatched
+              << " update_unreadable=" << probe.update_timing.unreadable
               << " execution_thread_id=" << clock.thread_id
               << " execution_cpu_valid=" << int(clock.thread_valid)
               << " execution_cpu_100ns=" << clock.thread_cpu_100ns
@@ -17624,6 +17704,23 @@ void emit_sonic_native_gameplay_probe_sample(
               << " execution_cycles=" << clock.thread_cycles
               << " phase=" << static_cast<std::uint32_t>(probe.input_phase)
               << " final=" << (complete ? 1 : 0) << '\n' << std::flush;
+    if (complete && sonic_native_update_timing_enabled()) {
+        const auto& trace = probe.update_timing;
+        for (std::size_t index = 0; index < trace.size; ++index) {
+            const auto& row = trace.records[index];
+            std::cerr << "SONIC_UPDATE_TIMING_EVENT sequence=" << index
+                      << " event=" << static_cast<std::uint32_t>(row.event)
+                      << " monotonic_ns=" << row.nanoseconds << " frame=" << row.frame
+                      << " pr=" << row.pr << " caller=" << row.caller
+                      << " iteration=" << row.iteration << " phase=" << row.phase
+                      << " delta=" << row.delta << " ready=" << row.ready
+                      << " release=" << row.release << " value=" << row.value
+                      << " threshold=" << row.threshold << '\n';
+        }
+        std::cerr << "SONIC_UPDATE_TIMING_END records=" << trace.size
+                  << " dropped=" << trace.dropped << " unreadable=" << trace.unreadable
+                  << " boundaries=" << trace.boundaries << '\n';
+    }
     probe.last_sample_nanoseconds = now;
     probe.last_sample_frame = context.frame_index;
     probe.last_sample_presentations = presentations;
@@ -17731,6 +17828,8 @@ void service_sonic_native_gameplay_probe_completed_frame(
         }
         probe.last_completed_frame_nanoseconds = now;
         ++probe.completed_frames;
+        observe_sonic_native_update_timing(
+            context, sonic::diagnostics::UpdateTimingEvent::ImageBoundary);
         const auto rendered_frames =
             context.graphics->completed_drawn_frames_nonblocking();
         if (rendered_frames < probe.active_rendered_baseline)
@@ -32123,6 +32222,8 @@ sonic_native_host_timing_owner_8c06c000(
         sonic_native_title_state.periodic_reload_ticks =
             sonic_periodic_reload_ticks;
         sonic_native_title_state.periodic_clock_initialized = true;
+        if (sonic_native_update_timing_enabled() && sonic_native_title_state.gameplay_probe.active)
+            ++sonic_native_title_state.gameplay_probe.update_timing.setups;
         context.cpu->r[0] = sonic_periodic_reload_ticks;
         return {katana::runtime::NativePortHookAction::Return, 0u, 0u};
     } catch (const std::exception& error) {
@@ -32233,6 +32334,10 @@ sonic_native_periodic_sample(
         context.cpu->r[2] = sonic_periodic_reload_word;
         context.cpu->r[3] = sonic_periodic_tmu_counter;
         context.cpu->r[4] = snapshot.counter;
+        observe_sonic_native_update_timing(
+            context, sonic::diagnostics::UpdateTimingEvent::TasksCompleted, snapshot.counter);
+        observe_sonic_native_update_timing(
+            context, sonic::diagnostics::UpdateTimingEvent::TailSample, snapshot.counter);
         return {katana::runtime::NativePortHookAction::Return, 0u, 0u};
     } catch (const std::exception& error) {
         std::cerr << "SONIC_NATIVE_PERIODIC_SAMPLE failure=" << error.what()
@@ -32291,6 +32396,8 @@ sonic_native_periodic_elapsed(
     const auto result = elapsed * sonic_periodic_tick_scale;
     cpu.fr[4] = std::bit_cast<std::uint32_t>(result);
     cpu.fr[0] = cpu.fr[4];
+    observe_sonic_native_update_timing(
+        context, sonic::diagnostics::UpdateTimingEvent::Elapsed, cpu.fr[0]);
     return {katana::runtime::NativePortHookAction::Return, 0u, 0u};
 }
 
@@ -40141,6 +40248,8 @@ sonic_native_frame_producer_wait(
         // requires a provider for this shape; the private binding supplies the
         // identity/ABI and retains both original post-wait calls through AOT.
         const auto threshold = static_cast<std::int32_t>(context.cpu->r[4]);
+        observe_sonic_native_update_timing(
+            context, sonic::diagnostics::UpdateTimingEvent::Wait, context.cpu->r[4]);
         if (!service_frame_producer_until(context, threshold,
                 SonicFrameCadencePolicy::AccountWithoutWait))
             return graphics_abort(sonic_native_frame_error_completion);

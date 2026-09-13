@@ -19,6 +19,7 @@ parser.add_argument('--width', type=int, default=3182)
 parser.add_argument('--height', type=int, default=1332)
 parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
+parser.add_argument('--update-timing', action='store_true', help='Private read-only original update/timer trace; diagnostic timing')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
@@ -58,6 +59,7 @@ env.update({
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'100000', 'SARECOMP_DISPLAY_CONFIG':str(display),
 })
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
+if args.update_timing: env['SARECOMP_UPDATE_TIMING_TRACE']='1'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
@@ -174,11 +176,27 @@ profile=json.loads(profile_path.read_text()) if args.profile_ms and profile_path
 result['profile_passed'] = not args.profile_ms or (profiler is not None and profiler.returncode==0
     and profile is not None and profile['samples']>0 and profile['errors']==0)
 result['isolated_input_confirmed'] = 'SONIC_INPUT_PROBE isolated_hardware=1 profile=3 remapping=normal' in stderr
+if args.update_timing:
+    (run/'update-timing.json').write_text(json.dumps({
+        'schema':'sarecomp-original-update-timing-v1',
+        'events':rows(stderr, 'SONIC_UPDATE_TIMING_EVENT '),
+        'end':rows(stderr, 'SONIC_UPDATE_TIMING_END ')},indent=2)+'\n')
+    result['update_timing_passed'] = bool(steady) and all(
+        r.get('update_timing')=='1' and r.get('update_unreadable')=='0' for r in steady
+    ) and int(steady[-1].get('update_tasks','0')) > 0 and int(steady[-1].get('update_elapsed','0')) > 0 and 'SONIC_UPDATE_TIMING_END ' in stderr
+    if len(steady)>1:
+        a,b=steady[0],steady[-1]
+        seconds=(int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9
+        result['task_traversals_per_second']=(int(b['update_tasks'])-int(a['update_tasks']))/seconds
+        result['task_traversals_per_title_boundary']=(int(b['update_tasks'])-int(a['update_tasks']))/(int(b['frame'])-int(a['frame']))
+        elapsed_calls=int(b['update_elapsed'])-int(a['update_elapsed'])
+        result['elapsed_extra_fraction']=(int(b['update_elapsed_extra'])-int(a['update_elapsed_extra']))/elapsed_calls if elapsed_calls else None
 # This probe requests a graceful deadline at 60 seconds of gameplay. Exit 1
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
     and len(steady) > 1 and len(cpu) > 1 and result['profile_passed']
+    and (not args.update_timing or result['update_timing_passed'])
     and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))

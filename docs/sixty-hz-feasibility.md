@@ -1,5 +1,13 @@
 # Timing-faithful 60 Hz feasibility
 
+**Latest authoritative follow-up (September13):** the
+[live update trace](original-update-live-20260913.md) now proves the actual
+gameplay wrapper8C04E95A,59.63 task traversals/s versus17.74 new images/s,
+one timer reset per outer boundary, and a separately misclassified render
+completion callback. It supersedes the earlier missing-live-proof statements
+and the one-second-callback interpretation in this historical audit. It does
+not complete a timing-faithful60-frame rendering enhancement.
+
 Read-only audit for Eggman, 2026-09-12. Repository: Sonic Adventure Recompiled,
 branch `enhancements/ingame-settings`; inspected HEAD
 `d1e1a2246bd2258a09fb642667870af8ca767122` with concurrent Options/Audio/Input
@@ -205,6 +213,9 @@ References: retained `unit-v8C04DC58-8C04ECFA-c5709913296e7386.cpp`, entry
 54374, phase56226, timer56657, wait57068, press57633, post57793; original
 call sites include 8C04DC2C/DC6C, 8C04DF64/DFA2 and 8C04E006/E040/E04E.
 Do not substitute adjacent wrapper 8C04E95A, which has different contracts.
+The later live follow-up above identifies that adjacent wrapper as the actual
+EC gameplay owner and extends the component to cover its1900 threshold and
+second post service explicitly.
 
 ### Bounded counter-reset follow-up
 

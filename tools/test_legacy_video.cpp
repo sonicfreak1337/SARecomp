@@ -57,13 +57,13 @@ auto registers(const CpuState& cpu) {
 struct LoopResult {
     std::vector<unsigned> iterations, waits;
     std::string sequence;
-    unsigned timer_calls=0, post_calls=0, published_press1=0, published_press2=0;
+    unsigned timer_calls=0, post_calls=0, extra_post_calls=0, published_press1=0, published_press2=0;
 };
 // Execute only the original orchestration wrapper. These four callee boundaries
 // are deterministic fixtures, NOT replacements for gameplay/physics or timing.
-LoopResult run_update_loop(CpuState& cpu,float elapsed=1000.0f) {
+LoopResult run_update_loop(CpuState& cpu,float elapsed=1000.0f,bool alternate=false) {
     constexpr auto returned=0x8CF80000u;
-    cpu.pc=0x8C04EA4Au;cpu.pr=returned;cpu.write_sr(sr_md_mask);cpu.write_fpscr(0u);
+    cpu.pc=alternate?0x8C04E95Au:0x8C04EA4Au;cpu.pr=returned;cpu.write_sr(sr_md_mask);cpu.write_fpscr(0u);
     cpu.exception_generation=0;cpu.trap_pending=false;
     for(unsigned i=0;i<16;++i)cpu.r[i]=0x13579000u+i;
     cpu.r[15]=0x8CF00000u;cpu.fr[15]=0x3F800001u;
@@ -73,27 +73,32 @@ LoopResult run_update_loop(CpuState& cpu,float elapsed=1000.0f) {
     for(unsigned steps=0;cpu.pc!=returned && steps<2048;++steps) {
         const auto iteration=word(0x8C754E08u);
         if(cpu.pc==0x8C04E714u) {
-            require(cpu.pr==0x8C04EA94u,"body caller changed");
+            require(cpu.pr==(alternate?0x8C04E9A0u:0x8C04EA94u),"body caller changed");
             result.iterations.push_back(iteration);result.sequence+='B';cpu.pc=cpu.pr;
         } else if(cpu.pc==0x8C0517F6u) {
-            require(cpu.pr==0x8C04EB38u,"wait caller changed");
+            require(cpu.pr==(alternate?0x8C04E9FEu:0x8C04EB38u),"wait caller changed");
             result.waits.push_back(cpu.r[4]);result.sequence+='W';
             // New edge observations arrive at the existing wait boundary.
             cpu.memory.write_u32((word(0x8C754CE8u)+16u)&0x1fffffffu,4u);
             cpu.memory.write_u32((word(0x8C754CECu)+16u)&0x1fffffffu,8u);
             cpu.pc=cpu.pr;
         } else if(cpu.pc==0x8C06C0F2u) {
-            require(cpu.pr==0x8C04EB18u && iteration==1u,"timer caller changed");
+            require(cpu.pr==(alternate?0x8C04E9DEu:0x8C04EB18u) && iteration==1u,"timer caller changed");
+            require(std::bit_cast<float>(cpu.fr[15])==(alternate?1900.0f:1850.0f),"timer threshold changed");
             ++result.timer_calls;result.sequence+='T';
             cpu.fr[0]=std::bit_cast<std::uint32_t>(elapsed);cpu.pc=cpu.pr;
         } else if(cpu.pc==0x8C08A3FAu) {
-            require(cpu.pr==0x8C04EB66u,"post caller changed");
+            require(cpu.pr==(alternate?0x8C04EA2Cu:0x8C04EB66u),"post caller changed");
             ++result.post_calls;result.sequence+='P';
             result.published_press1=word(word(0x8C754CE8u)+16u);
             result.published_press2=word(word(0x8C754CECu)+16u);
             cpu.pc=cpu.pr;
+        } else if(cpu.pc==0x8C08A664u) {
+            require(alternate && cpu.pr==0x8C04EA32u,"alternate post caller changed");
+            ++result.extra_post_calls;result.sequence+='Q';cpu.pc=cpu.pr;
         } else {
-            require(cpu.pc>=0x8C04EA4Au && cpu.pc<0x8C04EB7Eu,"escaped original loop wrapper");
+            require(cpu.pc>=(alternate?0x8C04E95Au:0x8C04EA4Au) &&
+                cpu.pc<(alternate?0x8C04EA4Au:0x8C04EB7Eu),"escaped original loop wrapper");
             (void)execute_dynamic_sh4_block(cpu,services,1u);
         }
         require(cpu.exception_generation==0u && !cpu.trap_pending,"original loop exception");
@@ -135,9 +140,28 @@ void update_loop_contract(CpuState& cpu) {
     seed(0,2,0);const auto slow=run_update_loop(cpu,1850.0f);
     require(slow.iterations==std::vector<unsigned>{0,1,2} && slow.waits==std::vector<unsigned>{1,1}
         && slow.sequence=="BWBTWBP" && word(0x8C754E08u)==3,"timer threshold extra-step differs");
+    seed(0,2,0);const auto alternate=run_update_loop(cpu,1850.0f,true);
+    require(alternate.sequence=="BWBTPQ" && alternate.iterations==std::vector<unsigned>{0,1}
+        && alternate.post_calls==1 && alternate.extra_post_calls==1
+        && alternate.published_press1==5 && alternate.published_press2==10,
+        "alternate wrapper conflated with primary threshold/post");
+    seed(0,2,0);const auto alternate_slow=run_update_loop(cpu,1900.0f,true);
+    require(alternate_slow.sequence=="BWBTWBPQ" && alternate_slow.iterations==std::vector<unsigned>{0,1,2}
+        && alternate_slow.waits==std::vector<unsigned>{1,1},"alternate 1900 threshold differs");
+    for(bool extra:{false,true}) {
+        seed(1,2,0);cycle.clear();bodies=0;
+        for(unsigned n=0;n<5;++n) {
+            const auto r=run_update_loop(cpu,extra?1900.0f:1000.0f,true);
+            require(r.post_calls==1 && r.extra_post_calls==1,"alternate post not once per wrapper");
+            cycle.push_back(unsigned(r.iterations.size()));bodies+=unsigned(r.iterations.size());
+        }
+        require(cycle==(extra?std::vector<unsigned>{3,3,4,3,4}:std::vector<unsigned>{2,2,3,2,3})
+            && bodies==(extra?17u:12u) && phase()==0,"alternate PAL phase cycle differs");
+    }
     std::cout<<"SONIC_RETAIL_UPDATE_LOOP_PASS ordinary_delta2=BWBTP split_delta1=BP,BP "
         <<"pal_phase2_delta2_bodies=3 pal_phase2_split_bodies=2 pal_cycle=2,2,3,2,3 "
-        <<"pal_cycle_bodies=12 wrappers=5 timer_threshold=1850 tested=orchestration_only\n";
+        <<"pal_cycle_bodies=12 wrappers=5 timer_threshold=1850 alternate_threshold=1900 "
+        <<"alternate_extra_cycle=3,3,4,3,4 alternate_extra_bodies=17 alternate_post=PQ tested=orchestration_only\n";
 }
 }
 int main(int argc,char** argv) {

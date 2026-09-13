@@ -103,4 +103,8 @@ Final retained-candidate relink: `.local/menu-preview/build-inverse-retained.log
 ownership/native closure PASS, 1,910,121,984 bytes. Current experimental
 `out/experimental/game.exe` SHA256:
 `06b46378ec11fe37eaaa4bf66a30f8d6ac9bc57c3dec353fd40f4e780284823d`.
-The later standalone timing-component build does not modify that executable.
+The later standalone timing-component build did not modify that executable.
+The subsequent [read-only update diagnostic](original-update-live-20260913.md)
+incrementally relinks the adapter and records its own executable hash. It keeps
+this exact INVERSE implementation selected; its trace is not another clean
+performance comparison.
