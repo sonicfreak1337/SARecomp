@@ -41,7 +41,6 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include "sonic_options.hpp"
 #include "sonic_configuration.hpp"
 #include "sonic_errors.hpp"
 #else
@@ -798,7 +797,6 @@ int run_game(int argc, char** argv) {
             graphics_config, frame_pacing);
         if(!sonic::restart::confirm_display(host,platform))return 0;
         sonic::startup::phase("Starting game...");
-        sonic::options::install(executable_path);
         bool frame_pacing_snapshot_emitted = false;
         const auto emit_terminal_runtime_telemetry = [&]() noexcept {
             try {

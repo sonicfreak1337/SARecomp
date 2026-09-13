@@ -129,6 +129,11 @@ struct Dialog {
         if(!self) return DefWindowProcW(window,message,word,data);
         try {
             if(message==WM_CREATE) {self->populate();return 0;}
+            if(message==WM_COMMAND && LOWORD(word)==Aspect && HIWORD(word)==CBN_SELCHANGE) {
+                if(self->selected(Aspect)==1)
+                    MessageBoxW(window,L"Some cutscenes may be glitchy.",L"Widescreen",MB_OK|MB_ICONWARNING);
+                return 0;
+            }
             if(message==WM_COMMAND && LOWORD(word)==IDOK) {
                 self->save(); if(!self->self_test) DestroyWindow(window); return 0;
             }

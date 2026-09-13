@@ -187,7 +187,10 @@ Result Model::activate(const Row& row,int direction){
     }
     const auto change=[&](int value,int min,int max){return direction<0?(value<=min?max:value-1):(value>=max?min:value+1);};
     if(id=="renderer")draft_.renderer=rendering::Renderer(change(int(draft_.renderer),0,1));
-    else if(id=="widescreen")draft_.widescreen=!draft_.widescreen;
+    else if(id=="widescreen"){
+        draft_.widescreen=!draft_.widescreen;
+        if(draft_.widescreen)message(copy("widescreen_warning",language()));
+    }
     else if(id=="window_mode")draft_.window_mode=rendering::WindowMode(change(int(draft_.window_mode),0,2));
     else if(id=="camera_style")draft_.camera_style=camera::Style(change(int(draft_.camera_style),0,1));
     else if(id=="text_language")draft_.text_language=change(draft_.text_language,-1,4);

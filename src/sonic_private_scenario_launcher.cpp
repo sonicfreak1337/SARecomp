@@ -177,7 +177,7 @@ struct LauncherState final {
     std::size_t automatic_scenario = 0u;
     bool automatic_scenario_pending = false;
     std::string_view status =
-        "Share/Ctrl+F10: open evidence-bound scenario select";
+        "Ctrl+F10: open evidence-bound scenario select";
 };
 
 thread_local LauncherState launcher_state;
@@ -189,10 +189,7 @@ constexpr std::uint32_t kTitleButtonUp = 1u << 4u;
 constexpr std::uint32_t kTitleButtonDown = 1u << 5u;
 constexpr std::uint32_t kTitleButtonLeft = 1u << 6u;
 constexpr std::uint32_t kTitleButtonRight = 1u << 7u;
-// The native input bridge maps PlayStation Share/Create and Xbox View to the
-// otherwise unused Dreamcast D-button lane. Keep the private tool on that
-// projected lane so it never polls the controller backend a second time.
-constexpr std::uint32_t kTitleButtonShare = 1u << 11u;
+// The private menu is keyboard-only to open. No Share/Create/View shortcut.
 
 [[nodiscard]] bool ctrl_f10_down() noexcept {
 #if defined(_WIN32)
@@ -241,7 +238,7 @@ void reset_launcher(const void* const title_state) noexcept {
     launcher_state = {};
     launcher_state.title_state = title_state;
     launcher_state.status =
-        "Share/Ctrl+F10: open evidence-bound scenario select";
+        "Ctrl+F10: open evidence-bound scenario select";
     if (const auto* const requested = environment_scenario();
         requested != nullptr) {
         const auto descriptors = scenario_descriptors();
@@ -280,15 +277,14 @@ void scenario_tick(
     const auto previous = launcher_state.previous_buttons.front();
     const auto hotkey = ctrl_f10_down();
     const auto hotkey_edge = hotkey && !launcher_state.previous_ctrl_f10;
-    const auto share_edge = edge(current, previous, kTitleButtonShare);
     launcher_state.previous_ctrl_f10 = hotkey;
     launcher_state.previous_buttons.front() = current;
 
-    if (hotkey_edge || share_edge) {
+    if (hotkey_edge) {
         launcher_state.open = !launcher_state.open;
         launcher_state.status = launcher_state.open
                                     ? "Left/Right: group  Up/Down: scenario  A: launch"
-                                    : "Share/Ctrl+F10: open evidence-bound scenario select";
+                                    : "Ctrl+F10: open evidence-bound scenario select";
     }
     const auto descriptors = scenario_descriptors();
     if (descriptors.empty()) return;

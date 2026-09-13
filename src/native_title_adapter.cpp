@@ -19616,10 +19616,27 @@ apply_sonic_native_private_stage_tuple_override(
     SonicGuestReader reader(*context.cpu);
     std::uint32_t main=0,release=0,delta=0,tv=0;
     std::uint16_t scene=0,request=0;
+    const auto fail_cadence=[&](const char* reason) {
+        if(context.crash_capsule) {
+            katana::runtime::CrashCapsuleProviderTranscript record;
+            record.sequence=context.frame_index;record.provider=0x53414344u;
+            record.operation=1u;record.region=main;record.address=scene;
+            record.value=release;record.result=delta;record.source=tv;
+            record.generation=state.active_video_refresh_hz;record.target=request;
+            record.state=(state.standard_sixty_active?1u:0u)|(state.frame_open?2u:0u);
+            record.pointer=state.sixty_original_release;
+            record.slot=state.sixty_original_delta;
+            record.callsite=context.cpu->pr;
+            record.provider_identity.assign("sonic-gameplay-cadence-v1");
+            record.target_identity.assign(reason);
+            context.crash_capsule->note_v5_provider_transcript(record);
+        }
+        return false;
+    };
     if (!reader.valid() || !reader.u32(sonic_private_main_state,main) ||
         !reader.u16(0x8C7492F4u,scene) || !reader.u16(0x8C19DD64u,request) ||
         !reader.u32(sonic_frame_producer_release,release) ||
-        !reader.u32(0x8C754E04u,delta) || !reader.u32(0x8C754B44u,tv)) return false;
+        !reader.u32(0x8C754E04u,delta) || !reader.u32(0x8C754B44u,tv)) return fail_cadence("state-read");
     const bool gameplay=(main==4u || main==5u || main==9u) &&
         (scene==15u || scene==16u) && request==0u;
     if (!gameplay && !state.standard_sixty_active) return true;
@@ -19627,8 +19644,18 @@ apply_sonic_native_private_stage_tuple_override(
     // until the original mode owner publishes a known video rate.
     if (!state.standard_sixty_active && state.active_video_refresh_hz==0u) return true;
     if (gameplay && state.standard_sixty_active)
-        return release==1u && delta==1u && state.active_video_refresh_hz==60u;
-    if (state.frame_open) return false;
+        return (release==1u && delta==1u && state.active_video_refresh_hz==60u) ||
+            fail_cadence("active-pair-or-clock");
+    // Decide whether we own a cadence change before requiring a closed frame.
+    // Super Sonic's story reaches this hook with an original 2/1 script and
+    // a frame already opened by its callbacks. That is a valid no-op here,
+    // just like original 1/1 menus/minigames, not a graphics contract failure.
+    if (gameplay && (release!=2u || delta!=2u || state.sixty_original_release!=2u ||
+        state.sixty_original_delta!=2u)) return true;
+    // Turnover callbacks can begin the next image after the previous one was
+    // presented. Defer promotion/restoration until the next closed boundary;
+    // never run the original mode/cadence setters inside an open image.
+    if (state.frame_open) return true;
     struct Guard {
         bool& flag;Guard(bool& f):flag(f){flag=true;}~Guard(){flag=false;}
     } guard(state.standard_sixty_configuring);
@@ -19639,35 +19666,31 @@ apply_sonic_native_private_stage_tuple_override(
         std::cerr << "SONIC_GAMEPLAY_CADENCE active=0 frame=" << context.frame_index
             << " scene=" << scene << " main=" << main << " release="
             << state.sixty_original_release << " delta=" << state.sixty_original_delta << '\n';
-        return restored;
+        return restored || fail_cadence("restore-setter");
     }
-    // 2/1 scripts and 1/1 menus/minigames are already meaningful original
-    // modes. Never convert them just because the video output is now60Hz.
-    if (release!=2u || delta!=2u || state.sixty_original_release!=2u ||
-        state.sixty_original_delta!=2u) return true;
     if (tv==1u && state.active_video_refresh_hz==50u) {
         katana::runtime::guest_write_u32(*context.cpu,0x8C8A2CB4u,0u,
             katana::runtime::CodeWriteSource::Copy);
         katana::runtime::guest_write_u32(*context.cpu,0x8C8A2CB8u,0x38u,
             katana::runtime::CodeWriteSource::Copy);
-        if (!invoke_frame_aot_interrupt_service(context,0x8C658744u)) return false;
+        if (!invoke_frame_aot_interrupt_service(context,0x8C658744u)) return fail_cadence("video-constructor");
         SonicGuestReader video(*context.cpu);
         std::uint32_t horizontal=0,vertical=0,border=0;
         if (!video.u32(0x8C8A2F78u,horizontal) || horizontal!=0x007E0345u ||
             !video.u32(0x8C8A2F7Cu,vertical) || vertical!=0x020C0359u ||
             !video.u32(0x8C8A2F80u,border) || border!=0x00240204u ||
-            state.active_video_refresh_hz!=60u) return false;
+            state.active_video_refresh_hz!=60u) return fail_cadence("video-registers");
         katana::runtime::guest_write_u32(*context.cpu,0x8C754B44u,0u,
             katana::runtime::CodeWriteSource::Copy);
-    } else if (tv!=0u || state.active_video_refresh_hz!=60u) return false;
+    } else if (tv!=0u || state.active_video_refresh_hz!=60u) return fail_cadence("original-video-mode");
     const std::uint32_t one=1u;
-    if (!invoke_frame_aot_interrupt_service(context,0x8C051760u,&one,&one)) return false;
+    if (!invoke_frame_aot_interrupt_service(context,0x8C051760u,&one,&one)) return fail_cadence("promote-setter");
     SonicGuestReader after(*context.cpu);
     std::uint32_t ready=0,iteration=0;
     if (!after.u32(sonic_frame_producer_release,release) || release!=1u ||
         !after.u32(0x8C754E04u,delta) || delta!=1u ||
         !after.u32(sonic_frame_producer_ready,ready) || ready!=1u ||
-        !after.u32(0x8C754E08u,iteration) || iteration!=0u) return false;
+        !after.u32(0x8C754E08u,iteration) || iteration!=0u) return fail_cadence("promote-postcondition");
     state.standard_sixty_active=true;
     std::cerr << "SONIC_GAMEPLAY_CADENCE active=1 default=1 frame=" << context.frame_index
         << " scene=" << scene << " main=" << main
@@ -41158,8 +41181,7 @@ sonic_native_frame_begin(
 
         // The private SA launcher observes the already-projected title input
         // words. It never polls the platform a second time and is inert on
-        // the normal path unless Share/View (the unused Dreamcast D lane) or
-        // Ctrl+F10 opens its explicit menu.
+        // the normal path unless Ctrl+F10 opens its explicit menu.
         const sonic_native_private::ScenarioProvider scenario_provider{
             sonic_native_private_scenario_ready,
             sonic_native_private_automatic_scenario_ready,

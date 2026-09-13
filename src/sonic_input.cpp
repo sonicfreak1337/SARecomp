@@ -171,7 +171,6 @@ void transform(katana::runtime::NativePortInputSnapshot& pads,const Snapshot& so
     };
     trigger(Action::LeftTrigger,p.left_trigger_raw,p.left_trigger);
     trigger(Action::RightTrigger,p.right_trigger_raw,p.right_trigger);
-    p.buttons|=old.buttons&(1u<<5); // private diagnostic View/Share remains separate.
     look_dx.store(source.mouse_dx);look_dy.store(source.mouse_dy);
 }
 std::array<float,2> consume_mouse_look() noexcept {return {look_dx.exchange(0),look_dy.exchange(0)};}

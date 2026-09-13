@@ -3666,6 +3666,13 @@ if (!vulkan_) {
             if ((self->vulkan_ || sonic::rendering::selected_window_mode != sonic::rendering::WindowMode::Windowed) && word == VK_RETURN) return 0;
             return DefWindowProcW(window, message, word, data);
         case WM_KEYDOWN:
+            if (word == VK_F1 && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                if ((static_cast<std::uintptr_t>(data) &
+                     (std::uintptr_t{1u} << 30u)) == 0u)
+                    static_cast<void>(self->handle_runtime_menu_command(
+                        runtime_menu_performance_overlay));
+                return 0;
+            }
             if (word == VK_F6) {
                 if ((static_cast<std::uintptr_t>(data) &
                      (std::uintptr_t{1u} << 30u)) == 0u)
@@ -4162,7 +4169,8 @@ if (!vulkan_) {
                                                  runtime_menu_rate_last,
                                                  selected,
                                                  MF_BYCOMMAND));
-        DrawMenuBar(window_);
+        // The retained developer command state is private. Player settings
+        // live in the in-game Options screen; no native menu bar is attached.
     }
 
     void refresh_display_rate() noexcept {
@@ -4212,7 +4220,7 @@ if (!vulkan_) {
                                      WS_MINIMIZEBOX;
         const auto title = utf8_to_wide(config_.title);
         create_runtime_options_menu();
-        if (AdjustWindowRect(&bounds, style, TRUE) == FALSE) {
+        if (AdjustWindowRect(&bounds, style, FALSE) == FALSE) {
             const auto code = GetLastError();
             DestroyMenu(menu_bar_);
             menu_bar_ = nullptr;
@@ -4230,7 +4238,7 @@ if (!vulkan_) {
                                   bounds.right - bounds.left,
                                   bounds.bottom - bounds.top,
                                   nullptr,
-                                  menu_bar_,
+                                  nullptr,
                                   instance,
                                   this);
         if (window_ == nullptr) {
@@ -4255,6 +4263,9 @@ if (!vulkan_) {
         SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
         DestroyWindow(window_);
         window_ = nullptr;
+        // The command menu is never attached, including fullscreen toggles,
+        // so it is owned here rather than destroyed by DestroyWindow.
+        if (menu_bar_) DestroyMenu(menu_bar_);
         menu_bar_ = nullptr;
         options_menu_ = nullptr;
     }

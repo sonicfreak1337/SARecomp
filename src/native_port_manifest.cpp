@@ -157,7 +157,11 @@ inline constexpr std::string_view
         // Native60 gameplay is now the standard path; the original-cadence
         // compatibility path remains available. The missing Amy hammer effect
         // is a complete source-bound callback with retained original callees.
-        "sha256:8e2b771f236ef4d6a00bb99af568538c8e9486f7d43d7cbe00adca3430a535f3"};
+        // Widescreen warnings follow text language; private scenario opening
+        // is keyboard-only and the native window-menu extension is retired.
+        // Original scripted cadence is classified before closed-frame checks;
+        // pending native cadence changes defer to a closed presentation boundary.
+        "sha256:1ab2e67d5f3e11be32e44157c41cfe639e39f92d181b8f4204b6b1eb4b82911e"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
