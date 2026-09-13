@@ -31,6 +31,13 @@ target_link_libraries(sonic_startup_tests PRIVATE sonic_startup)
 
 # Authoring-only SDK imports never enter the game target's dependency closure.
 add_executable(sonic_native_port_manifest EXCLUDE_FROM_ALL src/native_port_manifest.cpp)
+add_executable(sonic_minicart_codegen EXCLUDE_FROM_ALL tools/generate_minicart_aot.cpp)
+target_compile_definitions(sonic_minicart_codegen PRIVATE KATANA_ANALYZER_ABI_VERSION=80)
+target_compile_options(sonic_minicart_codegen PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_minicart_codegen PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 target_include_directories(sonic_native_port_manifest PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_link_libraries(sonic_native_port_manifest PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
@@ -63,7 +70,7 @@ target_sources(katana_native_title_adapter PRIVATE src/sonic_input.cpp src/sonic
     src/sonic_menu_image.cpp src/sonic_menu_text.cpp src/sonic_menu_runtime.cpp src/sonic_profiles.cpp src/sonic_restart.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp src/sonic_tutorial_art.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_palette_lighting.cpp src/sonic_vertex_normals.cpp src/sonic_matrix_stack.cpp src/sonic_collision_math.cpp src/sonic_matrix_inverse.cpp)
-target_sources(katana_native_title_adapter PRIVATE src/sonic_triangle_contacts.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_triangle_contacts.cpp src/sonic_matrix_vectors.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_atan_math.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_amy_hammer_effect.cpp)
 add_executable(sonic_amy_hammer_effect_tests EXCLUDE_FROM_ALL
@@ -119,6 +126,16 @@ target_link_libraries(sonic_matrix_stack_tests PRIVATE bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
+add_executable(sonic_matrix_vectors_tests EXCLUDE_FROM_ALL
+    tools/test_matrix_vectors.cpp src/sonic_matrix_vectors.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_matrix_vectors_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_matrix_vectors_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_matrix_vectors_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 add_executable(sonic_collision_math_tests EXCLUDE_FROM_ALL
     tools/test_collision_math.cpp src/sonic_collision_math.cpp
     "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
@@ -168,16 +185,47 @@ set_target_properties(katana_generated PROPERTIES
     IMPORTED_LOCATION "${SONIC_BASE}/aot/katana_generated.lib"
     INTERFACE_INCLUDE_DIRECTORIES "${SONIC_BASE}/product/generated/include")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(sonic_minicart_output "${CMAKE_BINARY_DIR}/generated/minicart")
+add_custom_command(OUTPUT "${sonic_minicart_output}/minicart-aot.cpp" "${sonic_minicart_output}/minicart-bindings.hpp" "${sonic_minicart_output}/minicart-identities.json"
+    BYPRODUCTS "${sonic_minicart_output}/windows.tsv" "${sonic_minicart_output}/minicart.bin"
+    COMMAND $<TARGET_FILE:sonic_minicart_codegen>
+        "${SONIC_BASE}/native-content/SONICAD/MINICART.PRS" "${sonic_minicart_output}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare_minicart_aot.py" "${sonic_minicart_output}" "${SONIC_WORKING}/generated"
+    DEPENDS sonic_minicart_codegen "${SONIC_ROOT}/tools/prepare_minicart_aot.py"
+        "${SONIC_ROOT}/tools/minicart_universe.py"
+        "${SONIC_WORKING}/generated/.katana-generated-artifacts"
+        "${SONIC_BASE}/native-content/SONICAD/MINICART.PRS" VERBATIM)
+add_library(sonic_minicart_aot STATIC "${sonic_minicart_output}/minicart-aot.cpp")
+target_include_directories(sonic_minicart_aot PRIVATE "${SONIC_WORKING}/generated/include")
+target_compile_options(sonic_minicart_aot PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_minicart_aot PRIVATE KatanaRecomp::native_port_runtime)
+add_executable(sonic_minicart_tests EXCLUDE_FROM_ALL tools/test_minicart_aot.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_minicart_tests PRIVATE "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_minicart_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_minicart_tests PRIVATE sonic_minicart_aot
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 # Keep the current hook bindings; the frozen r354 dispatch predates new Options.
 # Task-owner interpolation instrumentation is disabled in the preparation script.
 set(motion_dispatch "${CMAKE_BINARY_DIR}/generated/motion-dispatch/native-port-dispatch.cpp")
+option(SARECOMP_FILTERED_STATIC_CHAIN "Private static chain exclusion experiment" OFF)
+set(sonic_static_chain_switch)
+if(SARECOMP_FILTERED_STATIC_CHAIN)
+    set(sonic_static_chain_switch --filtered-static-chain)
+endif()
 add_custom_command(OUTPUT "${motion_dispatch}"
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-motion-dispatch.py"
-        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp" "${motion_dispatch}"
+        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp" "${motion_dispatch}" ${sonic_static_chain_switch}
     DEPENDS "${SONIC_ROOT}/tools/prepare-motion-dispatch.py"
+        "${SONIC_ROOT}/tools/prepare_static_chain.py"
+        "${sonic_minicart_output}/minicart-bindings.hpp"
+        "${sonic_minicart_output}/minicart-identities.json"
         "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp"
         "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
 add_library(sonic_dispatch STATIC "${motion_dispatch}")
+target_include_directories(sonic_dispatch PRIVATE "${sonic_minicart_output}")
 # Preserve the generated owner in the original link audit. This small archive
 # resolves the dispatch before the frozen archive; its old member is unused.
 set_target_properties(sonic_dispatch PROPERTIES OUTPUT_NAME katana_generated
@@ -186,6 +234,15 @@ target_include_directories(sonic_dispatch PRIVATE "${SONIC_WORKING}/generated/in
 target_compile_options(sonic_dispatch PRIVATE /EHsc /utf-8)
 target_link_libraries(sonic_dispatch PRIVATE KatanaRecomp::native_port_runtime)
 add_executable(sonic_dispatch_memo_tests EXCLUDE_FROM_ALL tools/test_dispatch_memo.cpp)
+set(static_chain_fixture "${CMAKE_BINARY_DIR}/generated/static-chain-test.cpp")
+add_custom_command(OUTPUT "${static_chain_fixture}"
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/static-chain-test.bin"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/test_static_chain.py"
+        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp" "${static_chain_fixture}"
+    DEPENDS "${SONIC_ROOT}/tools/test_static_chain.py" "${SONIC_ROOT}/tools/prepare_static_chain.py"
+        "${SONIC_WORKING}/generated/code/native-port-dispatch.cpp" VERBATIM)
+add_executable(sonic_static_chain_tests EXCLUDE_FROM_ALL "${static_chain_fixture}")
+target_compile_options(sonic_static_chain_tests PRIVATE /EHsc /utf-8)
 target_include_directories(sonic_dispatch_memo_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_dispatch_memo_tests PRIVATE /EHsc /utf-8)
 add_executable(game launcher/main.cpp)
@@ -324,9 +381,18 @@ include(cmake/SonicFpuCalls.cmake)
 include(cmake/SonicCompactAot.cmake)
 include(cmake/SonicFpuRuntime.cmake)
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
+target_link_libraries(game PRIVATE sonic_minicart_aot)
 set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
 target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
     /threads:3 "/lldltocache:${CMAKE_BINARY_DIR}/thinlto-cache")
+set(SARECOMP_HOT_CODE_ORDER "" CACHE FILEPATH "Private measured COMDAT layout experiment; empty keeps original link order")
+if(SARECOMP_HOT_CODE_ORDER)
+    if(NOT IS_ABSOLUTE "${SARECOMP_HOT_CODE_ORDER}" OR NOT EXISTS "${SARECOMP_HOT_CODE_ORDER}")
+        message(FATAL_ERROR "SARECOMP_HOT_CODE_ORDER requires an existing absolute order file")
+    endif()
+    target_link_options(game PRIVATE "/ORDER:@${SARECOMP_HOT_CODE_ORDER}")
+    set_property(TARGET game APPEND PROPERTY LINK_DEPENDS "${SARECOMP_HOT_CODE_ORDER}")
+endif()
 add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
         "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp"

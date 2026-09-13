@@ -5,8 +5,13 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp sonic_palette_lighting.hpp sonic_palette_lighting.cpp
     sonic_vertex_normals.hpp sonic_vertex_normals.cpp
     sonic_matrix_stack.hpp sonic_matrix_stack.cpp
+    sonic_matrix_vectors.hpp sonic_matrix_vectors.cpp
+    sonic_big_hud.hpp
     sonic_matrix_inverse.hpp sonic_matrix_inverse.cpp
     ../tools/prepare-fpu-body.py
+    ../tools/prepare_static_chain.py
+    ../tools/generate_minicart_aot.cpp ../tools/prepare_minicart_aot.py
+    ../tools/minicart_universe.py
     sonic_collision_math.hpp sonic_collision_math.cpp
     sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
     sonic_atan_math.hpp sonic_atan_math.cpp

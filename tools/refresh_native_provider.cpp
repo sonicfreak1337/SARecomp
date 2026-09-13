@@ -319,7 +319,7 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0,amy_effect_added=0;
+    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0,amy_effect_added=0,matrix_vectors_added=0;
     struct ReviewedRumble {std::uint32_t address,size;std::string_view symbol,sha;};
     constexpr std::array rumble_hooks{
         ReviewedRumble{0x8C6042B0u,6u,"sonic_native_rumble_capability","2eb2196012d5e864de7c33573a13e8f3179d01a955e1d5994c123eac1314593c"},
@@ -404,6 +404,15 @@ RenderHookExtension render_hook_extension(
              hook.code_identity=="sha256:ff02ae8352528051e7806b0d08f449d086f052891e499156aaf49b7e76a4a996") ||
             (hook.symbol=="sonic_native_matrix_determinant" && hook.guest_address==0x8C64F32Cu && hook.covered_size==0x158u &&
              hook.code_identity=="sha256:f237439dce9e4b3ab4b359ce5fce9bb37a82328916e1809955650de95bf5f28c"));
+        const bool matrix_vectors=(
+            (hook.symbol=="sonic_native_matrix_vector_point" && hook.guest_address==0x8C638E0Cu && hook.covered_size==0x58u &&
+             hook.code_identity=="sha256:dc20bddcbd5938d708a7669e769cf3b4b7209f04667e3777c0d6be57370740b8") ||
+            (hook.symbol=="sonic_native_matrix_vector_direction" && hook.guest_address==0x8C638E68u && hook.covered_size==0x68u &&
+             hook.code_identity=="sha256:fe97aaf272e15ba9a42a46ccf5f7af51d6ab68112410e02ec79e581dbab839fc") ||
+            (hook.symbol=="sonic_native_matrix_vector_store" && hook.guest_address==0x8C638ED4u && hook.covered_size==0x2Cu &&
+             hook.code_identity=="sha256:229d431e2775b03ed38ef67c482c4e9bea39bac410c897ceb752f01e7e4395d7") ||
+            (hook.symbol=="sonic_native_matrix_vector_translation" && hook.guest_address==0x8C638F00u && hook.covered_size==0x20u &&
+             hook.code_identity=="sha256:3f723ba70a79ca1afb5fd248ef863a512bbba44e1239bbf35245320e28e78997"));
         const bool contacts=hook.symbol=="sonic_native_triangle_contacts" &&
             hook.guest_address==0x8C029400u && hook.covered_size==0x6F4u &&
             hook.code_identity=="sha256:fbff84a132a49217c521c601ae85e5c6b14d7eee1a177db8f861942de67fb23b";
@@ -416,7 +425,7 @@ RenderHookExtension render_hook_extension(
              hook.code_identity=="sha256:4c9efceb0a2491382e2251fb758565cb4073f1292ea079692f68e79e22246b82") ||
             (hook.symbol=="sonic_native_atan_scale" && hook.guest_address==0x8C10E6F8u && hook.covered_size==0xC0u &&
              hook.code_identity=="sha256:316c8b53e094bc27f5d85d3be392105d732e2aae3609409e41b862ce1dddb4ca"));
-        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !atan && !amy_effect) ||
+        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !atan && !amy_effect && !matrix_vectors) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != ((rumble||amy_effect)?NativePortHookOriginalPolicy::ReplacesOriginal:
@@ -438,14 +447,14 @@ RenderHookExtension render_hook_extension(
         result.added.push_back(hook);
         if(language) ++language_added;else if(camera) ++camera_added;
         else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;
-        else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else if(amy_effect) ++amy_effect_added;else ++rendering_added;
+        else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(matrix_vectors) ++matrix_vectors_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else if(amy_effect) ++amy_effect_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
         (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u ||
         (rumble_added!=0u && rumble_added!=4u) || cadence_added>1u || palette_added>1u || normals_added>1u ||
         (matrix_stack_added!=0u && matrix_stack_added!=2u) || (collision_added!=0u && collision_added!=3u) ||
-        (inverse_added!=0u && inverse_added!=2u) || contacts_added>1u || (atan_added!=0u && atan_added!=4u) || amy_effect_added>1u)
+        (inverse_added!=0u && inverse_added!=2u) || contacts_added>1u || (matrix_vectors_added!=0u && matrix_vectors_added!=4u) || (atan_added!=0u && atan_added!=4u) || amy_effect_added>1u)
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;

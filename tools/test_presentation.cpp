@@ -1,4 +1,5 @@
 #include "sonic_presentation.hpp"
+#include "sonic_big_hud.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,19 @@ void require(bool value, const char* reason) {
 void close(float a,float b,const char* reason) { require(std::abs(a-b)<0.002f,reason); }
 int main(int argc,char** argv) {
     try {
+    const auto big=[](std::uint32_t pr,std::uint32_t carrier,std::uint32_t texlist,
+                      std::uint32_t frames,std::optional<std::uint32_t> parent={}) {
+        return sonic::big_hud::left_anchored(pr,0x8CFFE000u,carrier,texlist,frames,parent);
+    };
+    require(big(0x8C0E6FA0u,0x8CFFE000u,0x8C54CA8Cu,0x8C565F84u),"Big weight artwork");
+    require(big(0x8C0E714Cu,0x8CFFE000u,0x8C54CA8Cu,0x8C565F84u),"Big alternate ring artwork");
+    require(big(0x8C0E7176u,0x8CFFE000u,0x8C566038u,0x8C566040u),"Big life icon");
+    for(auto parent:{0x8C0E7494u,0x8C0E74C2u,0x8C0E75D2u})
+        require(big(0x8C08F028u,0x8C1BF420u,0x8C1BF0E4u,0x8C1BF1C8u,parent),"Big HUD digits");
+    require(!big(0x8C08F028u,0x8C1BF420u,0x8C1BF0E4u,0x8C1BF1C8u,0x8C0EBABCu),"Catch popup must remain centered");
+    require(!big(0x8C08F028u,0x8C1BF420u,0x8C1BF0E4u,0x8C1BF1C8u),"Unproven formatter caller");
+    require(!big(0x8C0E6E88u,0x8CFFE004u,0x8C54CA8Cu,0x8C565F84u),"Fishing overlay must remain centered");
+    require(!big(0x8C0E6FA0u,0x8CFFE004u,0x8C54CA8Cu,0x8C565F84u),"Mismatched fishing carrier");
         require(argc==2,"test directory argument");
         const std::filesystem::path folder(argv[1]);
         std::filesystem::create_directories(folder);

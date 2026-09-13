@@ -2,6 +2,8 @@
 import hashlib
 from pathlib import Path
 import sys
+import json
+from prepare_static_chain import optimize as optimize_static_chain
 
 source_path, destination = map(Path, sys.argv[1:3])
 manifest = source_path.parent.parent / ".katana-generated-artifacts"
@@ -16,6 +18,23 @@ data = source_path.read_bytes()
 if len(records) != 1 or int(records[0][1]) != len(data) or records[0][2] != "sha256:"+hashlib.sha256(data).hexdigest():
     raise RuntimeError("Dispatch source differs from its SDK-authored generation")
 source = data.decode()
+supplement=Path(sys.argv[2]).parent.parent/'minicart/minicart-identities.json'
+for before,after in json.loads(supplement.read_text()).items():
+    if source.count(before)<1:raise RuntimeError('MINICART pack identity boundary changed')
+    source=source.replace(before,after)
+# Add the reviewed results closure after the original table validations. The
+# same byte identities still gate module binding and every dynamic admission.
+for before, after in (
+    ('throw std::runtime_error("native-dispatch-table");\n        return result;',
+     'throw std::runtime_error("native-dispatch-table");\n        append_sonic_minicart_entries(result);\n        return result;'),
+    ('"native-loaded-aot-module-table");\n        return result;',
+     '"native-loaded-aot-module-table");\n        extend_sonic_minicart_identities(result);\n        return result;')):
+    if source.count(before)!=1:raise RuntimeError('MINICART dispatch integration boundary changed')
+    source=source.replace(before,after)
+source=source.replace('#include "../include/native-port-dispatch-internal.hpp"',
+    '#include "../include/native-port-dispatch-internal.hpp"\n#include "minicart-bindings.hpp"')
+if "--filtered-static-chain" in sys.argv[3:]:
+    source, _ = optimize_static_chain(source)
 for header in ("katana_port.hpp", "native-port-dispatch-internal.hpp"):
     original = '#include "../include/'+header+'"'
     if source.count(original) != 1:

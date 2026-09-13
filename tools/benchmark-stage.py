@@ -31,6 +31,7 @@ parser.add_argument('--native-collision-math', action='store_true', help='Privat
 parser.add_argument('--native-matrix-inverse', action='store_true', help='Private complete native matrix inverse/determinant family')
 parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
+parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
 parser.add_argument('--original-math-families', action='store_true', help='Compare against retained atan/contact owners')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
@@ -73,6 +74,7 @@ shutil.copytree(root/'.local/baseline/r354/saves', saves, copy_function=shutil.c
 display = run/'sonic-display.ini'
 display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\ngameplay_timing={int(args.gameplay_timing=="recompiled")}\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
+env['SARECOMP_NATIVE_MATRIX_VECTORS']='1' if args.matrix_vectors=='native' else '0'
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',
     'KATANA_USER_DATA_ROOT':str(saves), 'KATANA_PORT_FINAL_PROGRESS':'1',
@@ -322,6 +324,11 @@ if args.native_atan_math:
             result[key]=int(steady[-1].get(key,'0')) if steady else 0
     result['atan_native_executed']=result['atan_native_calls']>0
     result['passed'] &= result['atan_native_executed']
+result['matrix_vectors']=args.matrix_vectors
+for kind in ('point','direction','store','translation'):
+    for path in ('native','original'):
+        key=f'matrix_vector_{kind}_{path}_calls'
+        result[key]=int(steady[-1].get(key,'0')) if steady else 0
 if args.native_triangle_contacts:
     for path in ('native','original'):
         key=f'triangle_contacts_{path}_calls'

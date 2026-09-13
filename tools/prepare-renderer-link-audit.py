@@ -10,7 +10,7 @@ changes = [
     ('std::string_view{"gdi32.dll"}, std::string_view{"comdlg32.dll"},',
      'std::string_view{"gdi32.dll"}, std::string_view{"gdiplus.dll"}, std::string_view{"comdlg32.dll"},'),
     ('constexpr std::array<std::string_view, 4> allowed_first_party_owners{',
-     'constexpr std::array<std::string_view, 7> allowed_first_party_owners{\n    std::string_view{"sonic_startup"},\n    std::string_view{"sonic_vulkan"},\n    std::string_view{"sonic_sony_input"},'),
+     'constexpr std::array<std::string_view, 8> allowed_first_party_owners{\n    std::string_view{"sonic_minicart_aot"},\n    std::string_view{"sonic_startup"},\n    std::string_view{"sonic_vulkan"},\n    std::string_view{"sonic_sony_input"},'),
     ('constexpr std::array<std::string_view, 1> allowed_direct_objects{\n    std::string_view{"main.cpp.obj"},',
      'constexpr std::array<std::string_view, 5> allowed_direct_objects{\n    std::string_view{"native_port_sound_bank.cpp.obj"},\n    std::string_view{"native_port_audio.cpp.obj"},\n    std::string_view{"native_port_platform.cpp.obj"},\n    std::string_view{"native_port_graphics.cpp.obj"},\n    std::string_view{"main.cpp.obj"},')]
 for before, after in changes:
@@ -29,10 +29,10 @@ if ('--ram-read-experiment' in options and len(options)>1) or (
     raise RuntimeError("Conflicting experimental archive owners")
 if options:
     owners=[allowed[option] for option in options]
-    before = 'constexpr std::array<std::string_view, 7> allowed_first_party_owners{'
+    before = 'constexpr std::array<std::string_view, 8> allowed_first_party_owners{'
     if source.count(before) != 1:
         raise RuntimeError("Unexpected experimental archive owner boundary")
     source = source.replace(before,
-        'constexpr std::array<std::string_view, '+str(7+len(owners))+'> allowed_first_party_owners{'+
+        'constexpr std::array<std::string_view, '+str(8+len(owners))+'> allowed_first_party_owners{'+
         ''.join('\n    std::string_view{"'+owner+'"},' for owner in owners))
 pathlib.Path(sys.argv[2]).write_text(source)

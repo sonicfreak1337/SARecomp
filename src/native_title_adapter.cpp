@@ -60,6 +60,8 @@
 #include "sonic_collision_math.hpp"
 #include "sonic_matrix_inverse.hpp"
 #include "sonic_triangle_contacts.hpp"
+#include "sonic_matrix_vectors.hpp"
+#include "sonic_big_hud.hpp"
 #include "sonic_atan_math.hpp"
 #include "sonic_amy_hammer_effect.hpp"
 #include "renderer/sonic_motion.hpp"
@@ -1853,6 +1855,8 @@ struct SonicNativeGameplayProbe final {
     std::array<std::uint64_t,2u> inverse_native_calls{};
     std::uint64_t triangle_contacts_native_calls=0u;
     std::uint64_t triangle_contacts_original_calls=0u;
+    std::array<std::uint64_t,4u> matrix_vector_native_calls{};
+    std::array<std::uint64_t,4u> matrix_vector_original_calls{};
     std::array<std::uint64_t,4u> atan_native_calls{};
     std::array<std::uint64_t,4u> atan_original_calls{};
     std::array<std::uint64_t,2u> inverse_original_calls{};
@@ -3580,6 +3584,7 @@ class SonicGuestReader final {
     [[nodiscard]] bool valid() const noexcept {
         return static_cast<bool>(guard_) || scalar_mode_available();
     }
+    [[nodiscard]] bool direct_ram() const noexcept { return static_cast<bool>(guard_); }
 
     [[nodiscard]] bool range(const std::uint32_t address,
                              const std::size_t bytes) const noexcept {
@@ -17953,6 +17958,14 @@ void emit_sonic_native_gameplay_probe_sample(
               << " matrix_inverse_native_calls=" << probe.inverse_native_calls[0]
               << " triangle_contacts_native_calls=" << probe.triangle_contacts_native_calls
               << " triangle_contacts_original_calls=" << probe.triangle_contacts_original_calls
+              << " matrix_vector_point_native_calls=" << probe.matrix_vector_native_calls[0]
+              << " matrix_vector_point_original_calls=" << probe.matrix_vector_original_calls[0]
+              << " matrix_vector_direction_native_calls=" << probe.matrix_vector_native_calls[1]
+              << " matrix_vector_direction_original_calls=" << probe.matrix_vector_original_calls[1]
+              << " matrix_vector_store_native_calls=" << probe.matrix_vector_native_calls[2]
+              << " matrix_vector_store_original_calls=" << probe.matrix_vector_original_calls[2]
+              << " matrix_vector_translation_native_calls=" << probe.matrix_vector_native_calls[3]
+              << " matrix_vector_translation_original_calls=" << probe.matrix_vector_original_calls[3]
               << " atan_native_calls=" << probe.atan_native_calls[0]
               << " atan_original_calls=" << probe.atan_original_calls[0]
               << " atan_quotient_native_calls=" << probe.atan_native_calls[1]
@@ -34420,6 +34433,42 @@ sonic_native_matrix_determinant(katana::runtime::NativePortContext& context) noe
 }
 
 static katana::runtime::NativePortHookResult
+sonic_native_matrix_vectors_impl(katana::runtime::NativePortContext& context,std::size_t index) noexcept {
+    if(!sonic_native_gameplay_math_active() || !context.cpu)
+        return {katana::runtime::NativePortHookAction::ContinueOriginal,0u,0u};
+    static const bool enabled=[] {
+        const auto* flag=std::getenv("SARECOMP_NATIVE_MATRIX_VECTORS");
+        return flag?std::string_view(flag)=="1":sonic_standard_sixty_enabled();
+    }();
+    auto& probe=sonic_native_title_state.gameplay_probe;
+    try {
+        auto* services=katana_port_generated::runtime_dispatch_detail::active_services;
+        if(enabled && services && sonic::matrix_vectors::try_execute(*context.cpu,services->immutable_write_guard())) {
+            ++probe.matrix_vector_native_calls[index];
+            return {katana::runtime::NativePortHookAction::Return,0u,0u};
+        }
+        ++probe.matrix_vector_original_calls[index];
+        return {katana::runtime::NativePortHookAction::ContinueOriginal,0u,0u};
+    } catch(...) {return graphics_abort(context,sonic_native_graphics_error_model_transform);}
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_matrix_vector_point(katana::runtime::NativePortContext& context) noexcept {
+    return sonic_native_matrix_vectors_impl(context,0u);
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_matrix_vector_direction(katana::runtime::NativePortContext& context) noexcept {
+    return sonic_native_matrix_vectors_impl(context,1u);
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_matrix_vector_store(katana::runtime::NativePortContext& context) noexcept {
+    return sonic_native_matrix_vectors_impl(context,2u);
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_matrix_vector_translation(katana::runtime::NativePortContext& context) noexcept {
+    return sonic_native_matrix_vectors_impl(context,3u);
+}
+
+static katana::runtime::NativePortHookResult
 sonic_native_collision_math_impl(katana::runtime::NativePortContext& context, std::size_t index) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
     if (!sonic_native_gameplay_math_active() || !context.cpu)
@@ -38805,9 +38854,21 @@ enum class SonicNativeSpriteProfile : std::uint8_t {
 // menu and the generic 08EDD8 formatter use it too. No coordinate heuristic.
 [[nodiscard]] sonic::presentation::Role sonic_sprite_presentation_role(
     const katana::runtime::CpuState& cpu, const std::uint32_t carrier,
-    const std::uint32_t texlist, const std::uint32_t frames) noexcept {
+    const std::uint32_t texlist, const std::uint32_t frames,
+    const SonicGuestReader& reader) noexcept {
     using sonic::presentation::Role;
     if (!sonic::presentation::settings().widescreen) return Role::Interface;
+    std::optional<std::uint32_t> formatter_parent;
+    if (sonic::big_hud::formatted_digits(cpu.pr,carrier,texlist,frames) &&
+        reader.direct_ram() && cpu.r[15]<=0xFFFFFFFFu-8u) {
+        std::uint32_t saved_pr=0u;
+        // 08EDD8 saves PR, reserves eight bytes, and keeps SP unchanged at
+        // its sprite call. This presentation-only ownership read must never
+        // add a scalar/observer-visible guest access.
+        if(reader.u32(cpu.r[15]+8u,saved_pr))formatter_parent=saved_pr;
+    }
+    if(sonic::big_hud::left_anchored(cpu.pr,cpu.r[15],carrier,texlist,frames,formatter_parent))
+        return Role::HudLeft;
     constexpr std::array counters{0x8C08A332u,0x8C08A3B6u,
         0x8C089ECCu,0x8C089F00u,0x8C089F2Eu,0x8C089F58u,0x8C089F7Au};
     constexpr std::array clock{0x8C08A818u,0x8C08A838u,0x8C08A84Eu,
@@ -40081,7 +40142,7 @@ finish_native_culled_route_sprite_state(
         sprite_material, {}, std::nullopt, std::nullopt, {}, std::nullopt,
         false, sprite_transform, sprite_depth_mapping, sprite_arc1,
         sprite_render_state, draw_diagnostics, {}, std::nullopt,
-        sprite_2d ? sonic_sprite_presentation_role(*context.cpu, address, texlist, texanim)
+        sprite_2d ? sonic_sprite_presentation_role(*context.cpu, address, texlist, texanim, reader)
                   : sonic::presentation::Role::World);
     report_trace(static_cast<unsigned>(result.action));
     return finish_sprite(result);
