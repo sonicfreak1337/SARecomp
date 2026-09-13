@@ -55,9 +55,7 @@ link map; do not resolve an older profile against a newly rebuilt map.
 
 The largest remaining work is distributed across model expansion, guest
 memory/immutable-range checks, FPU operations/epochs and collision traversal.
-The existing private contact/atan experiments can now be measured in standard
-Recompiled gameplay as well as the former fixture. Both remain off by default;
-there is no claim of a measured gain or product promotion for those switches.
+The later contact/atan measurements and default promotion are recorded below.
 
 ## Verification of the current output policy
 
@@ -100,3 +98,62 @@ changed to bypass it.
 Failed diagnostic starts now still produce benchmark result JSON instead of
 raising an unrelated empty-timing-sample IndexError. Tests touch neither
 personal saves nor the baseline, and no full level matrix was run.
+
+## Native math follow-up and SADX comparison
+
+The complete contact and atan/quotient/polynomial/scale families are now on by
+default in Recompiled gameplay. Original remains excluded by the existing
+gameplay/cadence guard. Source bytes, supported FPU modes, memory ownership and
+preflight admission still gate each replacement; unsupported cases retain the
+original function. Exceptions after mutation remain fatal, never silently
+replayed. `SARECOMP_NATIVE_TRIANGLE_CONTACTS=0` and
+`SARECOMP_NATIVE_ATAN_MATH=0` opt out for comparison. The benchmark's
+`--original-math-families` sets both to zero; conflicting overrides are rejected.
+
+Revalidated differential suites: contact 88 cases (704 retained angle calls)
+and atan 512 cases, including CPU/FPSCR/RAM/ordered stores, decline behavior and
+host FP restoration. Logs are
+`.local/menu-preview/native-contacts-standard-preflight-01.log` and
+`.local/menu-preview/native-atan-standard-preflight-01.log`.
+
+| Gamma EC / D3D11 / 3440x1440 / 60 output | New draws/s | Execution CPU ms/boundary |
+| --- | ---: | ---: |
+| Previous default, retained contact/atan | 46.697 | 19.684 |
+| Native families explicitly enabled | 48.750 | 18.695 |
+| Final clean build, native defaults, no override | 47.510 | 19.279 |
+
+The last row is `runs/gamma-ec-default-native-final-d3d-01`, executable SHA-256
+`5115b8de556b0f9c2d3972dbb91c3364e495f1d47999b2f024d01d4819c9e630`.
+It outputs 60.004 FPS but advances the game timer at 54.148 ticks/s; therefore
+output rate must not be mistaken for full-speed simulation. The 73.804-second
+incremental build recompiled zero retained AOT units. This row precedes the
+separate VSync/presentation correction.
+
+The native-family run executes 418,147 atan calls, 181,415 scale calls and
+5,309 contact owners with no fallback or crash. Evidence:
+`runs/gamma-ec-native-families-d3d-01`. It uses standard Recompiled timing,
+isolated forward input, copied saves and a hidden/muted 60-second route, with
+no execution profiler. The roughly 4.4% throughput / 5.0% execution-CPU gain
+does **not** establish stable 60 FPS or the requested headroom.
+
+Two additional renderer hypotheses were investigated and withdrawn entirely
+from product source, rather than promoted based on successful compilation:
+
+- Bounded scalar arithmetic matched 20,480 differential cases and 1,536
+  retained retail color cases, but the same-binary Gamma pair was slower:
+  48.416 -> 47.158 draws/s; 18.742 -> 19.380 ms execution CPU/boundary.
+  `runs/gamma-ec-scalar-{control,candidate}-d3d-01`. This is not a speedup.
+- A per-mesh SDK color cache produced zero hits and misses on the Gamma route.
+  Its dedicated coverage gate correctly failed despite a crash-free completed
+  run: `runs/gamma-ec-color-cache-validate-d3d-01`. No bitwise-validation or
+  performance benefit is claimed for an unexecuted path.
+
+Rejected source and its component test remain only as private investigation
+artifacts under `.local/research/renderer-scalar-rejected-20260913.patch` and
+`test_render_scalar-rejected-20260913.cpp`; neither is built or shipped.
+
+The installed Steam SADX executable and published timing code were inspected
+read-only. [The separate report](sadx-timing-reference.md) binds the installed
+EXE and distinguishes its 60-Hz/multiplier evidence from other SADX versions.
+It supports keeping authored scene timing separate from presentation; it
+does not supply a limiter-only solution to the measured execution bottleneck.

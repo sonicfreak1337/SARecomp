@@ -165,11 +165,12 @@ inline constexpr std::string_view
         // Restart-only Original/Recompiled cadence selection. Renderer FPU
         // scratch retains only empty memory lookup capacity, resetting all CPU
         // state per draw and isolating nested leases; arithmetic is unchanged.
-        // Anisotropy UI retired. The existing private contact/atan switches
-        // admit standard Recompiled gameplay too; both remain off by default.
+        // Anisotropy UI retired. Complete native contact/atan families now
+        // default on in Recompiled gameplay; source/state guards and retained
+        // fallback remain, with explicit diagnostic opt-outs for comparison.
         // Fixed product output: 60 without VSync, monitor-paced with VSync;
         // Original timing is authoritative for both update and output cadence.
-        "sha256:900178f3aadade181696b2f4b7e1e9ce61f29c9207cba25f23d478a644b73240"};
+        "sha256:3030f08f325a727cea5e282792a72769e3f1206ef1524ee1b4b4d33171dd134c"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

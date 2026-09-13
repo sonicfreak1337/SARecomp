@@ -34319,7 +34319,7 @@ sonic_native_triangle_contacts(katana::runtime::NativePortContext& context) noex
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_TRIANGLE_CONTACTS");
-        return flag && std::string_view(flag)=="1";
+        return !flag || std::string_view(flag)!="0";
     }();
     if (!enabled) return {NativePortHookAction::ContinueOriginal,0u,0u};
     try {
@@ -34349,7 +34349,7 @@ sonic_native_atan_impl(katana::runtime::NativePortContext& context,std::size_t i
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_ATAN_MATH");
-        return flag && std::string_view(flag)=="1";
+        return !flag || std::string_view(flag)!="0";
     }();
     if (!enabled) return {NativePortHookAction::ContinueOriginal,0u,0u};
     try {

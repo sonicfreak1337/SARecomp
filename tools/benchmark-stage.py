@@ -31,6 +31,7 @@ parser.add_argument('--native-collision-math', action='store_true', help='Privat
 parser.add_argument('--native-matrix-inverse', action='store_true', help='Private complete native matrix inverse/determinant family')
 parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
+parser.add_argument('--original-math-families', action='store_true', help='Compare against retained atan/contact owners')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
@@ -58,6 +59,7 @@ if args.matrix_write_batch and not args.native_matrix_stack: parser.error('Matri
 if args.native_collision_math and not args.sixty_frame_fixture: parser.error('Native collision math requires the private60-frame fixture')
 if args.native_matrix_inverse and not args.sixty_frame_fixture: parser.error('Native inverse requires the private60-frame fixture')
 if (args.native_triangle_contacts or args.native_atan_math) and args.gameplay_timing!='recompiled': parser.error('Private native math experiments require Recompiled timing')
+if args.original_math_families and (args.native_triangle_contacts or args.native_atan_math): parser.error('Native and retained family overrides conflict')
 sampler_exe = root/'build-performance/sonic_execution_sampler.exe'
 if args.profile_ms and not sampler_exe.is_file(): parser.error('Build sonic_execution_sampler first')
 busy = subprocess.run(['powershell.exe','-NoProfile','-Command',
@@ -92,6 +94,9 @@ if args.native_collision_math: env['SARECOMP_NATIVE_COLLISION_MATH']='1'
 if args.native_matrix_inverse: env['SARECOMP_NATIVE_MATRIX_INVERSE']='1'
 if args.native_triangle_contacts: env['SARECOMP_NATIVE_TRIANGLE_CONTACTS']='1'
 if args.native_atan_math: env['SARECOMP_NATIVE_ATAN_MATH']='1'
+if args.original_math_families:
+    env['SARECOMP_NATIVE_ATAN_MATH']='0'
+    env['SARECOMP_NATIVE_TRIANGLE_CONTACTS']='0'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
