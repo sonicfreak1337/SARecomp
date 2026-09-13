@@ -13,16 +13,14 @@ remains the original ADVERTISE screen 5, returning to new Options screen 8.
 - [x] Out-of-process display confirmation/rollback, including failed startup.
 - [x] Action remapping, mouse camera, per-axis sensitivity/inversion,
       configurable deadzones and original-camera return delay.
-- [x] Original PuruPuru requests and automatic stops on XInput and native
-      Sony SDL3 backends, with configurable strength. Sony input/output share
-      one report owner, including independent analog triggers.
-- [ ] Original baked tutorial/button hints need per-owner physical-binding
-      substitution. The common SUMMARY Next/Back bar is implemented and
-      confirmed in the original tutorial with remapped PlayStation buttons
-      and Japanese keyboard labels. Character-specific diagrams remain;
-      the sampled in-world jump hint is already action-neutral. See
-      tutorial-native-visit.md and inworld-input-hint-audit.md. Native
-      menu/quit prompts follow remapping.
+- [x] XInput and native Sony SDL3 input, with independent analog triggers.
+      Vibration controls were removed from Options at the user's request on
+      2026-09-13; the internal device backend is retained.
+- [x] Original baked tutorial/button hints follow physical bindings. The
+      catalog covers all 30 character/language archives, replacing 327 control
+      regions in 272 entries, plus the common SUMMARY Next/Back bar. Native
+      menu/quit prompts follow remapping. See tutorial-page-integration.md;
+      the sampled in-world jump hint is already action-neutral.
 - [x] Separate music/voice/effects, background mute, subtitle size/backplate,
       original language persistence.
 - [x] Consistent story+Chao profile snapshots, immutable versioned backups,

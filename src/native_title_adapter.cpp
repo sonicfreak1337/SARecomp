@@ -60,6 +60,7 @@
 #include "sonic_matrix_inverse.hpp"
 #include "sonic_triangle_contacts.hpp"
 #include "sonic_atan_math.hpp"
+#include "sonic_amy_hammer_effect.hpp"
 #include "renderer/sonic_motion.hpp"
 
 namespace katana_port_generated::runtime_dispatch_detail {
@@ -34200,9 +34201,51 @@ sonic_native_vertex_normals(
     }
 }
 
-// Unlike frame services this preserves the exact guest callsite PR. The two
-// retained math wrappers execute synchronously through their real return;
-// neither a deadline nor an interrupted inner call may look like completion.
+// Preserve the original PR across Amy's real mode, sine and fade calls.
+// An interrupted call cannot be treated as a completed callback.
+static bool sonic_amy_effect_retained_call(void* opaque,
+    katana::runtime::CpuState& cpu, std::uint32_t entry) noexcept {
+    using namespace katana::runtime;
+    auto& context = *static_cast<NativePortContext*>(opaque);
+    if (context.cpu != &cpu || !context.aot.invoke_callback || cpu.pc != entry ||
+        (entry != 0x8C0DDD5Cu && entry != 0x8C0DF804u && entry != 0x8C63A8F8u) ||
+        context.stop_reason != NativePortStopReason::None) return false;
+    struct Scope final {
+        Scope() noexcept { ++sonic_native_host_service_depth; }
+        ~Scope() { --sonic_native_host_service_depth; }
+    } scope;
+    const auto continuation = cpu.pr;
+    const auto result = context.aot.invoke_callback(context, entry);
+    const bool complete = result.action == NativePortHookAction::Return &&
+        cpu.pc == continuation && context.stop_reason == NativePortStopReason::None;
+    if (!complete)
+        std::fprintf(stderr, "SONIC_AMY_EFFECT_CALL_FAILURE entry=%08x return=%08x pc=%08x action=%u error=%u\n",
+            entry, continuation, cpu.pc, static_cast<unsigned>(result.action), result.error_code);
+    return complete;
+}
+
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_amy_hammer_effect(katana::runtime::NativePortContext& context) noexcept {
+    using namespace katana::runtime;
+    try {
+        if (!context.cpu || !context.aot.invoke_callback || context.stop_reason != NativePortStopReason::None)
+            throw std::runtime_error("Amy hammer effect context");
+        const auto result = sonic::amy_hammer_effect::execute(
+            *context.cpu, {&context, sonic_amy_effect_retained_call});
+        static unsigned reports = 0u;
+        if (reports++ < 3u)
+            std::fprintf(stderr, "SONIC_AMY_HAMMER_EFFECT restored=1 frame=%llu target=%08x\n",
+                static_cast<unsigned long long>(context.frame_index), context.cpu->pc);
+        return result;
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "SONIC_AMY_HAMMER_EFFECT_FAILURE %s\n", error.what());
+    } catch (...) {
+        std::fprintf(stderr, "SONIC_AMY_HAMMER_EFFECT_FAILURE unknown exception\n");
+    }
+    return {NativePortHookAction::Abort, 0u, 0x53414801u};
+}
+
+// Preserve the exact PR for the two retained triangle math wrappers, too.
 static bool sonic_triangle_retained_math_call(void* opaque,
     katana::runtime::CpuState& cpu, std::uint32_t entry) noexcept {
     using namespace katana::runtime;

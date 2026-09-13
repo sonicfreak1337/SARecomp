@@ -91,7 +91,7 @@ std::vector<Row> Model::rows()const{
         status("audio_status","audio_"+std::string(recovery::name(audio_status_)));add("back");
     }
     else if(page_=="camera")group({"camera_style","mouse_camera","camera_sensitivity_x","camera_sensitivity_y","mouse_sensitivity_x","mouse_sensitivity_y","camera_invert_x","camera_invert_y","camera_deadzone","camera_return_seconds","back"});
-    else if(page_=="controls")group({"bindings","keyboard_enabled","movement_deadzone","swap_sticks","vibration","glyph_style","reset_bindings","back"});
+    else if(page_=="controls")group({"bindings","keyboard_enabled","movement_deadzone","swap_sticks","glyph_style","reset_bindings","back"});
     else if(page_=="interface")group({"text_language","voice_language","subtitles","subtitle_scale","subtitle_background","back"});
     else if(page_=="system")group({"pause_focus_loss","pause_controller_loss","mute_background","export_diagnostics","back"});
     else if(page_=="about")add("back");
@@ -119,7 +119,6 @@ std::wstring Model::description()const{
     for(const auto& c:choices_)if(c.id==id&&!c.details.empty())return c.details;
     // Interpolation was withdrawn; its prototype is no longer a menu option.
     if(id=="vsync")return copy("vsync_help",language());
-    if(id=="vibration")return copy("vibration_help",language());
     if(id=="presentation_fps")return copy(draft_.vsync==1?"fps_vsync_help":"fps_help",language());
     if(id=="export_diagnostics")return copy("diagnostics_help",language());
     if(id=="sound_test"&&!title_)return copy("title_only",language());

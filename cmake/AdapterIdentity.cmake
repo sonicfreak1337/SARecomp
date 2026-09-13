@@ -10,6 +10,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_collision_math.hpp sonic_collision_math.cpp
     sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
     sonic_atan_math.hpp sonic_atan_math.cpp
+    sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp
     sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp
     sonic_qsound_reverb_medium_program.inc sonic_native_sdk_texture_release_plan.hpp sonic_texture_sentinel.hpp
     sonic_native_texture_catalog.hpp sonic_native_texture_catalog.cpp

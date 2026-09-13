@@ -65,6 +65,17 @@ target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp
 target_sources(katana_native_title_adapter PRIVATE src/sonic_palette_lighting.cpp src/sonic_vertex_normals.cpp src/sonic_matrix_stack.cpp src/sonic_collision_math.cpp src/sonic_matrix_inverse.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_triangle_contacts.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_atan_math.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_amy_hammer_effect.cpp)
+add_executable(sonic_amy_hammer_effect_tests EXCLUDE_FROM_ALL
+    tools/test_amy_hammer_effect.cpp src/sonic_amy_hammer_effect.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_amy_hammer_effect_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_amy_hammer_effect_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_amy_hammer_effect_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 add_executable(sonic_transition_task_graph_tests EXCLUDE_FROM_ALL tools/test_transition_task_graph.cpp)
 target_include_directories(sonic_transition_task_graph_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_transition_task_graph_tests PRIVATE /EHsc /utf-8)

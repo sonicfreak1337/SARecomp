@@ -319,7 +319,7 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0;
+    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0,amy_effect_added=0;
     struct ReviewedRumble {std::uint32_t address,size;std::string_view symbol,sha;};
     constexpr std::array rumble_hooks{
         ReviewedRumble{0x8C6042B0u,6u,"sonic_native_rumble_capability","2eb2196012d5e864de7c33573a13e8f3179d01a955e1d5994c123eac1314593c"},
@@ -378,6 +378,9 @@ RenderHookExtension render_hook_extension(
         const bool cadence=hook.guest_address==0x8C051760u && hook.covered_size==0x30u &&
             hook.symbol=="sonic_native_sixty_frame_cadence" &&
             hook.code_identity=="sha256:320d63bbff3edb9d77d47a64e1e0214bf8d83b3522736b7c06445d03c85bc3e5";
+        const bool amy_effect=hook.guest_address==0x8C0DF84Cu && hook.covered_size==0xECu &&
+            hook.symbol=="sonic_native_amy_hammer_effect" &&
+            hook.code_identity=="sha256:6848e8ae03d8ca34e4d1a6b3cb274912ba92e25b4bc3d6245f6dd557f5f97315";
         const bool palette=hook.guest_address==0x8C037350u && hook.covered_size==0x110u &&
             hook.symbol=="sonic_native_palette_lighting" &&
             hook.code_identity=="sha256:6033d3d4b0c9821d221d54c2bc3e78477df900a59c56208fc0a8bddfc518084c";
@@ -413,10 +416,10 @@ RenderHookExtension render_hook_extension(
              hook.code_identity=="sha256:4c9efceb0a2491382e2251fb758565cb4073f1292ea079692f68e79e22246b82") ||
             (hook.symbol=="sonic_native_atan_scale" && hook.guest_address==0x8C10E6F8u && hook.covered_size==0xC0u &&
              hook.code_identity=="sha256:316c8b53e094bc27f5d85d3be392105d732e2aae3609409e41b862ce1dddb4ca"));
-        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !atan) ||
+        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !atan && !amy_effect) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
-            hook.original_policy != (rumble?NativePortHookOriginalPolicy::ReplacesOriginal:
+            hook.original_policy != ((rumble||amy_effect)?NativePortHookOriginalPolicy::ReplacesOriginal:
                 NativePortHookOriginalPolicy::MayContinueOriginal) ||
             (!language && !legacy_video && !options_display && (hook.code_source != NativePortHookCodeSource::StaticImage ||
                 !hook.code_source_identity.empty())) ||
@@ -435,14 +438,14 @@ RenderHookExtension render_hook_extension(
         result.added.push_back(hook);
         if(language) ++language_added;else if(camera) ++camera_added;
         else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;
-        else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else ++rendering_added;
+        else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else if(amy_effect) ++amy_effect_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
         (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u ||
         (rumble_added!=0u && rumble_added!=4u) || cadence_added>1u || palette_added>1u || normals_added>1u ||
         (matrix_stack_added!=0u && matrix_stack_added!=2u) || (collision_added!=0u && collision_added!=3u) ||
-        (inverse_added!=0u && inverse_added!=2u) || contacts_added>1u || (atan_added!=0u && atan_added!=4u))
+        (inverse_added!=0u && inverse_added!=2u) || contacts_added>1u || (atan_added!=0u && atan_added!=4u) || amy_effect_added>1u)
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;
@@ -490,6 +493,12 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
             hook.original_policy == katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal &&
             hook.symbol == "sonic_native_rumble_stop" && hook.covered_size == 0x3Cu &&
             hook.code_identity == "sha256:aa649b8b79189f8ddce7fc3b813fe6391e5be8d3a9878be5113991c409200c10";
+        // This whole Amy callback was absent from the frozen pack. Its native
+        // body restores the original code; none of its branches can fall back.
+        const bool replaced_amy_effect = hook.guest_address == 0x8C0DF84Cu &&
+            hook.original_policy == katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal &&
+            hook.symbol == "sonic_native_amy_hammer_effect" && hook.covered_size == 0xECu &&
+            hook.code_identity == "sha256:6848e8ae03d8ca34e4d1a6b3cb274912ba92e25b4bc3d6245f6dd557f5f97315";
         const auto witness = "{{0x" + hex + "u, 0x" +
             hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
         // Physical addresses in the emitter have a leading zero.
@@ -500,7 +509,7 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
                 "code/native-port-dispatch-shard-98441.cpp":"code/native-port-dispatch-shard-98440.cpp"));
             if(shard.find("{0x"+hex+"u, &fn_"+hex+"_runtime_entry, false, false}")==std::string::npos)
                 fail("sonic-language-hook-missing-frozen-entry");
-        } else if (!replaced_rumble_stop && dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
+        } else if (!replaced_rumble_stop && !replaced_amy_effect && dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
             fail("sonic-render-hook-missing-frozen-block");
         declarations += "extern \"C\" katana::runtime::NativePortHookResult " +
             std::string(hook.symbol) + "(katana::runtime::NativePortContext&) noexcept;" + newline;

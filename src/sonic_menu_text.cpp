@@ -5,7 +5,6 @@ namespace {
 struct Entry {std::string_view key;std::array<std::wstring_view,5> languages;};
 // PAL text-language order. No OS-language or voice-language dependency.
 constexpr Entry entries[]{
-{"vibration_help",{L"ゲーム本来の振動の強さを調整します。0 にすると振動を無効にします。",L"Adjust the strength of the original game's vibration effects. Set to 0 to turn vibration off.",L"Réglez l’intensité des vibrations du jeu d’origine. Réglez sur 0 pour les désactiver.",L"Ajusta la intensidad de la vibración original del juego. Ponla a 0 para desactivarla.",L"Stelle die Stärke der originalen Vibrationseffekte ein. Mit 0 schaltest du die Vibration aus."}},
 {"display_controlled",{L"ディスプレイに同期",L"Display controlled",L"Géré par l’écran",L"Según la pantalla",L"Bildschirmgesteuert"}},
 {"fps_vsync_help",{L"VSync がオンの場合、画面の更新に同期します。保存された FPS 上限は VSync を無効にすると再び適用されます。",L"VSync On follows the display refresh. Your saved FPS limit applies again when VSync is turned off.",L"VSync activée suit la fréquence de l’écran. La limite FPS enregistrée s’applique de nouveau quand VSync est désactivée.",L"VSync activado sigue la frecuencia de la pantalla. El límite de FPS guardado se aplica de nuevo al desactivar VSync.",L"VSync Ein folgt der Bildschirmfrequenz. Dein gespeichertes FPS-Limit greift wieder, wenn du VSync ausschaltest."}},
 {"vsync_help",{L"自動は描画方式の標準設定です。オンは画面の更新に同期します。オフではティアリングが発生する場合があります。変更には再起動が必要です。",L"Automatic keeps the renderer default. On synchronizes with the display. Off may allow tearing. Changing this requires a restart.",L"Automatique conserve le réglage du moteur. Activée synchronise l’affichage. Désactivée peut provoquer des déchirures. Redémarrage requis.",L"Automático conserva el ajuste del renderizador. Activado sincroniza la pantalla. Desactivado puede causar desgarros. Requiere reiniciar.",L"Automatisch behält den Renderer-Standard. Ein synchronisiert mit dem Bildschirm. Aus kann Bildrisse erlauben. Änderungen benötigen einen Neustart."}},
@@ -101,7 +100,6 @@ constexpr Entry entries[]{
 {"movement_deadzone",{L"移動のデッドゾーン",L"Movement deadzone",L"Zone morte déplacement",L"Zona muerta de movimiento",L"Bewegungs-Deadzone"}},
 {"swap_sticks",{L"左右スティックを交換",L"Swap sticks",L"Échanger les sticks",L"Intercambiar sticks",L"Sticks tauschen"}},
 {"camera_return_seconds",{L"元のカメラに戻る時間",L"Return to original camera",L"Retour caméra originale",L"Volver a cámara original",L"Rückkehr zur Originalkamera"}},
-{"vibration",{L"振動の強さ",L"Vibration strength",L"Intensité vibration",L"Intensidad de vibración",L"Vibrationsstärke"}},
 {"glyph_style",{L"ボタン表示",L"Button symbols",L"Symboles des touches",L"Símbolos de botones",L"Tastensymbole"}},
 {"keyboard",{L"キーボード",L"Keyboard",L"Clavier",L"Teclado",L"Tastatur"}},
 {"bindings",{L"ボタン割り当て",L"Button bindings",L"Attribution des touches",L"Asignación de botones",L"Tastenbelegung"}},

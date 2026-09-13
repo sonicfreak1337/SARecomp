@@ -154,10 +154,10 @@ inline constexpr std::string_view
         // Private hidden render-completion experiment tags only guest renders,
         // not output repeats or host UI/video. Default callback behavior and
         // the retained AOT pack remain unchanged; the counter is not retimed.
-        // Hidden EC-only60-frame fixture invokes the original60-Hz constructor
-        // and1/1 cadence initializer between frames. Disabled on normal runs;
-        // no interpolation or alteration of the original task bodies.
-        "sha256:214770969537d9bcfe6c76880d78a4bcd70583e38244f715974e2de6c3d0d8a8"};
+        // Native60 gameplay is now the standard path; the original-cadence
+        // compatibility path remains available. The missing Amy hammer effect
+        // is a complete source-bound callback with retained original callees.
+        "sha256:8e2b771f236ef4d6a00bb99af568538c8e9486f7d43d7cbe00adca3430a535f3"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -259,6 +259,14 @@ int main(const int argc, char* argv[]) {
                 6'735'296u,
                 true}};
         constexpr std::array static_hooks{
+            katana::runtime::NativePortHookBinding{
+                0x8C0DF84Cu, 0xECu,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal,
+                "sonic_native_amy_hammer_effect",
+                "sha256:6848e8ae03d8ca34e4d1a6b3cb274912ba92e25b4bc3d6245f6dd557f5f97315",
+                sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C051760u, 0x30u,
                 katana::runtime::NativePortHookKind::FunctionEntry,
