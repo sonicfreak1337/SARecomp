@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import sys
 import json
-from minicart_universe import extend
+from minicart_universe import extend, authenticated_modules
 
 def write_changed(path,text):
     if not path.exists() or path.read_text(encoding='utf-8')!=text:
@@ -17,8 +17,13 @@ if len(data) != 1434052 or hashlib.sha256(data).hexdigest() != identity:
     raise RuntimeError('MINICART supplement source identity mismatch')
 source = (directory/'minicart-aot.cpp').read_text()
 definitions = list(re.finditer(r'BlockExit fn_([0-9A-F]{8})_runtime_entry\(CpuState& cpu, BlockExecutionContext& context\) \{', source))
-if [int(match[1],16) for match in definitions] != [0x8298A81E,0x8298AA60]:
+if [int(match[1],16) for match in definitions] != [0x8298007A,0x8298A81E,0x8298AA60]:
     raise RuntimeError('MINICART native entry definitions changed')
+modules=authenticated_modules(Path(sys.argv[2]))
+retained={offset:(size,digest) for offset,size,digest in next(m[4] for m in modules if m[0]==0x82980000)}
+for offset,(size,digest) in retained.items():
+    if 'sha256:'+hashlib.sha256(data[offset:offset+size]).hexdigest()!=digest:
+        raise RuntimeError('Retained MINICART block no longer matches original bytes')
 windows = [tuple(int(v,16) for v in line.split()) for line in (directory/'windows.tsv').read_text().splitlines()]
 entries = {}
 for index, match in enumerate(definitions):
@@ -35,7 +40,17 @@ for index, match in enumerate(definitions):
         offset,size = entry-0x82980000,end-entry
         if entry&1 or size<2 or size&1 or offset+size>len(data):
             raise RuntimeError('Invalid original block byte window')
+        # The lap-time accessor's body is already present under owner 0080.
+        # Keep every existing dispatch/identity, adding only missing entries.
+        # Overlap is permitted only for that reviewed shared original body.
+        if offset in retained:
+            if owner!=0x8298007A or not 0x80<=offset<0xB0:
+                raise RuntimeError('Unexpected retained MINICART owner overlap')
+            continue
         entries[entry] = (owner,offset,size,hashlib.sha256(data[offset:offset+size]).hexdigest())
+for offset in [0,0x40,0x7A,0xB0,0x120,0xB756,0xA800,0xA81E,0xAA60,0xB552]:
+    if offset not in retained and offset+0x82980000 not in entries:
+        raise RuntimeError(f'Missing MINICART result/interface family entry {offset:X}')
 lines = ['// Generated from authenticated MINICART bytes by the sealed r354 backend.',
          '#pragma once', '#include <algorithm>', '#include <array>', '#include <stdexcept>',
          'namespace katana_port_generated {']
@@ -81,6 +96,6 @@ inline void extend_sonic_minicart_identities(std::vector<katana::runtime::Native
 } // katana_port_generated
 ''']
 write_changed(directory/'minicart-bindings.hpp','\n'.join(lines))
-identities=extend(Path(sys.argv[2]),[(offset,size,'sha256:'+digest) for _,offset,size,digest in entries.values()])
+identities=extend(Path(sys.argv[2]),[(offset,size,'sha256:'+digest) for _,offset,size,digest in entries.values()],modules)
 write_changed(directory/'minicart-identities.json',json.dumps(identities,indent=2)+'\n')
-print(f'SONIC_MINICART_BINDINGS_READY functions=2 block_identities={len(entries)} dispatch_entries={2*len(entries)}')
+print(f'SONIC_MINICART_BINDINGS_READY functions={len(definitions)} block_identities={len(entries)} dispatch_entries={2*len(entries)} retained_blocks={len(retained)}')

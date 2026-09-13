@@ -46,12 +46,22 @@ int main(int argc, char** argv) try {
     write(output/"minicart.bin", {reinterpret_cast<const char*>(decoded.data()),decoded.size()});
     katana::io::RawBinaryLoadOptions load;
     load.base_address=0x82980000u;load.entry_point=0x8298A81Eu;
-    auto image=katana::io::load_raw_binary(output/"minicart.bin",load);
-    auto analysis=katana::analysis::analyze_control_flow(image);
-    auto program=katana::ir::lower_program(analysis);
+    std::vector<katana::ir::Function> program;
+    // The resident record writer calls 007A, six bytes before the retained
+    // aligned owner 0080. Include the true entry and its complete original
+    // body; do not skip the stack/PR prologue by redirecting callers to 0080.
+    for(const auto root:{0x8298007Au,0x8298A81Eu}) {
+        load.entry_point=root;
+        auto image=katana::io::load_raw_binary(output/"minicart.bin",load);
+        auto analysis=katana::analysis::analyze_control_flow(image);
+        auto discovered=katana::ir::lower_program(analysis);
+        program.insert(program.end(),std::make_move_iterator(discovered.begin()),
+            std::make_move_iterator(discovered.end()));
+    }
+    std::sort(program.begin(),program.end(),[](const auto& a,const auto& b){return a.entry_address<b.entry_address;});
     std::set<std::uint32_t> entries;
     for(const auto& function:program)entries.insert(function.entry_address);
-    if(entries!=std::set<std::uint32_t>{0x8298A81Eu,0x8298AA60u})
+    if(program.size()!=3u || entries!=std::set<std::uint32_t>{0x8298007Au,0x8298A81Eu,0x8298AA60u})
         throw std::runtime_error("MINICART results closure changed");
     // Store pre-optimization byte windows; generated switch cases below select
     // exactly which resumable entries are exported from those original blocks.

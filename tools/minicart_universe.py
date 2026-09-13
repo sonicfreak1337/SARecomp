@@ -25,7 +25,7 @@ def canonical(modules):
             number(offset);number(size);string(identity)
     return 'sha256:'+h.hexdigest()
 
-def extend(generated, additions):
+def authenticated_modules(generated):
     generated=Path(generated)
     manifest=(generated/'.katana-generated-artifacts').read_text().splitlines()
     if manifest[0]!='katana-codegen-artifacts-v2' or manifest[1]!='generation\tsha256:'+hashlib.sha256(
@@ -56,6 +56,11 @@ def extend(generated, additions):
             modules.append((int(start,16),int(size),identity,sources,blocks))
     if canonical(modules)!=OLD_UNIVERSE:
         raise RuntimeError('Retained module universe mismatch')
+    return modules
+
+def extend(generated, additions, modules=None):
+    if modules is None:
+        modules=authenticated_modules(generated)
     target=[m for m in modules if m[0]==0x82980000]
     if len(target)!=1:raise RuntimeError('MINICART module ambiguity')
     blocks=target[0][4]

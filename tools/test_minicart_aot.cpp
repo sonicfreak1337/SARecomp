@@ -24,8 +24,11 @@ constexpr auto returned=0x8CF80000u;
 using Call=std::tuple<std::uint32_t,std::array<std::uint32_t,16>,
     std::array<std::uint32_t,16>,std::array<std::uint32_t,16>,std::uint32_t,std::uint32_t>;
 std::vector<Call>* calls=nullptr;
+bool original_record_services=false;
+void original_call(CpuState&,std::uint32_t);
 void native_resume(CpuState&);
 void external(CpuState& c,std::uint32_t target){
+    if(original_record_services){original_call(c,target);return;}
     if((target&0x1FFFFFFFu)>=0x0C90A81Eu && (target&0x1FFFFFFFu)<0x0C90B000u){
         c.pc=target;native_resume(c);return;
     }
@@ -59,9 +62,11 @@ struct Reference final:PlatformServices {
 struct Fixture {
     CpuState cpu{.memory=Memory{0u}};
     std::shared_ptr<LinearMemoryDevice> ram=std::make_shared<LinearMemoryDevice>(0x1000000u);
-    Fixture(std::span<const std::uint8_t> module,unsigned state,unsigned variant,std::uint32_t base){
+    Fixture(std::span<const std::uint8_t> module,unsigned state,unsigned variant,std::uint32_t base,
+            std::span<const std::uint8_t> resident={}){
         cpu.memory.map_region("test-ram",0x0C000000u,ram);
         cpu.memory.bind_direct_linear_alias_window(0x0C000000u,0x1000000u,*ram);
+        std::copy(resident.begin(),resident.end(),ram->writable_bytes().begin());
         std::copy(module.begin(),module.end(),ram->writable_bytes().begin()+0x900000u);
         cpu.pc=base+0xA81Eu;cpu.pr=returned;cpu.write_sr(sr_md_mask);cpu.write_fpscr(fpscr_dn_mask);
         cpu.r[4]=0x8CE00000u;cpu.r[15]=0x8CF00000u;
@@ -94,6 +99,13 @@ void reference_step(CpuState& c){
     GuestInstructionAttempt attempt(c,c.pc,2u);c.pc+=2u;
     fpu_truncate_to_fpul(c,instruction.source_register);
 }
+void original_call(CpuState& c,std::uint32_t target){
+    const auto stop=c.pr;c.pc=target;
+    for(unsigned i=0;c.pc!=stop && i<100000;++i){
+        reference_step(c);require(!c.exception_generation,"original record helper exception");
+    }
+    require(c.pc==stop,"original record helper did not return");
+}
 }
 namespace katana_port_generated {
 thread_local bool native_bringup_dispatch_pending=false;
@@ -115,12 +127,17 @@ void exact_guarded_call(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t)
 void exact_guarded_jump(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
 BlockExit fn_8298A81E_runtime_entry(CpuState&,BlockExecutionContext&);
 BlockExit fn_8298AA60_runtime_entry(CpuState&,BlockExecutionContext&);
+BlockExit fn_8298007A_runtime_entry(CpuState&,BlockExecutionContext&);
 }
 namespace {
 void native_resume(CpuState& c){
     const auto stop=c.pr;
     for(unsigned i=0;c.pc!=stop && i<2000;++i){
         const auto pc=c.pc&0x1FFFFFFFu;
+        if(pc>=0x0C90007Au && pc<0x0C9000B0u){
+            BlockExecutionContext block;
+            (void)katana_port_generated::fn_8298007A_runtime_entry(c,block);continue;
+        }
         if(pc<0x0C90A81Eu || pc>=0x0C90B000u){external(c,c.pc);continue;}
         BlockExecutionContext block;
         if(pc<0x0C90AA60u)(void)katana_port_generated::fn_8298A81E_runtime_entry(c,block);
@@ -128,9 +145,77 @@ void native_resume(CpuState& c){
     }
     require(c.pc==stop,"native owner did not return");
 }
+
+void record_path_cases(std::span<const std::uint8_t> module,const char* resident_path){
+    std::ifstream f(resident_path,std::ios::binary);
+    const std::vector<std::uint8_t> resident{std::istreambuf_iterator<char>(f),{}};
+    require(resident.size()==0x1000000u && katana::io::sha256_bytes(
+        {reinterpret_cast<const char*>(resident.data()),resident.size()})==
+        "b64a98597751d995aa95346df260d79efb38deb37bd174efa01c8d732645846c", "resident record code identity");
+    unsigned cases=0;
+    original_record_services=true;
+    // Execute the actual resident ranking writer and original time conversion
+    // and integer division, without service stubs. Only the newly bound owner
+    // is native on the candidate side. Saves exist solely in these RAM copies.
+    for(const auto base:{0x8C900000u,0xAC900000u})for(unsigned character=0;character<6;++character)
+    for(unsigned rank=0;rank<4;++rank){
+        Fixture n(module,0,0,base,resident),r(module,0,0,base,resident);
+        const unsigned total=std::array{4000u,5500u,6500u,7500u}[rank];
+        for(auto* fixture:{&n,&r}){
+            fixture->cpu.pc=0x8C0A1C36u;
+            fixture->put(0x8C749308u,std::array{0u,2u,3u,5u,6u,7u}[character]);
+            fixture->put(0x8C7492FAu,35u); // Twinkle Circuit, act zero
+            fixture->put(0x8C161BE4u,0u); // isolated profile zero
+            fixture->put(0x0C9180BCu,1234u);fixture->put(0x0C9180C0u,4321u);
+            fixture->put(0x0C9180C4u,total);
+            for(unsigned slot=0;slot<6;++slot){
+                const std::array<std::uint8_t,15> times{0,50,0,1,0,0,1,10,0,85,85,85,85,85,85};
+                std::copy(times.begin(),times.end(),fixture->ram->writable_bytes().begin()+0x798A90+15*slot);
+            }
+        }
+        const std::array ranges{NativePortImmutableRange{0x0C90007Au,0x36u,
+            native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)}};
+        NativePortImmutableWriteGuard guard(ranges);
+        NativePortContext context;context.cpu=&n.cpu;context.host=&host;
+        NativePortAotServices services(context,+[](std::uint32_t)noexcept{return false;},guard);
+        katana_port_generated::runtime_dispatch_detail::active_services=&services;
+        unsigned native_lap_calls=0;
+        for(auto* fixture:{&n,&r}){
+            ScopedCodeAddressMapping mapping({0x82980000u,base,1434052u});
+            for(unsigned i=0;fixture->cpu.pc!=returned && i<100000;++i){
+                // The resident literal is a physical alias. Native module
+                // admission selects the placed P1/P2 code address before
+                // calling its owner; use that same boundary on both sides.
+                if((fixture->cpu.pc&0x1FFFFFFFu)==0x0C90007Au)
+                    fixture->cpu.pc=base+0x7Au;
+                if(fixture==&n && (fixture->cpu.pc&0x1FFFFFFFu)==0x0C90007Au){
+                    native_resume(fixture->cpu);++native_lap_calls;
+                } else reference_step(fixture->cpu);
+                require(!fixture->cpu.exception_generation,"record writer exception");
+            }
+        }
+        require(n.cpu.pc==returned && r.cpu.pc==returned,"record writer did not return");
+        require(architecture(n.cpu)==architecture(r.cpu) &&
+            std::equal(n.ram->bytes().begin(),n.ram->bytes().end(),r.ram->bytes().begin()),
+            "native/original record writer mismatch");
+        require(native_lap_calls==(rank==0?2u:0u),"new-record lap accessor coverage");
+        auto record=n.ram->bytes().subspan(0x798A90+15*character,15);
+        if(rank==0){
+            const std::array<std::uint8_t,15> expected{0,40,0,0,50,0,1,0,0,0,12,34,0,43,21};
+            require(std::equal(record.begin(),record.end(),expected.begin()),"new record and lap times");
+        } else {
+            require(std::all_of(record.begin()+9,record.end(),[](auto byte){return byte==85;}),
+                "slower result changed best lap times");
+        }
+        ++cases;
+    }
+    original_record_services=false;
+    std::cout<<"SONIC_MINICART_RECORD_PATH_PASS cases="<<cases
+        <<" characters=6 ranks=first,second,third,unranked original_services=real cpu=exact ram=exact\n";
+}
 }
 int main(int argc,char** argv)try{
-    require(argc==2,"provide authenticated generated MINICART binary");
+    require(argc==3,"provide authenticated MINICART and resident RAM binaries");
     std::ifstream f(argv[1],std::ios::binary);
     std::vector<std::uint8_t> module{std::istreambuf_iterator<char>(f),{}};
     require(module.size()==1434052u,"MINICART size");
@@ -169,5 +254,6 @@ int main(int argc,char** argv)try{
         ++cases;
     }
     std::cout<<"SONIC_MINICART_DIFFERENTIAL_PASS cases="<<cases<<" states=0..5 aliases=P1,P2 cpu=exact ram=exact external_calls=exact\n";
+    record_path_cases(module,argv[2]);
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
