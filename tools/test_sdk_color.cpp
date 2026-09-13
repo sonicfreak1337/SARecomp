@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
                 "retail resident UV factor changed");
         unsigned uv_cases=0;
         for (auto fpscr : {0u,1u,fpscr_dn_mask,fpscr_dn_mask|1u})
-        for (auto u : {-32768,-1275,-256,-255,-1,0,1,127,160,253,255,256,320,640,960,1119,1275,32767}) {
+        for (auto u = -32768; u <= 32767; ++u) {
             const auto v=static_cast<std::int16_t>(u== -32768 ? 32767 : -u);
             original.r.fill(0u);original.fr.fill(0u);original.sr=sr_md_mask;
             original.write_fpscr(fpscr);original.pc=0x8C0379E0u;
@@ -92,7 +92,8 @@ int main(int argc, char** argv) {
                     "resident SDK UV changed");
             ++uv_cases;
         }
-        std::cout<<"SONIC_MODEL_UV_TEST_OK retail_instruction_cases="<<uv_cases<<" resident_unchanged\n";
+        std::cout<<"SONIC_MODEL_UV_TEST_OK retail_instruction_cases="<<uv_cases
+                 <<" exhaustive_int16_two_rounding_modes_dn_on_off resident_unchanged\n";
         unsigned cases = 0u, denormal_traps = 0u;
         for (auto entry : {0x8C620A72u, 0x8C6385F0u})
         for (auto fpscr : {0u,1u,fpscr_dn_mask,fpscr_dn_mask|1u,0x4106Du})
