@@ -76,3 +76,40 @@ EXE SHA-256:
 Provider SHA-256:
 `8e2b771f236ef4d6a00bb99af568538c8e9486f7d43d7cbe00adca3430a535f3`.
 Build log: `.local/menu-preview/build-amy-hammer-01.log`.
+
+## Required-hook tail correction, later 2026-09-13
+
+Capsule `katana-crash-session-1789329199590-6200.log` reports
+`InvalidHookResult / direct-hook-result`, PC `8C0DF6A0`, PR `8C0986FA`,
+frame 17343. The restored callback returned `Jump` to the retained drawing
+routine. The pinned SDK deliberately rejects that result for a Required,
+FunctionEntry, ReplacesOriginal hook: such a replacement must finish its
+declared closure and return, or report a typed Abort.
+
+Both original tails now execute through the existing retained-call bridge,
+with the restored caller PR unchanged: `8C0DF6A0` draws, `8C0986C6` installs
+deferred deletion. The wrapper returns only after the original tail returns.
+Deletion remains deferred; it does not free the task synchronously. Interrupted
+tails remain fatal and cannot become ContinueOriginal after partial mutation.
+
+The component test now applies the production `valid_native_port_hook_result`
+validator to the exact binding and verifies that the former Jump is rejected.
+It also checks both interrupted-tail branches. All 35 original-byte cases
+pass, including register/FPSCR, full RAM, ordered stores, targets and PR. The
+graphics boundary remains isolated, so these are callback/contract tests,
+not a full visual Hedgehog Hammer playthrough.
+
+The other eight remaining Jump return sites were inspected. Their exported
+bindings (20 sites in scanout, video timing, bus revision, IML4, interrupt
+acknowledgement and soft reset) are Instruction hooks with declared immediate
+continuations. None has the same whole-function contract violation.
+
+Corrected game SHA256:
+`b266dfb6ea4ccf2211a4c33ef77cc383d1040e55713089f238107247b52da17b`.
+Build log `.local/menu-preview/amy-hammer-tail-game-build.log`: 76.547 seconds,
+zero retained AOT recompiles; native closure and FPU link audits pass.
+The unrelated transient-corner performance experiment was stashed before this
+fix and is not part of this executable. Personal saves/configuration are untouched.
+Hidden/muted startup check `runs/amy-hammer-tail-boot-01` loaded Amy in Twinkle
+Park and stopped at its intentional deadline, frame 446, without a contract
+failure. It verifies product integration, not the minigame's effect activation.

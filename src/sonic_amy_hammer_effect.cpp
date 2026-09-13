@@ -34,8 +34,14 @@ katana::runtime::NativePortHookResult execute(
             throw std::runtime_error("Amy hammer effect interrupted retained call");
     };
     const auto tail = [&](std::uint32_t target) {
+        // This required whole-function replacement must finish its declared
+        // original tail before returning. A Jump result is forbidden by the
+        // native product contract even when the destination has retained AOT.
+        const auto continuation = cpu.pr;
         cpu.pc = target;
-        return NativePortHookResult{NativePortHookAction::Jump, target, 0u};
+        if (!bridge.invoke(bridge.context, cpu, target) || cpu.pc != continuation || cpu.trap_pending)
+            throw std::runtime_error("Amy hammer effect interrupted retained tail");
+        return NativePortHookResult{NativePortHookAction::Return, 0u, 0u};
     };
 
     r[3] = load(0x8C0DF84Cu, 0x8C0DF880u);

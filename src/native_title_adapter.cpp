@@ -34247,7 +34247,8 @@ static bool sonic_amy_effect_retained_call(void* opaque,
     using namespace katana::runtime;
     auto& context = *static_cast<NativePortContext*>(opaque);
     if (context.cpu != &cpu || !context.aot.invoke_callback || cpu.pc != entry ||
-        (entry != 0x8C0DDD5Cu && entry != 0x8C0DF804u && entry != 0x8C63A8F8u) ||
+        (entry != 0x8C0DDD5Cu && entry != 0x8C0DF804u && entry != 0x8C63A8F8u &&
+         entry != 0x8C0DF6A0u && entry != 0x8C0986C6u) ||
         context.stop_reason != NativePortStopReason::None) return false;
     struct Scope final {
         Scope() noexcept { ++sonic_native_host_service_depth; }

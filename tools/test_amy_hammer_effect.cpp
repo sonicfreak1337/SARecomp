@@ -117,14 +117,20 @@ bool bridge(void* opaque, CpuState& cpu, std::uint32_t target) {
     const auto ret = cpu.pr;
     require((target == 0x8C0DDD5Cu && ret == 0x8C0DF8EAu) ||
         (target == 0x8C0DF804u && ret == 0x8C0DF8FAu) ||
-        (target == 0x8C63A8F8u && ret == 0x8C0DF912u), "bridge lost original PR");
+        (target == 0x8C63A8F8u && ret == 0x8C0DF912u) ||
+        ((target == 0x8C0DF6A0u || target == 0x8C0986C6u) && ret == returned), "bridge lost original PR");
     run_until(f, ret); return true;
 }
 void compare(Fixture& n, Fixture& r) {
     n.observe(); r.observe();
     const auto result = effect::execute(n.cpu, {&n, bridge});
-    require(result.action == NativePortHookAction::Return || result.action == NativePortHookAction::Jump,
-        "missing body may not fall back");
+    const NativePortHookBinding binding{effect::entry,effect::size,
+        NativePortHookKind::FunctionEntry,NativePortHookRequirement::Required,
+        NativePortHookOriginalPolicy::ReplacesOriginal,{},{}};
+    require(valid_native_port_hook_result(binding,result) && result.action==NativePortHookAction::Return &&
+        n.cpu.pc==returned,"replacement did not complete its original tail");
+    require(!valid_native_port_hook_result(binding,{NativePortHookAction::Jump,0x8C0DF6A0u,0u}),
+        "fixture no longer reproduces the reported product contract");
     run_until(n, returned); run_until(r, returned);
     if (architecture(n.cpu) != architecture(r.cpu)) {
         for (unsigned i = 0; i < 16; ++i) {
@@ -179,6 +185,18 @@ int main(int argc, char** argv) {
             try { (void)effect::execute(f.cpu, {nullptr, [](void*, CpuState&, std::uint32_t) { return false; }}); }
             catch (const std::exception&) { caught = true; }
             require(caught && f.cpu.pc == 0x8C0DDD5Cu, "interrupted call was hidden"); ++cases;
+        }
+        for (const auto target : {0x8C0DF6A0u,0x8C0986C6u}) {
+            Fixture f(boot,0x40000u);bool caught=false;
+            if(target==0x8C0986C6u)f.put(0x8C78C548u,0u);
+            struct TailFailure { Fixture* fixture; std::uint32_t target; } failure{&f,target};
+            try {
+                (void)effect::execute(f.cpu,{&failure,[](void* opaque,CpuState& cpu,std::uint32_t entry){
+                    auto& value=*static_cast<TailFailure*>(opaque);
+                    return entry!=value.target && bridge(value.fixture,cpu,entry);
+                }});
+            } catch(const std::exception&) {caught=true;}
+            require(caught && f.cpu.pc==target,"interrupted original tail was hidden");++cases;
         }
         for (const auto fpscr : {fpscr_pr_mask, fpscr_sz_mask}) {
             Fixture f(boot, fpscr); f.observe(); bool caught = false;
