@@ -443,6 +443,30 @@ if(NOT EXISTS "${SONIC_ROOT}/out/experimental/sonic-display.ini")
     configure_file(sonic-display.ini "${SONIC_ROOT}/out/experimental/sonic-display.ini" COPYONLY)
 endif()
 add_executable(sonic_presentation_tests EXCLUDE_FROM_ALL tools/test_presentation.cpp src/sonic_presentation.cpp)
+set(SONIC_COLLISION_BODY "${CMAKE_BINARY_DIR}/generated/collision-candidates/touch-poly-body.inc")
+set(SONIC_COLLISION_IDENTITIES "${CMAKE_BINARY_DIR}/generated/collision-candidates/touch-poly-identities.inc")
+add_custom_command(OUTPUT "${SONIC_COLLISION_BODY}" "${SONIC_COLLISION_IDENTITIES}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare_collision_candidates.py"
+        --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+        --output "${CMAKE_BINARY_DIR}/generated/collision-candidates"
+    DEPENDS "${SONIC_ROOT}/tools/prepare_collision_candidates.py"
+        "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+    VERBATIM)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_collision_candidates.cpp
+    "${SONIC_COLLISION_BODY}" "${SONIC_COLLISION_IDENTITIES}")
+target_include_directories(katana_native_title_adapter PRIVATE "${CMAKE_BINARY_DIR}/generated/collision-candidates")
+add_executable(sonic_collision_candidates_tests EXCLUDE_FROM_ALL tools/test_collision_candidates.cpp
+    src/sonic_collision_candidates.cpp src/sonic_collision_math.cpp src/sonic_matrix_stack.cpp
+    src/sonic_matrix_vectors.cpp src/sonic_matrix_inverse.cpp
+    "${SONIC_COLLISION_BODY}" "${SONIC_COLLISION_IDENTITIES}"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_collision_candidates_tests PRIVATE
+    "${SONIC_ROOT}/src" "${CMAKE_BINARY_DIR}/generated/collision-candidates" "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_collision_candidates_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_collision_candidates_tests PRIVATE bcrypt sonic_fpu_body
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
+
 add_executable(sonic_corner_indices_tests EXCLUDE_FROM_ALL tools/test_corner_indices.cpp)
 target_include_directories(sonic_corner_indices_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_corner_indices_tests PRIVATE /EHsc /utf-8)

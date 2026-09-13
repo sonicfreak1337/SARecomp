@@ -166,5 +166,9 @@ checks and measurement limits. Gamma still does not sustain 60 actual draws/s.
 - A read-only audit identified NEAR-poly 8C028BFE and TOUCH-poly 8C029B00 as
   further shared collision owners. They are not pure math leaves: they update
   candidate/contact lists, retain 96/16-element caps and diagnostic branches,
-  and call other original functions. They remain unchanged pending a complete
-  admission/continuation contract. No speedup is claimed for this finding.
+  and call other original functions. The complete TOUCH-poly owner now has
+  a verified admission/continuation contract and a native Recompiled path:
+  [proof and matched measurements](collision-candidate-owner.md). Its first
+  Gamma pair reduced CPU/draw by 2.6%, from 18.624 to 18.142 ms; actual draws
+  rose from 49.19 to 50.25/s. NEAR-poly remains unchanged. This is additional
+  measured progress, not completion of the stable-60 objective.

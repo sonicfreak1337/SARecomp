@@ -61,6 +61,7 @@
 #include "sonic_collision_math.hpp"
 #include "sonic_matrix_inverse.hpp"
 #include "sonic_triangle_contacts.hpp"
+#include "sonic_collision_candidates.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
 #include "sonic_atan_math.hpp"
@@ -1856,6 +1857,8 @@ struct SonicNativeGameplayProbe final {
     std::array<std::uint64_t,2u> inverse_native_calls{};
     std::uint64_t triangle_contacts_native_calls=0u;
     std::uint64_t triangle_contacts_original_calls=0u;
+    std::uint64_t collision_candidates_native_calls=0u;
+    std::uint64_t collision_candidates_original_calls=0u;
     std::array<std::uint64_t,4u> matrix_vector_native_calls{};
     std::array<std::uint64_t,4u> matrix_vector_original_calls{};
     std::array<std::uint64_t,4u> atan_native_calls{};
@@ -17927,11 +17930,15 @@ void emit_sonic_native_gameplay_probe_sample(
         reader.u8(0x8C752B21u,timer_minutes) && reader.u8(0x8C752B22u,timer_seconds) &&
         reader.u8(0x8C752B23u,timer_fraction);
     const auto clock=sonic::performance::execution_clock();
+    std::uint8_t collision_debug=0;
+    const bool collision_debug_readable=reader.u8(0x8C752B1Cu,collision_debug);
     std::cerr << "SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id="
               << probe.descriptor->id << " protocol="
               << sonic_native_gameplay_probe_protocol << " input_profile="
               << probe.input_profile << " monotonic_ns="
               << now << " elapsed_ms=" << elapsed / 1'000'000u
+              << " collision_debug_signed="
+              << (collision_debug_readable ? int(std::bit_cast<std::int8_t>(collision_debug)) : 256)
               << " frame=" << context.frame_index << " presentations="
               << presentations << " relative_frame="
               << (context.frame_index >= probe.active_frame
@@ -17967,6 +17974,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " matrix_inverse_native_calls=" << probe.inverse_native_calls[0]
               << " triangle_contacts_native_calls=" << probe.triangle_contacts_native_calls
               << " triangle_contacts_original_calls=" << probe.triangle_contacts_original_calls
+              << " collision_candidates_native_calls=" << probe.collision_candidates_native_calls
+              << " collision_candidates_original_calls=" << probe.collision_candidates_original_calls
               << " matrix_vector_point_native_calls=" << probe.matrix_vector_native_calls[0]
               << " matrix_vector_point_original_calls=" << probe.matrix_vector_original_calls[0]
               << " matrix_vector_direction_native_calls=" << probe.matrix_vector_native_calls[1]
@@ -34362,6 +34371,61 @@ sonic_native_triangle_contacts(katana::runtime::NativePortContext& context) noex
     } catch (...) {
         return graphics_abort(context,sonic_native_graphics_error_model_transform);
     }
+}
+
+static bool sonic_candidates_retained_call(void* opaque,
+    katana::runtime::CpuState& cpu,std::uint32_t entry) noexcept {
+    using namespace katana::runtime;
+    auto& context=*static_cast<NativePortContext*>(opaque);
+    if(context.cpu!=&cpu || !context.aot.invoke_callback || cpu.pc!=entry ||
+       context.stop_reason!=NativePortStopReason::None ||
+       (entry!=0x8C10CF48u && entry!=0x8C10CF98u && entry!=0x8C10D038u &&
+        entry!=0x8C639E08u && entry!=0x8C639E9Cu && entry!=0x8C10CD1Cu))return false;
+    struct Scope final {
+        Scope() noexcept {++sonic_native_host_service_depth;}
+        ~Scope(){--sonic_native_host_service_depth;}
+    } scope;
+    const auto expected_return=cpu.pr;
+    const auto result=context.aot.invoke_callback(context,entry);
+    const bool complete=result.action==NativePortHookAction::Return &&
+        cpu.pc==expected_return && context.stop_reason==NativePortStopReason::None;
+    if(!complete && context.crash_capsule){
+        CrashCapsuleProviderTranscript record;
+        record.sequence=context.frame_index;record.provider=0x53414350u;
+        record.operation=static_cast<std::uint32_t>(result.action);
+        record.source=entry;record.callsite=expected_return;record.target=cpu.pc;
+        record.value=result.error_code;record.state=static_cast<std::uint32_t>(context.stop_reason);
+        record.flags=cpu.trap_pending?1u:0u;record.generation=cpu.exception_generation;
+        record.provider_identity.assign("sonic-candidates-retained-call-v1");
+        record.target_identity.assign("original-pr-return-contract");
+        context.crash_capsule->note_v5_provider_transcript(record);
+    }
+    return complete;
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_collision_candidates(katana::runtime::NativePortContext& context) noexcept {
+    using namespace katana::runtime;
+    if(!sonic_native_gameplay_math_active() || !context.cpu)
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    static const bool enabled=[] {
+        const auto* flag=std::getenv("SARECOMP_NATIVE_COLLISION_CANDIDATES");
+        return !flag || std::string_view(flag)!="0";
+    }();
+    auto& probe=sonic_native_title_state.gameplay_probe;
+    try{
+        auto* const services=katana_port_generated::runtime_dispatch_detail::active_services;
+        const sonic::collision_candidates::RetainedCallBridge bridge{&context,&sonic_candidates_retained_call};
+        if(enabled && services && context.aot.invoke_callback &&
+           sonic::collision_candidates::try_execute(*context.cpu,services->immutable_write_guard(),bridge)){
+            ++probe.collision_candidates_native_calls;
+            return {NativePortHookAction::Return,0u,0u};
+        }
+        if(++probe.collision_candidates_original_calls<=4u && enabled)
+            std::cerr<<"SONIC_COLLISION_CANDIDATES_ORIGINAL frame="<<context.frame_index
+                <<" r4="<<context.cpu->r[4]<<" r5="<<context.cpu->r[5]
+                <<" fpscr="<<context.cpu->fpscr<<" sr="<<context.cpu->sr<<'\n';
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    }catch(...){return graphics_abort(context,sonic_native_graphics_error_model_transform);}
 }
 
 static katana::runtime::NativePortHookResult

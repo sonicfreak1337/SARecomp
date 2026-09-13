@@ -171,7 +171,7 @@ inline constexpr std::string_view
         // Fixed product output: 60 without VSync, monitor-paced with VSync;
         // Original timing is authoritative for both update and output cadence.
         // Authenticated MINICART results AOT supplement and Big's bound HUD owners.
-        "sha256:1fd4335f2aa4a2255d86038159386b5a08223472fe2ee6e356c8056d7df676a0"};
+        "sha256:39a6aff2f1adebf4fcab765b29faa9a5a39bbb8139e8c4f30befbd456ea0b86c"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -1702,6 +1702,14 @@ int main(const int argc, char* argv[]) {
                 katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
                 "sonic_native_atan",
                 "sha256:1361220e5d950f6c9548df0303e16156c0aceb2c3f19753d7329dc28070d6496",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C029B00u, 0xB6Cu,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_collision_candidates",
+                "sha256:744ca095c47e07d9b87ed43cf54e013c45349cd472852cf44cee85dd7b946832",
                 sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C10FAF8u, 0x104u,
