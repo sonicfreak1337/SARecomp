@@ -161,7 +161,8 @@ inline constexpr std::string_view
         // is keyboard-only and the native window-menu extension is retired.
         // Original scripted cadence is classified before closed-frame checks;
         // pending native cadence changes defer to a closed presentation boundary.
-        "sha256:1ab2e67d5f3e11be32e44157c41cfe639e39f92d181b8f4204b6b1eb4b82911e"};
+        // Subtitle size/background controls are retired; old values use defaults.
+        "sha256:f9dc65029e7772a5f8f35482789dcb543cf48c9f7b0f603b93b9da089880624c"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

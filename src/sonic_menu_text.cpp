@@ -105,8 +105,6 @@ constexpr Entry entries[]{
 {"keyboard",{L"キーボード",L"Keyboard",L"Clavier",L"Teclado",L"Tastatur"}},
 {"bindings",{L"ボタン割り当て",L"Button bindings",L"Attribution des touches",L"Asignación de botones",L"Tastenbelegung"}},
 {"reset_bindings",{L"標準の割り当てに戻す",L"Restore default bindings",L"Rétablir les touches par défaut",L"Restaurar controles predeterminados",L"Standardbelegung wiederherstellen"}},
-{"subtitle_scale",{L"字幕サイズ",L"Subtitle size",L"Taille des sous-titres",L"Tamaño de subtítulos",L"Untertitelgröße"}},
-{"subtitle_background",{L"字幕の背景",L"Subtitle background",L"Fond des sous-titres",L"Fondo de subtítulos",L"Untertitelhintergrund"}},
 {"subtitles",{L"字幕",L"Subtitles",L"Sous-titres",L"Subtítulos",L"Untertitel"}},
 {"text_language",{L"テキスト言語",L"Text language",L"Langue du texte",L"Idioma del texto",L"Textsprache"}},
 {"voice_language",{L"音声言語",L"Voice language",L"Langue des voix",L"Idioma de voces",L"Sprachfassung"}},

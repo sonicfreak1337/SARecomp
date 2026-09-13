@@ -191,7 +191,8 @@ Settings read_settings(const std::filesystem::path& path) {
         }
         else if(key=="schema_version") {if(number(value)>2)throw std::runtime_error("Configuration comes from a newer version");}
         else if(key=="active_profile")selected.active_profile=std::string(value);
-        else if(key=="hud_scale" || key=="hud_margin_x" || key=="hud_margin_y" || key=="interpolation") {
+        else if(key=="hud_scale" || key=="hud_margin_x" || key=="hud_margin_y" || key=="interpolation" ||
+                key=="subtitle_scale" || key=="subtitle_background") {
             // Retired experimental keys: accept old INIs without enabling them.
             (void)number(value);
         }

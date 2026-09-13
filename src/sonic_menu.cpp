@@ -92,7 +92,7 @@ std::vector<Row> Model::rows()const{
     }
     else if(page_=="camera")group({"camera_style","mouse_camera","camera_sensitivity_x","camera_sensitivity_y","mouse_sensitivity_x","mouse_sensitivity_y","camera_invert_x","camera_invert_y","camera_deadzone","camera_return_seconds","back"});
     else if(page_=="controls")group({"bindings","keyboard_enabled","movement_deadzone","swap_sticks","glyph_style","reset_bindings","back"});
-    else if(page_=="interface")group({"text_language","voice_language","subtitles","subtitle_scale","subtitle_background","back"});
+    else if(page_=="interface")group({"text_language","voice_language","subtitles","back"});
     else if(page_=="system")group({"pause_focus_loss","pause_controller_loss","mute_background","export_diagnostics","back"});
     else if(page_=="about")add("back");
     else if(page_=="profiles"){

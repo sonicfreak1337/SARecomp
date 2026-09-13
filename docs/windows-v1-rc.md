@@ -1,5 +1,11 @@
 # Windows v1.0 release candidate
 
+Release approval withdrawn on 2026-09-13: the user reports sub-60 simulation
+throughput and slow-motion gameplay in Gamma's Emerald Coast. Linux work is
+paused. The current priority is stable 60 real simulation updates with CPU
+headroom and original wall-time speed. The candidate below is a preserved
+development checkpoint, not an approved release.
+
 The user designated the current Windows port as the v1.0 candidate on
 2026-09-13. This does not replace the immutable r354 reference. Linux / Steam
 Deck development must start from a separately preserved copy of this candidate.
@@ -10,6 +16,9 @@ Release polish:
   in-game text language. The separate English configuration dialog warns too.
 - Vibration is no longer listed in Options. Existing configuration files remain
   readable.
+- Subtitle size and background are no longer listed in any menu language.
+  Legacy INI values are accepted but ignored, preserving original subtitle
+  presentation. Text language, voice language and subtitle on/off remain.
 - Share / Create / View no longer opens the private scenario menu. Ctrl+F10
   remains its opening shortcut; normal controller navigation inside it remains.
 - The game window has no attached native Options / Developer tools menu bar,
@@ -28,7 +37,7 @@ The user's latest instruction excludes additional tests/game runs. Verification
 for this polish consists of source review, incremental compilation and the
 mandatory link audits; no new runtime/visual acceptance is claimed.
 
-Final incremental build: 75.426 seconds, zero AOT recompiles. The native port
+Initial candidate incremental build: 75.426 seconds, zero AOT recompiles. The native port
 link audit and both FPU link checks pass. Windows artifacts are preserved in
 `out/windows-v1.0-rc1`; the ordinary test build remains `out/experimental`.
 The candidate contains no personal INI or save files and still requires the
