@@ -1,4 +1,4 @@
-"""Retain native hooks and memoize immutable source lookup after admission."""
+"""Retain native hooks and memoize exact immutable source-table lookups."""
 import hashlib
 from pathlib import Path
 import sys
@@ -36,8 +36,10 @@ if source.count(anchor) != 1:
 #     const auto result = dispatch_native(
 #         *active_native_context, target, cpu.pr, std::nullopt, false,
 #         initial_source);""")
-# This memo stores no binder, runtime address, epoch, admission or executable
-# owner. Preserve the complete preflight and subsequent original owner checks.
+# This memo stores only positive pointers into the immutable generated table.
+# Apply it to every exact lookup, including the repeated post-admission identity
+# check. It stores no binder, runtime address, epoch, admission or executable
+# owner; all original preflight, owner and generation checks still execute.
 lookup = """const NativePortDispatchEntry* find_exact_entry(
     const std::uint32_t address) {
     const auto& entries = dispatch_entries();
@@ -52,18 +54,17 @@ for boundary in (lookup, admitted, reset):
     if source.count(boundary) != 1:
         raise RuntimeError("Unexpected immutable-dispatch memo boundary")
 source = '#include "sonic_dispatch_memo.hpp"\n#include <cstdio>\n#include <cstdlib>\n'+source
-source = source.replace(lookup, lookup+'''
+source = source.replace(lookup, lookup.replace('find_exact_entry(', 'find_uncached_entry(')+'''
 thread_local sonic::dispatch::ImmutableSourceMemo<NativePortDispatchEntry> sonic_source_memo;
 thread_local bool sonic_source_memo_enabled = true;
 thread_local bool sonic_source_memo_diagnostics = false;
-const NativePortDispatchEntry* find_admitted_source_entry(std::uint32_t source) {
-    if (!sonic_source_memo_enabled) return find_exact_entry(source);
+const NativePortDispatchEntry* find_exact_entry(std::uint32_t source) {
+    if (!sonic_source_memo_enabled) return find_uncached_entry(source);
     return sonic_source_memo_diagnostics
-        ? sonic_source_memo.find<true>(source, find_exact_entry)
-        : sonic_source_memo.find<false>(source, find_exact_entry);
+        ? sonic_source_memo.find<true>(source, find_uncached_entry)
+        : sonic_source_memo.find<false>(source, find_uncached_entry);
 }
 ''')
-source = source.replace(admitted, admitted.replace('find_exact_entry(', 'find_admitted_source_entry('))
 source = source.replace(reset, '''void reset_native_dispatch_cache() noexcept {
     native_dispatch_cache.fill({});
     const auto& stats=sonic_source_memo.statistics;
@@ -79,8 +80,52 @@ source = source.replace(reset, '''void reset_native_dispatch_cache() noexcept {
     sonic_source_memo_enabled=!is_one("SARECOMP_DISPATCH_MEMO_DISABLE");
     sonic_source_memo_diagnostics=is_one("SARECOMP_DISPATCH_MEMO_STATS");
 }''')
+# Keep the inner cause and register frontier before outer host services restore
+# their interrupted CPU state. Failure codes/dispatch semantics remain unchanged.
+callback_start = source.index('katana_native_invoke_callback(\n    katana::runtime::NativePortContext& context,')
+callback_end = source.index('\n}\n', callback_start) + 3
+callback = source[callback_start:callback_end]
+callback = callback.replace('    try {', '''
+    const auto report_failure = [&](const char* message, unsigned code) noexcept {
+        const auto* cpu = context.cpu;
+        std::fprintf(stderr, "SONIC_NATIVE_CALLBACK_FAILURE entry=%08x pc=%08x pr=%08x r4=%08x instruction=%08x error=%u cause=%.768s\\n",
+            guest_address, cpu ? cpu->pc : 0u, cpu ? cpu->pr : 0u,
+            cpu ? cpu->r[4] : 0u, cpu ? cpu->active_instruction_pc : 0u, code, message);
+        std::fflush(stderr);
+        try {
+            if (context.crash_capsule && cpu) {
+                katana::runtime::CrashCapsuleProviderTranscript record;
+                record.sequence=context.frame_index;
+                record.provider=0x53414342u;
+                record.source=guest_address;
+                record.target=cpu->pc;
+                record.callsite=cpu->pr;
+                record.address=cpu->r[4];
+                record.result=cpu->active_instruction_pc;
+                record.value=code;
+                record.provider_identity.assign("sonic-native-callback-failure");
+                record.target_identity.assign(std::string_view(message).substr(0,768));
+                context.crash_capsule->note_v5_provider_transcript(record);
+            }
+        } catch (...) {}
+    };
+    try {''', 1)
+needle = '''        return katana_port_generated::bridge_failure(
+            context, katana::runtime::NativePortStopReason::HookAbort, 6u);'''
+if callback.count(needle) != 2:
+    raise RuntimeError("Unexpected callback failure boundary")
+callback = callback.replace(needle, '        report_failure("nested-hook-abort", abort.error_code);\n'+needle, 1)
+callback = callback.replace('    } catch (...) {\n'+needle, '''    } catch (const std::exception& error) {
+        report_failure(error.what(), 6u);
+'''+needle+'''
+    } catch (...) {
+        report_failure("unknown-native-exception", 6u);
+'''+needle, 1)
+source = source[:callback_start]+callback+source[callback_end:]
+source = '#include "katana/runtime/crash_capsule.hpp"\n#include <exception>\n'+source
+
 destination.parent.mkdir(parents=True, exist_ok=True)
 encoded = source.encode()
 if not destination.exists() or destination.read_bytes() != encoded:
     destination.write_bytes(encoded)
-print("SONIC_PORT_DISPATCH_READY source_generation_verified=1 retained_aot_unchanged=1 interpolation_instrumentation=0 admitted_source_memo=64")
+print("SONIC_PORT_DISPATCH_READY source_generation_verified=1 retained_aot_unchanged=1 interpolation_instrumentation=0 exact_source_memo=64")

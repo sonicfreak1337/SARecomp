@@ -171,6 +171,15 @@ void update_loop_contract(CpuState& cpu) {
     seed(0,2,0);const auto alternate_slow=run_update_loop(cpu,1900.0f,true);
     require(alternate_slow.sequence=="BWBTWBPQ" && alternate_slow.iterations==std::vector<unsigned>{0,1,2}
         && alternate_slow.waits==std::vector<unsigned>{1,1},"alternate 1900 threshold differs");
+    for (float elapsed : {1000.0f,1900.0f,60000.0f}) {
+        seed(0,1,0);const auto single=run_update_loop(cpu,elapsed,true);
+        require(single.sequence=="BPQ" && single.iterations==std::vector<unsigned>{0}
+            && single.waits.empty() && single.timer_calls==0
+            && single.post_calls==1 && single.extra_post_calls==1
+            && single.published_press1==1 && single.published_press2==2
+            && word(0x8C754E08u)==1 && phase()==0,
+            "actual gameplay single-step wrapper differs");
+    }
     for(bool extra:{false,true}) {
         seed(1,2,0);cycle.clear();bodies=0;
         for(unsigned n=0;n<5;++n) {
@@ -184,7 +193,8 @@ void update_loop_contract(CpuState& cpu) {
     std::cout<<"SONIC_RETAIL_UPDATE_LOOP_PASS ordinary_delta2=BWBTP split_delta1=BP,BP "
         <<"pal_phase2_delta2_bodies=3 pal_phase2_split_bodies=2 pal_cycle=2,2,3,2,3 "
         <<"pal_cycle_bodies=12 wrappers=5 timer_threshold=1850 alternate_threshold=1900 "
-        <<"alternate_extra_cycle=3,3,4,3,4 alternate_extra_bodies=17 alternate_post=PQ tested=orchestration_only\n";
+        <<"alternate_extra_cycle=3,3,4,3,4 alternate_extra_bodies=17 alternate_post=PQ "
+        <<"actual_single_step=BPQ single_step_elapsed_queries=0 tested=orchestration_only\n";
 }
 }
 int main(int argc,char** argv) {

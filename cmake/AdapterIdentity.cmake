@@ -2,7 +2,15 @@
 set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_private_scenario_launcher.cpp sonic_private_stage_scenarios.inc
     sonic-native-event-adx-catalog.inc sonic_native_input_policy.hpp
-    sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp
+    sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp sonic_palette_lighting.hpp sonic_palette_lighting.cpp
+    sonic_vertex_normals.hpp sonic_vertex_normals.cpp
+    sonic_matrix_stack.hpp sonic_matrix_stack.cpp
+    sonic_matrix_inverse.hpp sonic_matrix_inverse.cpp
+    ../tools/prepare-fpu-body.py
+    sonic_collision_math.hpp sonic_collision_math.cpp
+    sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
+    sonic_atan_math.hpp sonic_atan_math.cpp
+    sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp
     sonic_qsound_reverb_medium_program.inc sonic_native_sdk_texture_release_plan.hpp sonic_texture_sentinel.hpp
     sonic_native_texture_catalog.hpp sonic_native_texture_catalog.cpp
     sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp

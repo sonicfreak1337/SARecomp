@@ -17,13 +17,22 @@ for before, after in changes:
     if source.count(before) != 1:
         raise RuntimeError("Pinned link-audit layout changed; review required")
     source = source.replace(before, after)
-if sys.argv[3:] in (['--ram-read-experiment'], ['--fpu-call-experiment']):
-    owner='sonic_ram_reads' if sys.argv[3]=='--ram-read-experiment' else 'sonic_fpu_calls'
+options=sys.argv[3:]
+allowed={'--ram-read-experiment':'sonic_ram_reads', '--fpu-call-experiment':'sonic_fpu_calls',
+    '--compact-aot-control':'sonic_compact_aot_control',
+    '--compact-aot-compact':'sonic_compact_aot_compact',
+    '--fpu-runtime-fast':'sonic_fpu_runtime'}
+if len(options)!=len(set(options)) or any(option not in allowed for option in options):
+    raise RuntimeError("Unknown or duplicate native link audit option")
+if ('--ram-read-experiment' in options and len(options)>1) or (
+    '--compact-aot-control' in options and '--compact-aot-compact' in options):
+    raise RuntimeError("Conflicting experimental archive owners")
+if options:
+    owners=[allowed[option] for option in options]
     before = 'constexpr std::array<std::string_view, 7> allowed_first_party_owners{'
     if source.count(before) != 1:
         raise RuntimeError("Unexpected experimental archive owner boundary")
     source = source.replace(before,
-        'constexpr std::array<std::string_view, 8> allowed_first_party_owners{\n    std::string_view{"'+owner+'"},')
-elif sys.argv[3:]:
-    raise RuntimeError("Unknown native link audit option")
+        'constexpr std::array<std::string_view, '+str(7+len(owners))+'> allowed_first_party_owners{'+
+        ''.join('\n    std::string_view{"'+owner+'"},' for owner in owners))
 pathlib.Path(sys.argv[2]).write_text(source)

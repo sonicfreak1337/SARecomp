@@ -1,5 +1,10 @@
 # Timing-faithful 60 Hz feasibility
 
+**Current implementation:** see the [native 60-frame checkpoint](sixty-frame-progress-20260913.md).
+The private single-step fixture runs, but measured CPU capacity remains below
+60 actual updates/s. Historical missing-fixture conclusions below are superseded;
+whole-game timing closure and a stable 60-FPS product are still unfinished.
+
 **Latest authoritative follow-up (September13):** the
 [live update trace](original-update-live-20260913.md) now proves the actual
 gameplay wrapper8C04E95A,59.63 task traversals/s versus17.74 new images/s,

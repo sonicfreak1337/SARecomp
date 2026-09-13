@@ -62,6 +62,86 @@ target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp sr
 target_sources(katana_native_title_adapter PRIVATE src/sonic_input.cpp src/sonic_menu.cpp
     src/sonic_menu_image.cpp src/sonic_menu_text.cpp src/sonic_menu_runtime.cpp src/sonic_profiles.cpp src/sonic_restart.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp src/sonic_tutorial_art.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_palette_lighting.cpp src/sonic_vertex_normals.cpp src/sonic_matrix_stack.cpp src/sonic_collision_math.cpp src/sonic_matrix_inverse.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_triangle_contacts.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_atan_math.cpp)
+add_executable(sonic_transition_task_graph_tests EXCLUDE_FROM_ALL tools/test_transition_task_graph.cpp)
+target_include_directories(sonic_transition_task_graph_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_transition_task_graph_tests PRIVATE /EHsc /utf-8)
+add_executable(sonic_atan_math_tests EXCLUDE_FROM_ALL
+    tools/test_atan_math.cpp src/sonic_atan_math.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_atan_math_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_atan_math_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_atan_math_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_triangle_contacts_tests EXCLUDE_FROM_ALL
+    tools/test_triangle_contacts.cpp src/sonic_triangle_contacts.cpp src/sonic_collision_math.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_triangle_contacts_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_triangle_contacts_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_triangle_contacts_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_matrix_inverse_tests EXCLUDE_FROM_ALL
+    tools/test_matrix_inverse.cpp src/sonic_matrix_inverse.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_matrix_inverse_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_matrix_inverse_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_matrix_inverse_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_matrix_stack_tests EXCLUDE_FROM_ALL
+    tools/test_matrix_stack.cpp src/sonic_matrix_stack.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_matrix_stack_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_matrix_stack_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_matrix_stack_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_collision_math_tests EXCLUDE_FROM_ALL
+    tools/test_collision_math.cpp src/sonic_collision_math.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_collision_math_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_collision_math_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_collision_math_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_descriptor_index_tests EXCLUDE_FROM_ALL tools/test_descriptor_index.cpp)
+target_include_directories(sonic_descriptor_index_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_features(sonic_descriptor_index_tests PRIVATE cxx_std_20)
+target_compile_options(sonic_descriptor_index_tests PRIVATE /EHsc /utf-8)
+add_executable(sonic_palette_lighting_tests EXCLUDE_FROM_ALL
+    tools/test_palette_lighting.cpp src/sonic_palette_lighting.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_palette_lighting_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_palette_lighting_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_palette_lighting_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
+add_executable(sonic_vertex_normals_tests EXCLUDE_FROM_ALL
+    tools/test_vertex_normals.cpp src/sonic_vertex_normals.cpp
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_vertex_normals_tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_vertex_normals_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_vertex_normals_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime)
 add_executable(sonic_tutorial_prompt_tests EXCLUDE_FROM_ALL tools/test_tutorial_prompt.cpp
     src/sonic_tutorial_prompt.cpp src/sonic_tutorial_art.cpp src/sonic_input.cpp src/sonic_presentation.cpp)
 target_include_directories(sonic_tutorial_prompt_tests PRIVATE "${SONIC_ROOT}/src")
@@ -230,6 +310,8 @@ target_compile_definitions(game PRIVATE KATANA_NATIVE_PORT_PRODUCT=1
     KATANA_PORT_BUILD_PROFILE_NAME="performance" KATANA_PORT_PGO_MODE_NAME="off")
 include(cmake/SonicPreparedReads.cmake)
 include(cmake/SonicFpuCalls.cmake)
+include(cmake/SonicCompactAot.cmake)
+include(cmake/SonicFpuRuntime.cmake)
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
 set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
 target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
@@ -240,6 +322,8 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
         "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
         ${sonic_ram_read_audit_argument}
         ${sonic_fpu_call_audit_argument}
+        ${sonic_compact_aot_audit_argument}
+        ${sonic_fpu_runtime_audit_argument}
     DEPENDS "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
         "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp" VERBATIM)
 add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL
@@ -330,6 +414,9 @@ target_link_libraries(sonic_sdk_color_tests PRIVATE
     KatanaRecomp::native_port_runtime)
 
 add_executable(sonic_texture_sentinel_tests EXCLUDE_FROM_ALL tools/test_texture_sentinel.cpp)
+add_executable(sonic_contour_tests EXCLUDE_FROM_ALL tools/test_contour.cpp)
+target_include_directories(sonic_contour_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_contour_tests PRIVATE /EHsc /utf-8)
 target_include_directories(sonic_texture_sentinel_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_texture_sentinel_tests PRIVATE /EHsc /utf-8)
 

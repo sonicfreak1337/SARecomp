@@ -21,6 +21,16 @@ parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
 parser.add_argument('--update-timing', action='store_true', help='Private read-only original update/timer trace; diagnostic timing')
 parser.add_argument('--render-completion', action='store_true', help='Private native guest-render completion experiment')
+parser.add_argument('--sixty-frame-fixture', action='store_true', help='Private60-Hz/single-step experiment; not a product setting')
+parser.add_argument('--sixty-frame-matrix', action='store_true', help='Explicit hidden Sonic StageLoader validation beyond EC')
+parser.add_argument('--native-palette', action='store_true', help='Private exact native palette-lighting leaf experiment')
+parser.add_argument('--native-vertex-normals', action='store_true', help='Private exact native vertex-normal leaf experiment')
+parser.add_argument('--native-matrix-stack', action='store_true', help='Private exact native matrix push/pop experiment')
+parser.add_argument('--matrix-write-batch', action='store_true', help='Private SDK matrix store batching; requires native matrix stack')
+parser.add_argument('--native-collision-math', action='store_true', help='Private exact native collision vector math experiment')
+parser.add_argument('--native-matrix-inverse', action='store_true', help='Private complete native matrix inverse/determinant family')
+parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
+parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
@@ -38,6 +48,16 @@ if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
 if args.profile_ms and not 1000 <= args.profile_ms <= 30000: parser.error('Profile duration must be 1000..30000 ms')
 if args.profile_stacks and not args.profile_ms: parser.error('--profile-stacks requires --profile-ms')
+if args.sixty_frame_fixture and args.scenario!='emerald-coast' and not args.sixty_frame_matrix: parser.error('Additional stages require --sixty-frame-matrix')
+if args.sixty_frame_matrix and not args.sixty_frame_fixture: parser.error('Matrix requires --sixty-frame-fixture')
+if args.native_palette and not args.sixty_frame_fixture: parser.error('Native palette experiment requires the private60-frame fixture')
+if args.native_vertex_normals and not args.sixty_frame_fixture: parser.error('Native vertex-normal experiment requires the private60-frame fixture')
+if args.native_matrix_stack and not args.sixty_frame_fixture: parser.error('Native matrix-stack experiment requires the private60-frame fixture')
+if args.matrix_write_batch and not args.native_matrix_stack: parser.error('Matrix store batching requires --native-matrix-stack')
+if args.native_collision_math and not args.sixty_frame_fixture: parser.error('Native collision math requires the private60-frame fixture')
+if args.native_matrix_inverse and not args.sixty_frame_fixture: parser.error('Native inverse requires the private60-frame fixture')
+if args.native_triangle_contacts and not args.sixty_frame_fixture: parser.error('Native contacts require the private60-frame fixture')
+if args.native_atan_math and not args.sixty_frame_fixture: parser.error('Native atan requires the private60-frame fixture')
 sampler_exe = root/'build-performance/sonic_execution_sampler.exe'
 if args.profile_ms and not sampler_exe.is_file(): parser.error('Build sonic_execution_sampler first')
 busy = subprocess.run(['powershell.exe','-NoProfile','-Command',
@@ -62,6 +82,16 @@ env.update({
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
 if args.update_timing: env['SARECOMP_UPDATE_TIMING_TRACE']='1'
 if args.render_completion: env['SARECOMP_RENDER_COMPLETION_EXPERIMENT']='1'
+if args.sixty_frame_fixture: env['SARECOMP_SIXTY_FRAME_FIXTURE']='1'
+if args.sixty_frame_matrix: env['SARECOMP_SIXTY_FRAME_MATRIX']='1'
+if args.native_palette: env['SARECOMP_NATIVE_PALETTE_LIGHTING']='1'
+if args.native_vertex_normals: env['SARECOMP_NATIVE_VERTEX_NORMALS']='1'
+if args.native_matrix_stack: env['SARECOMP_NATIVE_MATRIX_STACK']='1'
+if args.matrix_write_batch: env['SARECOMP_NATIVE_MATRIX_WRITE_BATCH']='1'
+if args.native_collision_math: env['SARECOMP_NATIVE_COLLISION_MATH']='1'
+if args.native_matrix_inverse: env['SARECOMP_NATIVE_MATRIX_INVERSE']='1'
+if args.native_triangle_contacts: env['SARECOMP_NATIVE_TRIANGLE_CONTACTS']='1'
+if args.native_atan_math: env['SARECOMP_NATIVE_ATAN_MATH']='1'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
@@ -130,6 +160,13 @@ result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(arg
     'gameplay_samples':gameplay,'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in stderr,
     'failures':[line for line in (stderr+'\n'+stdout).splitlines() if line.startswith((
         'KATANA_CRASH_CAPSULE ', 'KATANA_NATIVE_PORT_CONTRACT ', 'KATANA_RUNTIME_DISPATCH_ERROR'))]}
+completion=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ')
+if completion:
+    last=completion[-1]
+    result['frame_samples']=int(last.get('frame_samples','0'))
+    result['frame_samples_truncated']=last.get('frame_samples_truncated','1')!='0'
+    for key in ('p95_frame_ns','p99_frame_ns','max_frame_ns'):
+        if key in last: result[key.replace('_ns','_ms')]=int(last[key])/1e6
 if len(steady)>1:
     a,b=steady[0],steady[-1]
     seconds=(int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9
@@ -185,7 +222,14 @@ if args.update_timing:
         'end':rows(stderr, 'SONIC_UPDATE_TIMING_END ')},indent=2)+'\n')
     result['update_timing_passed'] = bool(steady) and all(
         r.get('update_timing')=='1' and r.get('update_unreadable')=='0' for r in steady
-    ) and int(steady[-1].get('update_tasks','0')) > 0 and int(steady[-1].get('update_elapsed','0')) > 0 and 'SONIC_UPDATE_TIMING_END ' in stderr
+    ) and int(steady[-1].get('update_tasks','0')) > 0 and 'SONIC_UPDATE_TIMING_END ' in stderr
+    if args.sixty_frame_fixture:
+        result['update_timing_passed'] &= all(row.get('sixty_frame_fixture')=='1'
+            and row.get('logical_delta')=='1' and row.get('release_slots')=='1'
+            and row.get('active_video_hz')=='60' and row.get('tv_mode_word')=='0'
+            for row in steady)
+    else:
+        result['update_timing_passed'] &= int(steady[-1].get('update_elapsed','0')) > 0
     if len(steady)>1:
         a,b=steady[0],steady[-1]
         seconds=(int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9
@@ -193,6 +237,19 @@ if args.update_timing:
         result['task_traversals_per_title_boundary']=(int(b['update_tasks'])-int(a['update_tasks']))/(int(b['frame'])-int(a['frame']))
         elapsed_calls=int(b['update_elapsed'])-int(a['update_elapsed'])
         result['elapsed_extra_fraction']=(int(b['update_elapsed_extra'])-int(a['update_elapsed_extra']))/elapsed_calls if elapsed_calls else None
+        if all(row.get('player_state_readable')=='1' for row in steady):
+            result['game_timer_ticks_per_second']=(int(b['game_ticks'])-int(a['game_ticks']))/seconds
+            # Death/respawn resets the visible stage timer. Never report its
+            # net first/last difference as simulation speed across that reset.
+            timer_intervals=[(int(right['hud_timer_ticks'])-int(left['hud_timer_ticks']),
+                (int(right['monotonic_ns'])-int(left['monotonic_ns']))/1e9)
+                for left,right in zip(steady,steady[1:])]
+            result['hud_timer_reset_intervals']=sum(ticks<0 for ticks,_ in timer_intervals)
+            valid_timer_intervals=[(ticks,dt) for ticks,dt in timer_intervals if ticks>=0 and dt>0]
+            result['hud_timer_ticks_per_second']=(
+                sum(ticks for ticks,_ in valid_timer_intervals)/sum(dt for _,dt in valid_timer_intervals)
+                if valid_timer_intervals else None)
+            result['hud_timer_rate_excludes_reset_intervals']=bool(result['hud_timer_reset_intervals'])
 if args.render_completion:
     def valid_completions(row):
         submitted=int(row.get('guest_render_submitted','0'))
@@ -214,6 +271,67 @@ result['passed'] = (result['completed'] and process.returncode == 1
     and (not args.update_timing or result['update_timing_passed'])
     and (not args.render_completion or result['render_completion_passed'])
     and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
+if args.native_palette:
+    result['palette_native_calls']=int(steady[-1].get('palette_native_calls','0')) if steady else 0
+    result['palette_original_calls']=int(steady[-1].get('palette_original_calls','0')) if steady else 0
+    result['palette_native_executed']=result['palette_native_calls']>0
+    result['passed'] &= result['palette_native_executed']
+if args.native_vertex_normals:
+    result['vertex_normals_native_calls']=int(steady[-1].get('vertex_normals_native_calls','0')) if steady else 0
+    result['vertex_normals_original_calls']=int(steady[-1].get('vertex_normals_original_calls','0')) if steady else 0
+    result['vertex_normals_native_executed']=result['vertex_normals_native_calls']>0
+    result['passed'] &= result['vertex_normals_native_executed']
+if args.native_matrix_stack:
+    for kind in ('push','pop'):
+        for path in ('native','original'):
+            key=f'matrix_{kind}_{path}_calls'
+            result[key]=int(steady[-1].get(key,'0')) if steady else 0
+    result['matrix_stack_native_executed']=all(result[f'matrix_{kind}_native_calls']>0 for kind in ('push','pop'))
+    result['passed'] &= result['matrix_stack_native_executed']
+    result['matrix_staged_groups']=int(steady[-1].get('matrix_staged_groups','0')) if steady else 0
+    if args.matrix_write_batch:
+        # A staged/flush group can still use SDK scalar replay. This witnesses
+        # execution of the experiment, not fast-path admission or a speedup.
+        result['matrix_batch_staging_executed']=result['matrix_staged_groups']>0
+        result['passed'] &= result['matrix_batch_staging_executed']
+if args.native_collision_math:
+    for kind in ('cross','length','normalize'):
+        for path in ('native','original'):
+            key=f'collision_{kind}_{path}_calls'
+            result[key]=int(steady[-1].get(key,'0')) if steady else 0
+    result['collision_native_executed']=all(result[f'collision_{kind}_native_calls']>0 for kind in ('cross','length','normalize'))
+    result['passed'] &= result['collision_native_executed']
+if args.native_matrix_inverse:
+    for kind in ('inverse','determinant'):
+        for path in ('native','original'):
+            key=f'matrix_{kind}_{path}_calls'
+            result[key]=int(steady[-1].get(key,'0')) if steady else 0
+    # The inverse owns its fixed determinant call; it need not reach the
+    # separate public determinant wrapper for that nested work.
+    result['matrix_inverse_native_executed']=result['matrix_inverse_native_calls']>0
+    result['passed'] &= result['matrix_inverse_native_executed']
+if args.native_atan_math:
+    for kind in ('atan','atan_quotient','atan_polynomial','atan_scale'):
+        for path in ('native','original'):
+            key=f'{kind}_{path}_calls'
+            result[key]=int(steady[-1].get(key,'0')) if steady else 0
+    result['atan_native_executed']=result['atan_native_calls']>0
+    result['passed'] &= result['atan_native_executed']
+if args.native_triangle_contacts:
+    for path in ('native','original'):
+        key=f'triangle_contacts_{path}_calls'
+        result[key]=int(steady[-1].get(key,'0')) if steady else 0
+    result['triangle_contacts_native_executed']=result['triangle_contacts_native_calls']>0
+    result['passed'] &= result['triangle_contacts_native_executed']
+if args.sixty_frame_fixture:
+    # Scenario/contract PASS is deliberately separate from reaching the user's
+    # performance goal. A correctly configured but CPU-limited run is not 60fps.
+    result['sixty_frame_target_passed'] = result['passed'] and args.update_timing and all(
+        59.5 <= result.get(key,0) <= 60.5 for key in
+        ('new_draw_fps','task_traversals_per_second','game_timer_ticks_per_second')) \
+        and 142 <= result.get('presentation_fps',0) <= 146 \
+        and result.get('frame_samples',0)>0 and not result.get('frame_samples_truncated',True) \
+        and 0 < result.get('p95_frame_ms',0) <= 17.5
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))
 raise SystemExit(0 if result['passed'] else 1)

@@ -305,9 +305,9 @@ struct TemporaryArtifacts final {
     }
 };
 
-// Sonic-local extensions: the rendering leaves and language/save boundaries
-// already exist in the sealed AOT archive. Admit only reviewed byte-bound hooks. This is
-// not a general structural refresh or permission to change the frozen pack.
+// Sonic-local extensions: rendering, language/save and native rumble boundaries.
+// Admit only reviewed byte-bound hooks; continuing hooks need retained AOT.
+// This is not a general structural refresh or permission to change the frozen pack.
 struct RenderHookExtension {
     katana::runtime::NativePortDefinition before;
     std::vector<katana::runtime::NativePortHookBinding> hooks;
@@ -319,7 +319,13 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0;
+    unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0;
+    struct ReviewedRumble {std::uint32_t address,size;std::string_view symbol,sha;};
+    constexpr std::array rumble_hooks{
+        ReviewedRumble{0x8C6042B0u,6u,"sonic_native_rumble_capability","2eb2196012d5e864de7c33573a13e8f3179d01a955e1d5994c123eac1314593c"},
+        ReviewedRumble{0x8C6042B6u,0x64u,"sonic_native_rumble_configure","882a220b86201c6e457a2b995de1087fb3a4b709e12e54a42a84969c8691fa2c"},
+        ReviewedRumble{0x8C60431Au,0x2Eu,"sonic_native_rumble_request","aee276d94ff40aff8c76eec88d446d6cbaf705f5dd380762e9dcba37fe97bfba"},
+        ReviewedRumble{0x8C604348u,0x3Cu,"sonic_native_rumble_stop","aa649b8b79189f8ddce7fc3b813fe6391e5be8d3a9878be5113991c409200c10"}};
     struct ReviewedLanguage {std::uint32_t address,size;std::string_view symbol,sha;bool latent;};
     constexpr std::array languages{
         ReviewedLanguage{0x8C0884A0u,0xA8u,"sonic_language_save","bc707d8f911b559cb66eb1c91d169519fe462a9cc3d6adabe0bb031013499fa2",false},
@@ -365,26 +371,78 @@ RenderHookExtension render_hook_extension(
             hook.code_identity=="sha256:634269bce4e226bfd5c6296653363581c690e2f55c38810eb90348c78dcbefdf" &&
             hook.code_source==NativePortHookCodeSource::LatentAotModule &&
             hook.code_source_identity=="sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5";
-        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display) ||
+        const bool rumble=std::ranges::any_of(rumble_hooks,[&](const auto& row) {
+            return hook.guest_address==row.address && hook.covered_size==row.size &&
+                hook.symbol==row.symbol && hook.code_identity=="sha256:"+std::string(row.sha);
+        });
+        const bool cadence=hook.guest_address==0x8C051760u && hook.covered_size==0x30u &&
+            hook.symbol=="sonic_native_sixty_frame_cadence" &&
+            hook.code_identity=="sha256:320d63bbff3edb9d77d47a64e1e0214bf8d83b3522736b7c06445d03c85bc3e5";
+        const bool palette=hook.guest_address==0x8C037350u && hook.covered_size==0x110u &&
+            hook.symbol=="sonic_native_palette_lighting" &&
+            hook.code_identity=="sha256:6033d3d4b0c9821d221d54c2bc3e78477df900a59c56208fc0a8bddfc518084c";
+        const bool normals=hook.guest_address==0x8C0563ACu && hook.covered_size==0x2A6u &&
+            hook.symbol=="sonic_native_vertex_normals" &&
+            hook.code_identity=="sha256:bffbfdedd2721c7829b7cc35e82bc34190040b4703b131fafcdbf06df802907e";
+        const bool matrix_stack=(
+            (hook.symbol=="sonic_native_matrix_stack_pop" && hook.guest_address==0x8C639AD8u && hook.covered_size==0x40u &&
+             hook.code_identity=="sha256:a3ff7b35d7be9f1ac1dce0209af71beca602344d478d8cec77901ccf7598cc62") ||
+            (hook.symbol=="sonic_native_matrix_stack_push" && hook.guest_address==0x8C639BB0u && hook.covered_size==0x80u &&
+             hook.code_identity=="sha256:b1a24af68d7a51cc4ffebc58b54082563beb4add63eb4eeef54663967a0ffb10"));
+        const bool collision=(
+            (hook.symbol=="sonic_native_collision_cross" && hook.guest_address==0x8C027360u && hook.covered_size==0x42u &&
+             hook.code_identity=="sha256:ab64ed43a74ef8ae8bc802e9a03ac1ff70c19370a74186906ecf5878a3149dd8") ||
+            (hook.symbol=="sonic_native_collision_length" && hook.guest_address==0x8C63A69Cu && hook.covered_size==0x10u &&
+             hook.code_identity=="sha256:184ec57b105022cf5a5df589f52fed8dc017109b7c0ff5626bfaf6c31c5a39dd") ||
+            (hook.symbol=="sonic_native_collision_normalize" && hook.guest_address==0x8C63A88Cu && hook.covered_size==0x20u &&
+             hook.code_identity=="sha256:91bc28ff6fe7b04c8d5178dd3b7e8ee411224556da83d770225895326e61376b"));
+        const bool inverse=(
+            (hook.symbol=="sonic_native_matrix_inverse" && hook.guest_address==0x8C638FF0u && hook.covered_size==0x804u &&
+             hook.code_identity=="sha256:ff02ae8352528051e7806b0d08f449d086f052891e499156aaf49b7e76a4a996") ||
+            (hook.symbol=="sonic_native_matrix_determinant" && hook.guest_address==0x8C64F32Cu && hook.covered_size==0x158u &&
+             hook.code_identity=="sha256:f237439dce9e4b3ab4b359ce5fce9bb37a82328916e1809955650de95bf5f28c"));
+        const bool contacts=hook.symbol=="sonic_native_triangle_contacts" &&
+            hook.guest_address==0x8C029400u && hook.covered_size==0x6F4u &&
+            hook.code_identity=="sha256:fbff84a132a49217c521c601ae85e5c6b14d7eee1a177db8f861942de67fb23b";
+        const bool atan=(
+            (hook.symbol=="sonic_native_atan" && hook.guest_address==0x8C10EEC4u && hook.covered_size==0x1E0u &&
+             hook.code_identity=="sha256:1361220e5d950f6c9548df0303e16156c0aceb2c3f19753d7329dc28070d6496") ||
+            (hook.symbol=="sonic_native_atan_quotient" && hook.guest_address==0x8C10FAF8u && hook.covered_size==0x104u &&
+             hook.code_identity=="sha256:8edb1eea052f1622840e3f6fa67dd7aa2efccfcb8e8e030d3935ea5b5a826fb4") ||
+            (hook.symbol=="sonic_native_atan_polynomial" && hook.guest_address==0x8C10FAD4u && hook.covered_size==0x24u &&
+             hook.code_identity=="sha256:4c9efceb0a2491382e2251fb758565cb4073f1292ea079692f68e79e22246b82") ||
+            (hook.symbol=="sonic_native_atan_scale" && hook.guest_address==0x8C10E6F8u && hook.covered_size==0xC0u &&
+             hook.code_identity=="sha256:316c8b53e094bc27f5d85d3be392105d732e2aae3609409e41b862ce1dddb4ca"));
+        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !atan) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
-            hook.original_policy != NativePortHookOriginalPolicy::MayContinueOriginal ||
+            hook.original_policy != (rumble?NativePortHookOriginalPolicy::ReplacesOriginal:
+                NativePortHookOriginalPolicy::MayContinueOriginal) ||
             (!language && !legacy_video && !options_display && (hook.code_source != NativePortHookCodeSource::StaticImage ||
                 !hook.code_source_identity.empty())) ||
             !valid_native_port_sha256_identity(hook.provider_implementation_identity) ||
             std::ranges::any_of(before.hooks, [&](const auto& h) {
                 return h.guest_address == hook.guest_address; }) ||
             std::ranges::any_of(result.added, [&](const auto& h) {
-                return h.guest_address == hook.guest_address; }))
+                return h.guest_address == hook.guest_address; })) {
+            std::cerr<<"SONIC_PROVIDER_STRUCTURE_MISMATCH next=0x"<<std::hex<<hook.guest_address
+                <<" prior=0x"<<(old<before.hooks.size()?before.hooks[old].guest_address:0u)
+                <<std::dec<<" symbol="<<hook.symbol<<" before_count="<<before.hooks.size()
+                <<" after_count="<<after.hooks.size()<<'\n';
             fail("sonic-render-hook-unreviewed-structural-delta");
+        }
         result.hooks.push_back(hook);
         result.added.push_back(hook);
         if(language) ++language_added;else if(camera) ++camera_added;
-        else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;else ++rendering_added;
+        else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;
+        else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else ++rendering_added;
     }
     if (old != before.hooks.size() ||
         (rendering_added!=0u && rendering_added!=2u) ||
-        (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u)
+        (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u ||
+        (rumble_added!=0u && rumble_added!=4u) || cadence_added>1u || palette_added>1u || normals_added>1u ||
+        (matrix_stack_added!=0u && matrix_stack_added!=2u) || (collision_added!=0u && collision_added!=3u) ||
+        (inverse_added!=0u && inverse_added!=2u) || contacts_added>1u || (atan_added!=0u && atan_added!=4u))
         fail("sonic-render-hook-incomplete-extension");
     result.before.hooks = result.hooks;
     return result;
@@ -425,7 +483,13 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
     std::string declarations, cases, tokens;
     for (const auto& hook : extension.added) {
         const auto hex = hex_u32(hook.guest_address);
-        // The exact block witness must already be in this generated pack.
+        // Continuing hooks require an exact block witness in the frozen pack.
+        // The reviewed rumble stop leaf has no retained entry, but is replaced
+        // completely: its byte-bound provider cannot continue into original AOT.
+        const bool replaced_rumble_stop = hook.guest_address == 0x8C604348u &&
+            hook.original_policy == katana::runtime::NativePortHookOriginalPolicy::ReplacesOriginal &&
+            hook.symbol == "sonic_native_rumble_stop" && hook.covered_size == 0x3Cu &&
+            hook.code_identity == "sha256:aa649b8b79189f8ddce7fc3b813fe6391e5be8d3a9878be5113991c409200c10";
         const auto witness = "{{0x" + hex + "u, 0x" +
             hex_u32(hook.guest_address & 0x1fffffffu) + "u}, ";
         // Physical addresses in the emitter have a leading zero.
@@ -436,11 +500,12 @@ void insert_render_hooks(std::string& dispatch, std::string& audit,
                 "code/native-port-dispatch-shard-98441.cpp":"code/native-port-dispatch-shard-98440.cpp"));
             if(shard.find("{0x"+hex+"u, &fn_"+hex+"_runtime_entry, false, false}")==std::string::npos)
                 fail("sonic-language-hook-missing-frozen-entry");
-        } else if (dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
+        } else if (!replaced_rumble_stop && dispatch.find(witness) == std::string::npos && dispatch.find(padded) == std::string::npos)
             fail("sonic-render-hook-missing-frozen-block");
         declarations += "extern \"C\" katana::runtime::NativePortHookResult " +
             std::string(hook.symbol) + "(katana::runtime::NativePortContext&) noexcept;" + newline;
-        cases += "        case 0x" + hex + "u: return HookDispatch{true, HookKind::FunctionEntry, HookRequirement::Required, katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal, &" +
+        cases += "        case 0x" + hex + "u: return HookDispatch{true, HookKind::FunctionEntry, HookRequirement::Required, katana::runtime::NativePortHookOriginalPolicy::" +
+            hook_policy_name(hook.original_policy) + ", &" +
             std::string(hook.symbol) + ", 0x" + hex + "u, " +
             std::to_string(hook.covered_size) + "u};" + newline;
         tokens += "    std::string_view{\"" + std::string(hook.symbol) + "\"}," + newline;
