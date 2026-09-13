@@ -45,6 +45,7 @@
 #include "sonic_model_uv.hpp"
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
+#include "sonic_tutorial_art.hpp"
 #include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
@@ -1940,6 +1941,18 @@ struct SonicNativeTitleState final {
     sonic::tutorial::Labels tutorial_prompt_labels;
     std::uint64_t tutorial_prompt_generation = 0;
     unsigned tutorial_prompt_visible_width = 0;
+    struct TutorialArtView {
+        const sonic::tutorial::Artwork* artwork=nullptr;
+        katana::runtime::NativePortTextureHandle texture;
+    };
+    struct TutorialArchivePixels {
+        std::size_t catalog_index=0;
+        std::vector<katana::runtime::NativePortDecodedTextureAsset> entries;
+    };
+    std::vector<TutorialArtView> tutorial_art_views;
+    std::vector<TutorialArchivePixels> tutorial_art_sources;
+    std::optional<sonic::tutorial::Controls> tutorial_art_controls;
+    std::uint64_t tutorial_art_generation=0;
     std::uint32_t font_source_address = 0u;
     std::uint32_t font_dimension = 0u;
     std::uint32_t font_format = 0u;
@@ -5132,6 +5145,8 @@ void flush_native_draw_queues(katana::runtime::NativePortContext& context) {
                pixel_format == Format::Argb4444;
     };
     if (texture == sonic_native_title_state.tutorial_prompt_texture) return true;
+    for(const auto& view:sonic_native_title_state.tutorial_art_views)
+        if(texture==view.texture)return true;
     if (texture == sonic_native_title_state.font_texture)
         return sonic_native_title_state.font_format ==
                sonic_ninja_font_argb1555_twiddled;
@@ -8180,8 +8195,20 @@ void release_native_font_texture(
     sonic_native_title_state.font_format = 0u;
 }
 
+void release_native_tutorial_art(katana::runtime::NativePortContext& context) {
+    auto& state=sonic_native_title_state;
+    for(auto& view:state.tutorial_art_views)if(view.texture){
+        retire_or_destroy_native_dynamic_texture(context,view.texture,
+            katana::runtime::NativePortTextureAssetPixelFormat::Argb4444);
+        view.texture={};
+    }
+    state.tutorial_art_views.clear();state.tutorial_art_sources.clear();
+    state.tutorial_art_controls.reset();state.tutorial_art_generation=0;
+}
+
 void release_native_dynamic_surfaces(
     katana::runtime::NativePortContext& context) {
+    release_native_tutorial_art(context);
     if (sonic_native_title_state.tutorial_prompt_texture) {
         if (!context.graphics) throw std::runtime_error("tutorial-graphics-missing");
         retire_or_destroy_native_dynamic_texture(context,
@@ -37385,6 +37412,7 @@ finish_native_immediate_state(
 }
 
 #include "sonic_tutorial_prompt_adapter.inc"
+#include "sonic_tutorial_page_adapter.inc"
 
 [[nodiscard]] katana::runtime::NativePortHookResult
 draw_pretransformed_stream(
@@ -37529,8 +37557,10 @@ draw_pretransformed_stream(
         binding.resolved_asset_bound =
             binding.resolved_asset_identity != 0u;
     }
-    if (textured && texture_bound)
+    if (textured && texture_bound) {
         sonic_native_apply_tutorial_prompt(context, reader, selection, source, count, texture, vertices);
+        sonic_native_apply_tutorial_page(context, reader, selection, source, count, texture, vertices);
+    }
     auto result = draw_packet(
         context,
         (texture_bound ? ninja_flag_use_texture : 0u) |

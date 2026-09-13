@@ -61,9 +61,9 @@ target_sources(katana_native_title_adapter PRIVATE src/sonic_quit_prompt.cpp src
 target_sources(katana_native_title_adapter PRIVATE src/sonic_legacy_video.cpp src/sonic_options_display.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_input.cpp src/sonic_menu.cpp
     src/sonic_menu_image.cpp src/sonic_menu_text.cpp src/sonic_menu_runtime.cpp src/sonic_profiles.cpp src/sonic_restart.cpp)
-target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_tutorial_prompt.cpp src/sonic_tutorial_art.cpp)
 add_executable(sonic_tutorial_prompt_tests EXCLUDE_FROM_ALL tools/test_tutorial_prompt.cpp
-    src/sonic_tutorial_prompt.cpp src/sonic_input.cpp src/sonic_presentation.cpp)
+    src/sonic_tutorial_prompt.cpp src/sonic_tutorial_art.cpp src/sonic_input.cpp src/sonic_presentation.cpp)
 target_include_directories(sonic_tutorial_prompt_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_tutorial_prompt_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_tutorial_prompt_tests PRIVATE KatanaRecomp::native_port_runtime user32 gdi32 gdiplus)

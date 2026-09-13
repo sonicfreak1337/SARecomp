@@ -17,6 +17,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_settings_fields.inc sonic_input_bindings.hpp sonic_input.hpp sonic_input.cpp sonic_rumble.hpp
     sonic_sony_input.hpp sonic_sony_sdl_api.hpp sonic_sony_input.cpp
     sonic_tutorial_prompt.hpp sonic_tutorial_prompt.cpp sonic_tutorial_prompt_adapter.inc
+    sonic_tutorial_art.hpp sonic_tutorial_art.cpp sonic_tutorial_control_spans.inc sonic_tutorial_page_adapter.inc
     sonic_configuration_lock.hpp sonic_audio_settings.hpp sonic_movie_audio.hpp sonic_subtitles.hpp
     sonic_audio_device.hpp sonic_audio_recovery.inc sonic_recovery_status.hpp sonic_host_resume.hpp ../tools/prepare-audio-output.py ../tools/prepare-audio-buses.py
     sonic_menu.hpp sonic_menu.cpp sonic_menu_image.cpp sonic_menu_text.hpp sonic_menu_text.cpp

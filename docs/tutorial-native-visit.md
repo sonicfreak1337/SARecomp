@@ -34,7 +34,7 @@ this host. Both private entries load the original English artwork (375-pixel
 visible bar); the second run is not proof of the Japanese 352-pixel archive
 or of the normal save-language merge. Separate raster tests cover both widths.
 
-The captures also confirm the remaining scope: the original character
-controller diagram still depicts Dreamcast buttons. This report closes the
-common navigation bar's actual-game match, not every baked tutorial page.
+Those initial captures still showed the old controller diagram. The later
+page integration replaces the device diagram and input-bearing texture spans
+at their separately proven owner; see tutorial-page-integration.md.
 No complete tutorial page-navigation or re-entry sequence is claimed.

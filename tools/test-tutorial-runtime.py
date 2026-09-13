@@ -50,10 +50,12 @@ log=(run/'stderr.log').read_text(errors='replace')
 failures=[line for line in log.splitlines() if line.startswith((
     'KATANA_CRASH_CAPSULE ', 'KATANA_NATIVE_PORT_CONTRACT ', 'KATANA_RUNTIME_DISPATCH_ERROR'))]
 bound=[line for line in log.splitlines() if line.startswith('SONIC_TUTORIAL_PROMPT bound=1 ')]
+pages=[line for line in log.splitlines() if line.startswith('SONIC_TUTORIAL_PAGE bound=1 ')]
+first_page={int(m.group(1)) for line in pages if (m:=re.search(r'page=0 ordinal=(\d+) ',line))}
 queued='id=tutorial-sonic character=0 main=11->18' in log
-passed=process.returncode==1 and 'KATANA_SESSION_STOP reason=2 ' in log and queued and bool(bound) and not failures
+passed=process.returncode==1 and 'KATANA_SESSION_STOP reason=2 ' in log and queued and bool(bound) and first_page==set(range(5)) and not failures
 result=dict(passed=passed, exit_code=process.returncode, exe_sha256=identity, hidden=True, muted=True,
-    original_transition=queued, bound=bound, failures=failures, language=args.language, style=args.style)
+    original_transition=queued, bound=bound, page_artwork=pages, failures=failures, language=args.language, style=args.style)
 (run/'result.json').write_text(json.dumps(result,indent=2))
 print(json.dumps(result,indent=2))
 raise SystemExit(0 if passed else 1)

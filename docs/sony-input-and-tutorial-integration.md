@@ -72,11 +72,12 @@ quad. Long bindings can use two rows. Rebinding, language/style changes and
 module generations invalidate the image. Replacement/teardown uses the
 existing deferred texture retirement owner.
 
-This closes the **common navigation bar**, not all control-related artwork:
-character-specific baked tutorial diagrams and dynamic in-world hint text
-still retain original Dreamcast labels. They need their own content/owner
-handling. No global replacement of A/B letters, GBIX or `padmanu` names was
-introduced. The accepted subtitle presentation remains unchanged.
+This commit closed the **common navigation bar**. The later page integration
+also handles the baked control diagrams and instruction glyphs in all 30
+TUTOMSG archives; see tutorial-page-integration.md. Dynamic in-world hints
+have a separate data path: the inspected homing-attack hint already names the
+action rather than a physical button, so it remains original. No global A/B,
+GBIX or `padmanu` replacement was introduced. Subtitles remain unchanged.
 
 ## Evidence and limits
 
