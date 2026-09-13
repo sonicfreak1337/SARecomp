@@ -98,7 +98,7 @@ stderr=(run/'stderr.log').read_text(errors='replace')
 stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
 steady=[r for r in gameplay if int(r['elapsed_ms'])>=10000]
-result={'schema':'sarecomp-stage-performance-v2','exe_sha256':exe_sha,**vars(args),
+result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(args),
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
     'hidden':True,'muted':True,'captures':False,'input_profile':3,'cpu_samples':samples,
     'gameplay_samples':gameplay,'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in stderr,
@@ -114,6 +114,25 @@ if len(steady)>1:
         presentation_fps=(int(b['presentations'])-int(a['presentations']))/seconds)
     result['cadence_witnesses']=[{key:row[key] for key in ('active_video_hz','release_slots','logical_delta')}
         for row in steady if row.get('cadence_readable')=='1']
+    # In-process sample endpoints align CPU work with the actual title
+    # boundary. Keep the older external process samples for old binaries.
+    clocks=[row for row in steady if row.get('execution_cpu_valid')=='1']
+    result['execution_thread_continuous']=len(clocks)==len(steady) and len({row['execution_thread_id'] for row in clocks})==1
+    if result['execution_thread_continuous']:
+        first,last=clocks[0],clocks[-1]
+        boundaries=int(last['frame'])-int(first['frame'])
+        wall_ms=(int(last['monotonic_ns'])-int(first['monotonic_ns']))/1e6
+        thread_ms=(int(last['execution_cpu_100ns'])-int(first['execution_cpu_100ns']))/10000
+        if boundaries>0 and wall_ms>0 and thread_ms>=0:
+            result.update(execution_thread_cpu_ms_per_title_boundary=thread_ms/boundaries,
+                execution_thread_core_equivalents=thread_ms/wall_ms)
+            if all(row.get('process_cpu_valid')=='1' for row in clocks):
+                process_ms=(int(last['process_cpu_100ns'])-int(first['process_cpu_100ns']))/10000
+                if process_ms>=0:result.update(aligned_process_cpu_ms_per_title_boundary=process_ms/boundaries,
+                    aligned_process_core_equivalents=process_ms/wall_ms)
+            if all(row.get('execution_cycles_valid')=='1' for row in clocks):
+                cycles=int(last['execution_cycles'])-int(first['execution_cycles'])
+                if cycles>=0:result['execution_cycles_per_title_boundary']=cycles/boundaries
 cpu=[r for r in samples if r['elapsed_ms']>=10000]
 if len(cpu)>1:
     a,b=cpu[0],cpu[-1]

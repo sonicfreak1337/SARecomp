@@ -46,6 +46,7 @@
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
 #include "sonic_tutorial_art.hpp"
+#include "sonic_execution_clock.hpp"
 #include "renderer/sonic_motion.hpp"
 
 #include <algorithm>
@@ -17585,6 +17586,7 @@ void emit_sonic_native_gameplay_probe_sample(
     SonicGuestReader reader(*context.cpu);
     std::uint32_t release=0,delta=0;
     const bool cadence_readable=reader.u32(sonic_frame_producer_release,release) && reader.u32(0x8C754E04u,delta);
+    const auto clock=sonic::performance::execution_clock();
     std::cerr << "SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id="
               << probe.descriptor->id << " protocol="
               << sonic_native_gameplay_probe_protocol << " input_profile="
@@ -17603,6 +17605,13 @@ void emit_sonic_native_gameplay_probe_sample(
               << " cadence_readable=" << (cadence_readable?1:0)
               << " active_video_hz=" << sonic_native_title_state.active_video_refresh_hz
               << " release_slots=" << release << " logical_delta=" << delta
+              << " execution_thread_id=" << clock.thread_id
+              << " execution_cpu_valid=" << int(clock.thread_valid)
+              << " execution_cpu_100ns=" << clock.thread_cpu_100ns
+              << " process_cpu_valid=" << int(clock.process_valid)
+              << " process_cpu_100ns=" << clock.process_cpu_100ns
+              << " execution_cycles_valid=" << int(clock.cycles_valid)
+              << " execution_cycles=" << clock.thread_cycles
               << " phase=" << static_cast<std::uint32_t>(probe.input_phase)
               << " final=" << (complete ? 1 : 0) << '\n' << std::flush;
     probe.last_sample_nanoseconds = now;
