@@ -206,6 +206,40 @@ References: retained `unit-v8C04DC58-8C04ECFA-c5709913296e7386.cpp`, entry
 call sites include 8C04DC2C/DC6C, 8C04DF64/DFA2 and 8C04E006/E040/E04E.
 Do not substitute adjacent wrapper 8C04E95A, which has different contracts.
 
+### Bounded counter-reset follow-up
+
+Root checked direct PC-relative references to TCOR1/TCNT1/TCR1 and the timer
+start register across the primary disassembly parts, then read the actual
+writer bodies. The original title setup is **8C06C000**, not the interior
+instruction 8C06C004. It stops channel1, writes TCR1=0 at8C06C01C, writes
+12,500,000 to TCOR1 at8C06C024 and TCNT1 at8C06C02C, then starts it and
+registers the original callback. This is the existing exact native setup
+binding. The adjacent sample/elapsed/callback leaves read TCNT1; sample only
+publishes its value to ordinary RAM. They do not reset the device counter.
+
+There is also an SDK channel1 start owner 8C6025B0 (8C6025AC supplies its
+default prescaler). It returns -1 immediately if TSTR bit1 already indicates
+a running timer. Otherwise it writes TCR1 from R7, TCOR1/TCNT1 from R4, and
+starts the timer. 8C60262E stops/disables it; 8C602684 stops/disables/acks and
+dispatches the installed callback. These are additional register writers,
+not demonstrated per-frame reset owners. The searched direct literal/BSR
+call references did not establish their use in the title frame loop.
+
+Native `periodic_counter_snapshot` uses the adopted/setup monotonic epoch
+modulo the configured interval; its elapsed leaf returns that counter's
+phase in the original60,000-units/s domain. No missing reset has been proved
+by this inspection, so there is no justification to replace it with time
+since the start of a frame. This limited direct-reference audit does not
+prove absence of synthesized addresses, table-driven calls or overlay
+writers. Actual elapsed values and completed update passes must be observed
+together before attributing extra passes to a timer bug.
+
+Original source anchors: primary-00000000.disasm.txt188423..188563;
+primary-00400000.disasm.txt1020639..1020761. Existing native bindings are in
+`src/native_port_manifest.cpp` at8C06C000/C09A/C0C2/C0F2. SDK timer0's separate
+8C602528/8C60254E bindings must not be confused with channel1. No production
+timer, callback or clock behavior was changed.
+
 Latest local evidence was checked explicitly:
 
 | Evidence | What it actually proves |
