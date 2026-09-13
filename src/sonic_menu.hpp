@@ -9,7 +9,7 @@
 namespace sonic::menu {
 enum class Command {None,Close,Save,Restart,SoundTest,Backup,Restore,Import,Export,NewProfile,SwitchProfile,Diagnostics,PreviewExport,BrowseImport};
 struct Row {std::string id;std::wstring label,value;bool restart=false,enabled=true,read_only=false;};
-struct Choice {std::string id;std::wstring title,details;};
+struct Choice {std::string id;std::wstring title,details;bool enabled=true;};
 struct Result {Command command=Command::None;std::string argument;bool changed=false;};
 struct Rect {int left,top,right,bottom;bool contains(int x,int y)const noexcept{return x>=left&&x<right&&y>=top&&y<bottom;}};
 class Model {

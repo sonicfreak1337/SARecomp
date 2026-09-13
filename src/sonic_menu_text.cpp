@@ -35,6 +35,7 @@ constexpr Entry entries[]{
 {"parent_folder",{L"上のフォルダーへ",L"Parent folder",L"Dossier parent",L"Carpeta superior",L"Übergeordneter Ordner"}},
 {"story_data",{L"ストーリー",L"Story",L"Histoire",L"Historia",L"Story"}},
 {"empty_profile",{L"まだセーブされていません",L"No saved progress yet",L"Aucune progression enregistrée",L"Todavía no hay progreso guardado",L"Noch kein gespeicherter Fortschritt"}},
+{"profile_unavailable",{L"このプロフィールのセーブデータを読み込めません。",L"This profile's saved data could not be read.",L"Les données de sauvegarde de ce profil sont illisibles.",L"No se han podido leer los datos guardados de este perfil.",L"Die Speicherdaten dieses Profils konnten nicht gelesen werden."}},
 {"default_profile",{L"オリジナルのプロフィール",L"Original profile",L"Profil d’origine",L"Perfil original",L"Ursprüngliches Profil"}},
 {"no",{L"キャンセル",L"Cancel",L"Annuler",L"Cancelar",L"Abbrechen"}},
 {"off",{L"オフ",L"Off",L"Non",L"No",L"Aus"}},

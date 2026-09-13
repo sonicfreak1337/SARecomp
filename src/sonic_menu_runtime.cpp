@@ -2,6 +2,7 @@
 #include "sonic_menu.hpp"
 #include "sonic_menu_text.hpp"
 #include "sonic_menu_test_input.hpp"
+#include "sonic_menu_policy.hpp"
 #include "sonic_diagnostics.hpp"
 #include "sonic_profiles.hpp"
 #include "sonic_language.hpp"
@@ -25,7 +26,8 @@ using namespace katana::runtime;
 std::atomic<bool> external_request{false};
 std::atomic<bool> open_available{false},modal_open{false};
 std::atomic<int> observed_language{1};
-bool requested=false,release_input=false,was_focused=false,was_connected=false,previous_open=false;
+bool requested=false,was_focused=false,was_connected=false,previous_open=false;
+InputReleaseGate release_input;
 std::string pause_reason;
 std::filesystem::path config_path;
 std::optional<presentation::Settings> restart;
@@ -35,8 +37,6 @@ bool pointer(std::uint32_t p){const auto n=canonical_physical_address(p);return 
 bool gameplay(NativePortContext& c) noexcept {
     try {return c.cpu && word(*c.cpu,0x8C7608B0)==15u;}catch(...){return false;}
 }
-bool neutral(const input::Snapshot& s){return !s.pad && !s.mouse[1] && !s.mouse[2] && std::abs(s.move_x)<.2f && std::abs(s.move_y)<.2f &&
-    std::none_of(s.keys.begin(),s.keys.end(),[](bool v){return v;});}
 std::wstring widen(std::string_view s){return std::wstring(s.begin(),s.end());}
 std::wstring preview(const profiles::Preview& p,int language){
     std::wstring result=std::to_wstring(p.bytes/1024)+L" KiB · #"+std::to_wstring(p.generation);
@@ -96,7 +96,7 @@ struct Music {
 };
 }
 void initialize(const std::filesystem::path& executable){
-    config_path=presentation::configuration_path(executable);requested=release_input=previous_open=false;restart.reset();pause_reason.clear();
+    config_path=presentation::configuration_path(executable);requested=previous_open=false;release_input.reset();restart.reset();pause_reason.clear();
     load_background(executable.parent_path()/"assets/ui/options-background.png");
 }
 void request_open() noexcept {external_request=true;}
@@ -130,8 +130,8 @@ bool observe(NativePortContext& c,const input::Snapshot& s,bool suppressed){
     if(safe && config.pause_controller_loss && was_connected&&!s.connected){requested=true;pause_reason="controller_pause";}
     if(external_request.exchange(false) && (safe||original_options_ready(c)))requested=true;
     was_focused=s.focused;was_connected=s.connected;previous_open=open;
-    if(release_input&&neutral(s))release_input=false;
-    return requested||release_input||(!suppressed&&original_options_ready(c));
+    const bool awaiting_release=release_input.consume(s);
+    return requested||awaiting_release||(!suppressed&&original_options_ready(c));
 }
 bool pending(NativePortContext& c) noexcept {return requested||original_options_ready(c);}
 bool run(NativePortContext& c,const Services& services){
@@ -147,7 +147,7 @@ bool run(NativePortContext& c,const Services& services){
     const auto started=c.host->monotonic_time_nanoseconds(),instructions=c.cpu->retired_guest_instructions,frame=c.frame_index;
     input::set_modal(true);
     struct Restore {NativePortContext& c;const Services& service;std::uint64_t start;
-        ~Restore(){input::set_modal(false);release_input=true;try{if(service.resume)service.resume(c.host->monotonic_time_nanoseconds()-start);}catch(...){}}
+        ~Restore(){input::set_modal(false);release_input.arm();try{if(service.resume)service.resume(c.host->monotonic_time_nanoseconds()-start);}catch(...){}}
     } restore{c,services,started};
     if(services.suspend_audio)services.suspend_audio();
     std::unique_ptr<Music> music;
@@ -190,13 +190,11 @@ bool run(NativePortContext& c,const Services& services){
             case Command::NewProfile:{const auto id=profiles::create();model.message(std::wstring(text("created",model.language()))+L"\n"+widen(id));break;}
             case Command::SwitchProfile:
                 if(result.argument.empty()){
-                    std::vector<Choice> choices;for(const auto& id:profiles::list()){
-                        const auto info=profiles::profile_preview(id);
-                        auto detail=info?preview(*info,model.language()):std::wstring(text("empty_profile",model.language()));
-                        if(id==original.active_profile)detail=std::wstring(text("active",model.language()))+L" · "+detail;
-                        choices.push_back({id,id=="default"?std::wstring(text("default_profile",model.language())):widen(id),std::move(detail)});
-                    }model.choose("switch_profile",std::move(choices));
-                }else {restart=model.value();restart->active_profile=result.argument;leave=true;}break;
+                    model.choose("switch_profile",profile_choices(model.language(),original.active_profile));
+                }else {
+                    (void)profiles::profile_preview(result.argument); // Revalidate after preview, without writing it.
+                    restart=model.value();restart->active_profile=result.argument;leave=true;
+                }break;
             case Command::BrowseImport:
                 if(result.argument.empty())browser.show(model,profiles::library_root()/"imports");
                 else {

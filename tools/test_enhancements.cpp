@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "sonic_menu.hpp"
 #include "sonic_menu_text.hpp"
+#include "sonic_menu_policy.hpp"
 #include "sonic_profiles.hpp"
 #include "sonic_audio_settings.hpp"
 #include "sonic_subtitles.hpp"
@@ -144,6 +145,16 @@ int main(int argc,char** argv){
         }
         input::Snapshot raw;raw.focused=true;raw.keys[38]=true;katana::runtime::NativePortInputSnapshot native{};input::transform(native,raw,false);check(native.gamepads[0].left_stick_y==1,"keyboard analog");
         input::set_replay(true);native.gamepads[0].left_stick_x_raw=1234;input::transform(native,raw,false);check(native.gamepads[0].left_stick_x_raw==1234,"replay modified");input::set_replay(false);
+        for(unsigned button=1;button<=5;++button){
+            auto v=settings;v.keyboard_enabled=1;v.bindings[unsigned(input::Action::A)]={0,0,button,0};presentation::apply_live(v);
+            menu::InputReleaseGate gate;gate.arm();input::Snapshot held;held.focused=true;held.mouse[button]=true;held.keys[VK_ESCAPE]=true;
+            input::transform(native,held,gate.consume(held));check(native.gamepads[0].buttons==0,"closing key leaked from modal");
+            held.keys[VK_ESCAPE]=false;input::transform(native,held,gate.consume(held));check(native.gamepads[0].buttons==0,"held mouse button leaked after Options closed");
+            held.mouse[button]=false;check(!gate.consume(held),"mouse release did not unlock gameplay");
+            input::transform(native,held,gate.consume(held));check(native.gamepads[0].buttons==0,"mouse release generated an action");
+            held.mouse[button]=true;input::transform(native,held,gate.consume(held));check(native.gamepads[0].buttons==(1u<<10),"fresh mouse press stayed suppressed");
+        }
+        presentation::apply_live(settings);
         const auto source=read(argv[2]);const auto source_hash=startup::digest(source);const auto preview=profiles::inspect(source);check(preview.files.size()==2&&preview.files[0]=="SONICADV_ALF"&&preview.files[1]=="SONICADV_INT","story/chao VMU envelope");
         const auto data=root/"data";profiles::initialize(data);const auto save=data/"sonic-adventure-pal-v1003/saves/sonic-adventure-pal-v1003-vmu.save-c0-s0.ksave";write(save,source);write(fs::path(save.wstring()+L".bak"),source);
         const auto exported=profiles::export_save();check(startup::file_digest(exported)==source_hash,"export changed VMU");const auto backed=profiles::backup();check(startup::file_digest(backed)==source_hash,"backup changed VMU");
@@ -153,6 +164,37 @@ int main(int argc,char** argv){
         auto corrupt=source;corrupt.back()^=std::byte{1};rejects([&]{profiles::inspect(corrupt);},"corrupt import accepted");write(save,corrupt);check(profiles::active_preview().digest==source_hash,"corrupt primary recovery");
         auto incompatible=source;resign(incompatible,2);write(save,incompatible);rejects([&]{profiles::active_preview();},"incompatible primary revived stale backup");
         auto invalid_volume=source;invalid_volume[80]=std::byte{0};resign(invalid_volume,1);write(save,invalid_volume);rejects([&]{profiles::active_preview();},"invalid volume revived stale backup");write(save,source);
+        // Exercise the same profile projection and activation path as Options.
+        // Unreadable inactive profiles must not block healthy or empty choices.
+        const auto healthy_id=profiles::create(),empty_id=profiles::create(),corrupt_id=profiles::create(),incompatible_id=profiles::create();
+        const auto profile_save=[&](const std::string& id){return profiles::data_root(id)/fs::relative(save,data);};
+        write(profile_save(healthy_id),source);write(profile_save(corrupt_id),corrupt);write(profile_save(incompatible_id),incompatible);
+        write(fs::path(profile_save(incompatible_id).wstring()+L".bak"),source);
+        for(int language=0;language<5;++language){
+            const auto choices=menu::profile_choices(language,"default");check(choices.size()==5,"bad profile blocked the catalog");
+            for(unsigned i=0;i<choices.size();++i){
+                const auto& choice=choices[i];const bool available=choice.id!=corrupt_id&&choice.id!=incompatible_id;
+                check(choice.enabled==available,"profile availability ignored validation failure");
+                if(!available)check(choice.details==menu::text("profile_unavailable",language)&&choice.details!=L"?","unreadable profile not localized");
+                if(choice.id==empty_id)check(choice.details==menu::text("empty_profile",language),"empty profile not distinguished from unreadable data");
+                menu::Model picker(settings,language,true);picker.choose("switch_profile",choices);Driver controls;controls.tick(picker);
+                for(unsigned n=0;n<i;++n)controls.key(picker,VK_DOWN);
+                check(controls.key(picker,VK_RETURN).command==menu::Command::None,"profile switched before confirmation");
+                if(available){
+                    check(picker.modal(),"healthy or empty profile cannot be selected");controls.key(picker,VK_LEFT);
+                    const auto result=controls.key(picker,VK_RETURN);check(result.command==menu::Command::SwitchProfile&&result.argument==choice.id,"profile confirmation lost selection");
+                }else{
+                    check(!picker.modal()&&!picker.rows()[i].enabled,"unreadable profile accepted through keyboard");
+                    controls.s.connected=true;controls.s.connection_changed=true;controls.tick(picker);controls.s.connection_changed=false;
+                    controls.s.pad=1u<<10;check(controls.tick(picker).command==menu::Command::None&&!picker.modal(),"unreadable profile accepted through controller");controls.s.pad=0;controls.tick(picker);
+                    const auto rect=picker.row_rect(i,1920,1080);controls.s.cursor_x=rect.left+20;controls.s.cursor_y=rect.top+20;
+                    controls.s.mouse[1]=true;controls.tick(picker);controls.s.mouse[1]=false;
+                    check(controls.tick(picker).command==menu::Command::None&&!picker.modal(),"unreadable profile accepted through mouse");
+                }
+            }
+        }
+        check(startup::file_digest(profile_save(healthy_id))==source_hash&&startup::file_digest(profile_save(corrupt_id))==startup::digest(corrupt)&&
+            startup::file_digest(profile_save(incompatible_id))==startup::digest(incompatible)&&!fs::exists(profile_save(empty_id)),"catalog repaired or modified profile data");
         profiles::stage_restore(backed.filename().string(),false);const auto before=profiles::snapshots().size();profiles::apply_pending_restore();check(profiles::snapshots().size()==before+1,"restore safety backup missing");check(startup::file_digest(save)==source_hash,"restore split or changed VMU");
         // Fail only isolated backup publication, never the authoritative VMU.
         const auto fault_data=root/"backup-faults";profiles::initialize(fault_data);
@@ -188,6 +230,6 @@ int main(int argc,char** argv){
         check(startup::file_digest(fault_save)==startup::digest(corrupt),"backup repair overwrote the primary");
         presentation::apply_live(settings);
         check(startup::file_digest(argv[2])==source_hash,"source save modified");
-        std::cout<<"SONIC_ENHANCEMENTS_TEST_OK settings live_fields audio mouse_release reconnect remap languages=5 replay saves=story+chao corrupt incompatible restore backup_failures=visible retention=retry_safe diagnostics=private status=localized_readonly\n";return 0;
+        std::cout<<"SONIC_ENHANCEMENTS_TEST_OK settings live_fields audio mouse_release post_modal_release=all5 reconnect remap languages=5 replay saves=story+chao corrupt incompatible profile_catalog=isolated restore backup_failures=visible retention=retry_safe diagnostics=private status=localized_readonly\n";return 0;
     }catch(const std::exception& e){std::cerr<<"SONIC_ENHANCEMENTS_TEST_FAIL "<<e.what()<<'\n';return 1;}
 }

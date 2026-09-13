@@ -138,6 +138,15 @@ std::optional<Preview> profile_preview(std::string_view id){
     const auto file=primary(id);if(!fs::exists(file)&&!fs::exists(fs::path(file.wstring()+L".bak")))return {};
     return inspect(current_bytes(id));
 }
+std::vector<Profile> catalog(){
+    std::vector<Profile> result;
+    for(const auto& id:list()){
+        Profile entry{id};
+        try{entry.preview=profile_preview(id);}catch(const std::exception&){entry.available=false;}
+        result.push_back(std::move(entry));
+    }
+    return result;
+}
 Preview import_candidate(const fs::path& file){
     const auto bytes=read(fs::absolute(file),true);auto info=inspect(bytes);
     info.id=unique_name("import-")+".sasave";atomic_write(checked(library/"imports"/info.id),bytes);return info;

@@ -21,7 +21,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_configuration_lock.hpp sonic_audio_settings.hpp sonic_movie_audio.hpp sonic_subtitles.hpp
     sonic_audio_device.hpp sonic_audio_recovery.inc sonic_recovery_status.hpp sonic_host_resume.hpp ../tools/prepare-audio-output.py ../tools/prepare-audio-buses.py
     sonic_menu.hpp sonic_menu.cpp sonic_menu_image.cpp sonic_menu_text.hpp sonic_menu_text.cpp
-    sonic_menu_runtime.hpp sonic_menu_runtime.cpp sonic_menu_test_input.hpp sonic_options_display.cpp
+    sonic_menu_runtime.hpp sonic_menu_runtime.cpp sonic_menu_test_input.hpp sonic_menu_policy.hpp sonic_options_display.cpp
     sonic_profiles.hpp sonic_profiles.cpp sonic_restart.hpp sonic_restart.cpp
     sonic_diagnostics.hpp ../launcher/sonic_errors.hpp ../launcher/sonic_options.hpp
     ../tools/prepare-camera-platform.py)

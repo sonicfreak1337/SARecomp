@@ -102,7 +102,7 @@ std::vector<Row> Model::rows()const{
     else if(page_=="bindings"){
         for(auto name:input::action_names)add("bind_"+std::string(name));add("back");
     }else {
-        for(const auto& c:choices_)result.push_back({c.id,c.title,L"",false,true});add("back");
+        for(const auto& c:choices_)result.push_back({c.id,c.title,L"",false,c.enabled});add("back");
     }
     return result;
 }
