@@ -1,8 +1,9 @@
 """Generate an isolated, source-bound arithmetic header; never modify retained AOT.
 
 Usage: --sdk .local/baseline/r354/katana-source-178448be.zip --output-dir <build-dir>
-Root owns AOT call substitution/linking. The emitted call list is ONLY the 221
-four-argument sites in the XMTRX interval, not a complete matrix algorithm.
+Root owns AOT call substitution/linking. Scope inverse emits the 221 XMTRX
+sites; scope unit emits all 423 four-argument add/sub/mul sites in that one
+SHA-bound unit. Neither sequence is a complete matrix algorithm.
 """
 import argparse
 from collections import Counter
@@ -109,7 +110,7 @@ SONIC_INVERSE_INLINE void binary(CpuState& cpu) noexcept {
 '''
 
 
-def generate(sdk):
+def generate(sdk, scope='inverse'):
     with zipfile.ZipFile(sdk) as archive:
         raw = archive.read(FPU_MEMBER)
     if sha(raw) != FPU_SHA:
@@ -136,14 +137,17 @@ def generate(sdk):
         if marker:
             pc = int(marker[1], 16)
         match = CALL.fullmatch(line)
-        if match and 0x8C639066 <= pc < 0x8C6393DA:
+        if match and (scope == 'unit' or 0x8C639066 <= pc < 0x8C6393DA):
             calls.append({'pc': f'0x{pc:08X}', 'operation': match[1],
                           'source': int(match[2]), 'destination': int(match[3]),
                           'source_line': line_no})
     counts = dict(Counter(call['operation'] for call in calls))
-    if counts != {'Multiply': 141, 'Subtract': 47, 'Add': 33} or len(calls) != 221:
-        raise ValueError('Selected four-argument XMTRX call family changed')
-    if len({c['pc'] for c in calls}) != 221:
+    expected = ({'Multiply': 274, 'Subtract': 82, 'Add': 67} if scope == 'unit'
+                else {'Multiply': 141, 'Subtract': 47, 'Add': 33})
+    expected_size = sum(expected.values())
+    if counts != expected or len(calls) != expected_size:
+        raise ValueError('Selected four-argument arithmetic family changed')
+    if len({c['pc'] for c in calls}) != expected_size:
         raise ValueError('Repeated guest PCs in selected call list')
     # Test-only arithmetic skeleton: not the inverse (FMOV/FSCHG/etc. omitted).
     sequence = '\n// Constant operand sequence for the standalone test only.\n'
@@ -156,7 +160,8 @@ def generate(sdk):
               'sdk_member': FPU_MEMBER, 'sdk_fpu_sha256': FPU_SHA,
               'extraction': extraction, 'arithmetic_modification': 'forceinline decoration only',
               'aot_unit': UNIT, 'aot_sha256': AOT_SHA,
-              'interval': ['0x8C639066', '0x8C6393DA'],
+              'scope': scope,
+              'interval': ['0x8C638FF0', '0x8C639F32'] if scope == 'unit' else ['0x8C639066', '0x8C6393DA'],
               'four_argument_calls': len(calls), 'operations': counts,
               'calls': calls, 'header_sha256': sha(header),
               'fallback': 'original retained five-argument fpu_binary / std::nullopt',
@@ -169,13 +174,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--scope', choices=('inverse', 'unit'), default='inverse')
     args = parser.parse_args()
     sdk = args.sdk.resolve(strict=True)
     output = args.output_dir.resolve()
     protected = sdk.parent
     if output == protected or protected in output.parents or output in protected.parents:
         raise ValueError('Output must be separate from retained baseline')
-    header, report = generate(sdk)
+    header, report = generate(sdk, args.scope)
     output.mkdir(parents=True, exist_ok=True)
     for name, data in [('sonic_inverse_arithmetic.hpp', header),
                        ('provenance.json', (json.dumps(report, indent=2) + '\n').encode())]:
@@ -184,7 +190,7 @@ def main():
             raise ValueError('Refusing linked output file')
         if not target.exists() or target.read_bytes() != data:
             target.write_bytes(data)
-    print('SONIC_INVERSE_ARITHMETIC_PREPARED calls=221; correctness/performance NOT tested')
+    print(f"SONIC_INVERSE_ARITHMETIC_PREPARED scope={args.scope} calls={report['four_argument_calls']}; correctness/performance NOT tested")
 
 
 if __name__ == '__main__':

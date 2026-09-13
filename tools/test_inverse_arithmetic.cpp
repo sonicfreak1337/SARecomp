@@ -2,7 +2,8 @@
 // C++20; include generated header directory and retained SDK/include; link the
 // REAL retained katana_runtime (and its normal platform dependencies). Do not
 // compile a second fpu.cpp or stub its arithmetic/exception/epoch functions.
-// Root owns target sonic_inverse_arithmetic_tests (EXCLUDE_FROM_ALL).
+// Root owns sonic_inverse_arithmetic_tests / sonic_unit_arithmetic_tests
+// (EXCLUDE_FROM_ALL), selecting the 221-site or 423-site source-bound sequence.
 // Run with no arguments for correctness, --benchmark for correctness + kernel.
 #include "sonic_inverse_arithmetic.hpp"
 #include "katana/runtime/exception.hpp"
@@ -21,6 +22,9 @@ using namespace katana::runtime;
 using Op = FpuBinaryOperation;
 namespace ia = sonic::inverse_arithmetic;
 namespace {
+#define COUNT_SITE(PC,O,S,D) + 1u
+constexpr unsigned selected_operations = 0u SONIC_INVERSE_ARITHMETIC_SEQUENCE(COUNT_SITE);
+#undef COUNT_SITE
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
@@ -139,6 +143,37 @@ void compare(Fixture& original, Fixture& candidate) {
     counts.traps+=trapped; ++counts.cases;
 }
 
+template<unsigned S, unsigned D>
+void bank_transition_cases(Fixture& a, Fixture& b) {
+    // Added constant-register pairs must use the bank selected by an actual
+    // FPSCR write, not merely a seeded FR bit. Both banks remain observable.
+    const std::array<std::array<std::uint32_t,2>,6> operands{{
+        {0x3FC00000u,0x40000000u}, {0xBF800001u,0x3F800003u},
+        {0x7F7FFFFFu,0x7F7FFFFFu}, {0x7F800001u,0x3F800000u},
+        {0x80000000u,0x40000000u}, {1u,0x00800000u}}};
+    unsigned salt=0;
+    for (const auto mode : {fpscr_dn_mask, fpscr_dn_mask|1u,
+            fpscr_dn_mask|fpscr_enable_overflow_mask, fpscr_dn_mask|fpscr_pr_mask}) {
+        for (const auto& pair : operands) {
+            a.seed(mode,salt); b.seed(mode,salt++);
+            a.cpu.xf[D]=b.cpu.xf[D]=pair[0];a.cpu.xf[S]=b.cpu.xf[S]=pair[1];
+            const auto old_fr=a.cpu.fr, old_xf=a.cpu.xf;
+            a.cpu.write_fpscr(a.cpu.fpscr^fpscr_fr_mask);
+            b.cpu.write_fpscr(b.cpu.fpscr^fpscr_fr_mask);
+            require(a.cpu.fr==old_xf && a.cpu.xf==old_fr,"FR write did not exchange banks");
+            const auto host_before=_mm_getcsr();
+            {
+                HostFpuExecutionEpoch retained_epoch(a.cpu);
+                compare<Op::Multiply,S,D>(a,b);
+            }
+            require(_mm_getcsr()==host_before,"bank-case epoch failed to restore host");
+            a.cpu.write_fpscr(a.cpu.fpscr^fpscr_fr_mask);
+            b.cpu.write_fpscr(b.cpu.fpscr^fpscr_fr_mask);
+            require(a.cpu.fr==old_fr && snapshot(a)==snapshot(b),"wrong register bank was modified");
+        }
+    }
+}
+
 void basic_case(Fixture& a,Fixture& b,std::uint32_t n,std::uint32_t m,
                 std::uint32_t fpscr,std::uint32_t salt) {
     // Separate seeds so one trapping case never contaminates another.
@@ -220,10 +255,15 @@ void correctness() {
         SONIC_INVERSE_ARITHMETIC_SEQUENCE(CHECK_SITE)
 #undef CHECK_SITE
     }
+    bank_transition_cases<1,1>(a,b);
+    bank_transition_cases<2,2>(a,b);
+    bank_transition_cases<7,2>(a,b);
+    bank_transition_cases<7,3>(a,b);
     require(counts.fast && counts.fallback && counts.traps,"missing branch coverage");
     std::cout<<"SONIC_INVERSE_ARITHMETIC_TEST_PASS cases="<<counts.cases
              <<" fast="<<counts.fast<<" fallback="<<counts.fallback
-             <<" trapped="<<counts.traps<<"\n";
+             <<" trapped="<<counts.traps<<" selected_operations="<<selected_operations
+             <<" bank_transition_cases=96\n";
 }
 
 #if defined(_MSC_VER)
@@ -279,7 +319,7 @@ void benchmark() {
         else {a=measure<false>(5000,0xABCDEFu);b=measure<true>(5000,0xABCDEFu);}
         require(a.fingerprint==b.fingerprint,"kernel fingerprint mismatch");
         require(_mm_getcsr()==ambient,"kernel epoch changed ambient MXCSR");
-        std::cout<<"KERNEL_ONLY pass="<<pass<<" operations_per_round=221 rounds=5000"
+        std::cout<<"KERNEL_ONLY pass="<<pass<<" operations_per_round="<<selected_operations<<" rounds=5000"
                  <<" retained_ms="<<a.ms<<" inline_ms="<<b.ms
                  <<" fingerprint="<<a.fingerprint<<" (not gameplay evidence)\n";
     }

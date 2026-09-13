@@ -108,3 +108,9 @@ The subsequent [read-only update diagnostic](original-update-live-20260913.md)
 incrementally relinks the adapter and records its own executable hash. It keeps
 this exact INVERSE implementation selected; its trace is not another clean
 performance comparison.
+
+The later [423-site UNIT comparison](unit-arithmetic-experiment.md) expands
+the same helper only after a fresh profile identifies the RAM inverse branch.
+It passes the arithmetic checks, but its bounded game comparison does not
+confirm a repeatable speedup. UNIT remains disabled; the final return build
+retains this INVERSE object unchanged and records its new executable hash.

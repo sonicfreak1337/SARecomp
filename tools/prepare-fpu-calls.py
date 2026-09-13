@@ -48,18 +48,19 @@ def prepare(args):
     reverse=re.sub(r'(?m)^( +)static_cast<void>\((katana::runtime::fpu_binary\(cpu, katana::runtime::FpuBinaryOperation::(?:Add|Subtract|Multiply|Divide), \d+u, \d+u), std::nullopt\)\);$',r'\1\2);',candidate)
     if reverse!=source: raise ValueError('Changes escaped the selected calls')
     inverse_report=None
-    if args.mode=='inverse':
+    if args.mode in ('inverse','unit'):
         if args.inverse_dir is None: raise ValueError('Inverse arithmetic header is required')
         header=(args.inverse_dir/'sonic_inverse_arithmetic.hpp').read_bytes()
         proof=json.loads((args.inverse_dir/'provenance.json').read_text())
-        if (proof['schema']!='sarecomp-inverse-arithmetic-v1' or proof['aot_sha256']!=SOURCE_SHA
+        if (proof['schema']!='sarecomp-inverse-arithmetic-v1' or proof.get('scope','inverse')!=args.mode or proof['aot_sha256']!=SOURCE_SHA
             or proof['sdk_fpu_sha256']!=sha(fpu.encode()) or proof['header_sha256']!=sha(header)):
             raise ValueError('Inverse arithmetic provenance differs from retained sources')
-        selected=[m for m in INVERSE_CALL.finditer(source) if 0x8C639066<=int(m['pc'],16)<0x8C6393DA]
+        selected=[m for m in INVERSE_CALL.finditer(source)
+                  if args.mode=='unit' or 0x8C639066<=int(m['pc'],16)<0x8C6393DA]
         sites=[{'pc':'0x'+m['pc'],'operation':m['op'],'source':int(m['src']),
                 'destination':int(m['dst']),'source_line':source.count('\n',0,m.start())+2} for m in selected]
-        if sites!=proof['calls'] or len(sites)!=221:
-            raise ValueError('Selected XMTRX arithmetic sites differ from component proof')
+        if sites!=proof['calls'] or len(sites)!=(423 if args.mode=='unit' else 221):
+            raise ValueError('Selected arithmetic sites differ from component proof')
         selected_starts={m.start() for m in selected}
         def specialize(m):
             if m.start() not in selected_starts: return m[0]
@@ -73,9 +74,9 @@ def prepare(args):
             r'katana::runtime::fpu_binary(cpu, katana::runtime::FpuBinaryOperation::\1, \2u, \3u);',candidate)
         if reversed_candidate!=source: raise ValueError('Inverse change escaped arithmetic sites')
         candidate='#include "sonic_inverse_arithmetic.hpp"\n'+candidate
-        inverse_report={'sites':len(sites),'interval':proof['interval'],
+        inverse_report={'scope':args.mode,'sites':len(sites),'interval':proof['interval'],
             'header_sha256':sha(header),'operations':proof['operations'],
-            'unchanged':'RAM inverse, determinant, singular path, 5arg calls, epochs, accounting and memory effects'}
+            'unchanged':'algorithms, determinant/divides, singular path, 5arg calls, epochs, accounting and memory effects'}
     elif args.inverse_dir is not None:
         raise ValueError('Inverse header supplied to another experiment')
     output=data if args.mode=='control' else candidate.encode()
@@ -108,7 +109,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__); commands=parser.add_subparsers(dest='command',required=True)
     p=commands.add_parser('prepare')
     for name in ('source-root','destination','sdk'):p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--mode',choices=('control','direct','inverse'),required=True)
+    p.add_argument('--mode',choices=('control','direct','inverse','unit'),required=True)
     p.add_argument('--inverse-dir',type=Path);p.set_defaults(run=prepare)
     a=commands.add_parser('audit');a.add_argument('--map',type=Path,required=True);a.add_argument('--report',type=Path,required=True);a.set_defaults(run=audit)
     args=parser.parse_args();args.run(args)
