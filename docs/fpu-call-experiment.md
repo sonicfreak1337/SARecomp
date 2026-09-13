@@ -1,5 +1,9 @@
 # Bounded FPU forwarding experiment
 
+The later INVERSE mode is a separate arithmetic-specialization experiment;
+see [its contract and game comparison](inverse-arithmetic-experiment.md).
+DIRECT remains rejected. Neither mode changes the default OFF setting.
+
 The hardware-isolated profile in `docs/execution-thread-profile-20260913.md`
 found real work in the four-argument `fpu_binary` forwarding overload. The
 pinned SDK body only calls the public five-argument overload with
