@@ -17,12 +17,13 @@ for before, after in changes:
     if source.count(before) != 1:
         raise RuntimeError("Pinned link-audit layout changed; review required")
     source = source.replace(before, after)
-if sys.argv[3:] == ['--ram-read-experiment']:
+if sys.argv[3:] in (['--ram-read-experiment'], ['--fpu-call-experiment']):
+    owner='sonic_ram_reads' if sys.argv[3]=='--ram-read-experiment' else 'sonic_fpu_calls'
     before = 'constexpr std::array<std::string_view, 7> allowed_first_party_owners{'
     if source.count(before) != 1:
         raise RuntimeError("Unexpected experimental archive owner boundary")
     source = source.replace(before,
-        'constexpr std::array<std::string_view, 8> allowed_first_party_owners{\n    std::string_view{"sonic_ram_reads"},')
+        'constexpr std::array<std::string_view, 8> allowed_first_party_owners{\n    std::string_view{"'+owner+'"},')
 elif sys.argv[3:]:
     raise RuntimeError("Unknown native link audit option")
 pathlib.Path(sys.argv[2]).write_text(source)

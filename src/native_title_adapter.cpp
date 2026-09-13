@@ -1857,6 +1857,8 @@ struct SonicNativeTitleState final {
     std::uint64_t timer_epoch_nanoseconds = 0u;
     std::uint64_t periodic_epoch_nanoseconds = 0u;
     std::uint32_t active_video_refresh_hz = 0u;
+    const char* active_video_refresh_owner = "unbound";
+    std::uint64_t active_video_refresh_frame = 0u;
     std::uint64_t frame_producer_next_deadline_nanoseconds = 0u;
     std::uint64_t frame_producer_deferred_deadline_nanoseconds = 0u;
     std::uint64_t frame_producer_deadline_remainder = 0u;
@@ -2177,9 +2179,13 @@ struct SonicNativeTitleState final {
 
 thread_local SonicNativeTitleState sonic_native_title_state;
 
-void bind_sonic_native_video_refresh(const std::uint32_t rate_hz) noexcept {
+void bind_sonic_native_video_refresh(const std::uint32_t rate_hz,
+                                    const char* const owner,
+                                    const std::uint64_t frame) noexcept {
     auto& state = sonic_native_title_state;
     state.active_video_refresh_hz = rate_hz;
+    state.active_video_refresh_owner = owner;
+    state.active_video_refresh_frame = frame;
     state.frame_producer_next_deadline_nanoseconds = 0u;
     state.frame_producer_deferred_deadline_nanoseconds = 0u;
     state.frame_producer_deadline_remainder = 0u;
@@ -17584,8 +17590,9 @@ void emit_sonic_native_gameplay_probe_sample(
                              : 0u;
     const auto presentations = context.host->presented_frames();
     SonicGuestReader reader(*context.cpu);
-    std::uint32_t release=0,delta=0;
+    std::uint32_t release=0,delta=0,tv_mode=0;
     const bool cadence_readable=reader.u32(sonic_frame_producer_release,release) && reader.u32(0x8C754E04u,delta);
+    const bool tv_mode_readable=reader.u32(0x8C754B44u,tv_mode);
     const auto clock=sonic::performance::execution_clock();
     std::cerr << "SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id="
               << probe.descriptor->id << " protocol="
@@ -17604,6 +17611,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " drawn_frames=" << probe.drawn_frames
               << " cadence_readable=" << (cadence_readable?1:0)
               << " active_video_hz=" << sonic_native_title_state.active_video_refresh_hz
+              << " clock_owner=" << sonic_native_title_state.active_video_refresh_owner
+              << " clock_bound_frame=" << sonic_native_title_state.active_video_refresh_frame
+              << " tv_mode_readable=" << int(tv_mode_readable) << " tv_mode_word=" << tv_mode
               << " release_slots=" << release << " logical_delta=" << delta
               << " execution_thread_id=" << clock.thread_id
               << " execution_cpu_valid=" << int(clock.thread_valid)
@@ -25115,7 +25125,7 @@ sonic_native_video_mode_apply(
             else if (packed_horizontal == 0x008D034Bu &&
                      (packed_vertical == 0x0270035Fu || packed_vertical == 0x0138035Fu))
                 rate_hz = 50u;
-            bind_sonic_native_video_refresh(rate_hz);
+            bind_sonic_native_video_refresh(rate_hz, "applied-658220", context.frame_index);
             if (sonic_native_timing_diagnostic_enabled())
                 std::cerr << "SONIC_NATIVE_CADENCE_MODE owner=658220 hz=" << rate_hz
                           << " frame=" << context.frame_index << '\n';
@@ -25165,7 +25175,7 @@ sonic_native_video_mode_60hz(
                 katana::runtime::CodeWriteSource::Copy);
         }
         context.host->synchronize_simulation_boundary();
-        bind_sonic_native_video_refresh(50u);
+        bind_sonic_native_video_refresh(50u, "pal625-658500", context.frame_index);
         if (sonic_native_timing_diagnostic_enabled())
             std::cerr << "SONIC_NATIVE_CADENCE_MODE owner=658500 profile=PAL625"
                       << " hz=50 frame=" << context.frame_index << '\n';
@@ -28156,6 +28166,8 @@ void restore_sonic_native_development_state(
     state.periodic_clock_initialized = saved.periodic_clock_initialized;
     state.begun_frames = saved.begun_frames;
     state.active_video_refresh_hz = saved.active_video_refresh_hz;
+    state.active_video_refresh_owner = "development-state-restore";
+    state.active_video_refresh_frame = saved.saved_frame_index;
     state.frame_producer_next_deadline_nanoseconds = 0u;
     state.frame_producer_deferred_deadline_nanoseconds = 0u;
     state.frame_producer_deadline_remainder = 0u;
@@ -28477,7 +28489,8 @@ sonic_native_bootstrap(
     // PAL selector and its final native-transition call.  The bound 16-MiB
     // image contains title RAM only; BIOS,
     // scheduler, PVR, AICA, ASIC and other Dreamcast device state are absent.
-    // Native game time starts at 60 Hz regardless of the historical PAL path.
+    // Native pacing adopts the verified applied PAL mode below; host output
+    // frequency does not replace that title clock.
     try {
         auto& cpu = *context.cpu;
         if (sonic_native_title_state.lighting_palette_pointer_watchpoint
@@ -28604,7 +28617,7 @@ sonic_native_bootstrap(
             !cadence_reader.u32(0x8C8A2F80u, border) ||
             horizontal != 0x008D034Bu || vertical != 0x0270035Fu || border != 0x002C026Cu)
             throw std::runtime_error("native-video-checkpoint-contract");
-        bind_sonic_native_video_refresh(50u);
+        bind_sonic_native_video_refresh(50u, "postpal-checkpoint", context.frame_index);
         // The development checkpoint is taken after NINJA initialized its
         // embedded font through the legacy VRAM uploader. Recreate the same
         // immutable atlas directly on the host GPU so the post-PAL bootstrap
@@ -31101,7 +31114,7 @@ sonic_native_frame_boundary_wait(
     try {
         // The displaced SDK routine waited for a complete SPG_STATUS scanline
         // transition.  The native host has no scanline device: its exact
-        // frame-present provider is the sole 60-Hz cadence owner.  This
+        // frame-present provider retains the applied title cadence. This
         // identity-bound leaf therefore acknowledges the already-established
         // host frame epoch without sleeping mid-update.  Preserve r0; the
         // original void helper never writes it.

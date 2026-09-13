@@ -139,3 +139,95 @@ passes the native closure audit; the actual platform test passed again in
 `c856fa9b84f6f4083ed250b24b85f97d9894a1131c2cb053dc5f75fd014cd27d`.
 Prepared RAM reads remain OFF. All game, sampler, build and helper work from
 this comparison has completed; nothing is polling or holding a device open.
+
+## Hardware-isolated follow-up
+
+`tools/benchmark-stage.py --hardware-input isolated` now excludes physical
+controller discovery/polling only in the existing hidden forward fixture.
+Four exact environment values must agree: the private isolated-input flag,
+background-test flag and gameplay-probe flag are `1`; input profile is `3`.
+The platform snapshots this policy per construction and refuses combination
+with recording, replay or an initial-state trace. Normal runs are unchanged.
+The synthetic forward input is still applied above the platform, followed by
+the ordinary remapping/deadzone transformation. No replay flag is enabled.
+Guest poll sequences/telemetry advance once per guest poll; host menu polls
+remain separate. Results require an explicit runtime isolation witness.
+
+The actual linked platform test passed in
+`.local/enhancement-tests/input-isolated-02`. Its first attempt exposed a test
+setup issue: Windows environment setters did not update the CRT environment
+read by the policy. The corrected fixture uses `_putenv_s`, checks positive
+admission, and covers visible-session rejection, wrong-profile rejection,
+recording conflict, neutral snapshots, retained per-instance policy and host
+poll accounting. Existing recording/replay checks also passed.
+
+`runs/execution-isolated-ec-01` completed its planned hidden/muted 60-second
+Emerald Coast window without runtime failures. Executable SHA-256:
+`469a2c24555d9eceeb196a7e3720151a562d62e44ec9dab1da015b0a91d43268`.
+Same 1280x720, D3D11, 100%, VSync off, 144 output target and forward profile 3.
+The 20-second sample has 1,297 observations, zero errors, 80.789 ms aggregate
+suspension and 1.790 ms maximum suspension. Results are instrumented:
+17.199 new draws/s, 143.837 outputs/s, 56.969 execution-thread CPU ms per
+title boundary and 249,608,948 raw cycles per boundary. All cadence witnesses
+remain 50 Hz / release 2 / logical delta 2.
+
+1,244 samples are in game.exe; 36 in ntdll, 12 in VCRUNTIME and 5 in UCRT.
+No WinMM/DINPUT/registry sample remains. This confirms the old hidden fallback
+was a substantial measurement contaminant; it does **not** mean normal SDL
+gameplay received the same improvement. Native/guest execution remains the
+principal cost. Top unambiguous object counts: FPU 117, native runtime 82,
+selected 8C638FF0 AOT unit 54, generated dispatch 49, memory 45. Another 134
+samples retain folded multi-object attribution. Off-module stacks now mostly
+show audio-command acknowledgements and graphics payload copies.
+
+The FPU forwarding overload accounts for 26 samples, 25 at its stack-copy
+instruction. Actual disassembly confirms an extra non-tail call/frame and a
+byte store followed by an overlapping qword load. A store-forwarding penalty
+is a hypothesis, not a measured fact. The next bounded experiment removes
+425 forwarding calls in the selected unit while retaining the exact
+five-argument arithmetic implementation. The experiment is now complete:
+the game comparison did not show a gain, so OFF is restored. See
+`docs/fpu-call-experiment.md`.
+
+## Restored control and clock provenance
+
+The final retained-AOT build, `.local/menu-preview/build-clock-provenance.log`,
+passes the native link audit at 1,910,017,024 bytes. SHA-256:
+`e00c1e5c765aff5db26d8ef5212dc6b81016a82c7ffc9bff0ce68e307777088c`.
+Both FPU-call and prepared-RAM experiments are OFF; default WinMM order is
+unchanged. The actual platform test passed again in
+`.local/enhancement-tests/input-isolated-03`, including recording/replay and
+hardware-isolation guards. Its background setting now also uses the CRT
+environment setter before constructing any platform.
+
+`runs/clock-restored-ec-01` completed the same hidden, muted, hardware-isolated
+60-second Emerald Coast fixture without a sampler or runtime failure. First
+ten seconds excluded: 17.534 new draws/s, 143.570 outputs/s, 55.530 execution
+CPU ms/title boundary, 245,074,991 raw cycles/boundary. This is restoration
+evidence, not a paired optimization win. Host activity and differing distance
+travelled prevent attributing small differences between these separate runs.
+
+All gameplay samples retain 50 Hz / release 2 / logical delta 2. The new
+read-only provenance witness is `postpal-checkpoint`, bound at frame 0;
+TV-mode word remains 1. No later video constructor owns this sampled route.
+The enum is not reinterpreted as a refresh rate. See the timing report for
+the checkpoint contract and the remaining timing-faithful 60-Hz work.
+
+## Audio snapshot reuse rejected
+
+A follow-up read-only review checked the apparent duplicate snapshot in
+`sonic_native_adxt_time`: `synchronize_native_adx_streams` reads the voice,
+then the time getter requests it again. These are separate synchronous
+audio commands. Between their acknowledgements the consumer may service an
+independent WOM_DONE wake. The pinned SDK's `native_port_audio.cpp:396-410`
+requests that service; `native_port_audio_execution_domain.cpp:1909-1936`
+services an idle queue. Playback/decode counters and completion state can
+therefore advance without another producer mutation.
+
+Reusing the first result would change the observation point. No exact local
+reuse was established and no cache was implemented. In addition, the eight
+captured voice-snapshot stacks belong to pump/synchronization, not the time
+getter, so they cannot establish a duplicate-getter hotspot. The helper
+performed no game run or build and is finished. Preserve command ordering
+and audio tails; do not repeat this suggestion without a new equivalence
+contract and relevant measured cost.

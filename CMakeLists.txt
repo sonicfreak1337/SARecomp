@@ -229,6 +229,7 @@ target_compile_options(game PRIVATE /W4 /permissive- /EHsc /utf-8)
 target_compile_definitions(game PRIVATE KATANA_NATIVE_PORT_PRODUCT=1
     KATANA_PORT_BUILD_PROFILE_NAME="performance" KATANA_PORT_PGO_MODE_NAME="off")
 include(cmake/SonicPreparedReads.cmake)
+include(cmake/SonicFpuCalls.cmake)
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
 set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
 target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
@@ -238,6 +239,7 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
         "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp"
         "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
         ${sonic_ram_read_audit_argument}
+        ${sonic_fpu_call_audit_argument}
     DEPENDS "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
         "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp" VERBATIM)
 add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL

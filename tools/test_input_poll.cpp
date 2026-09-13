@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "sonic_input.hpp"
 #include "sonic_joystick_query.hpp"
+#include "sonic_input_probe.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -39,7 +40,8 @@ int main(int argc,char** argv){
         }
         check(argc==2,"fresh test directory required");const auto root=fs::absolute(argv[1]);check(!fs::exists(root),"test directory exists");
         fs::create_directories(root/"content");fs::create_directories(root/"data");
-        SetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",L"1");
+        _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
+        _putenv_s("SARECOMP_BENCHMARK_ISOLATED_INPUT","0");
         NativePortPlatformConfig config;config.content_root=root/"content";config.user_data_root=root/"data";
         config.project_id="sonic-input-poll-tests";config.input_identity="sonic-input-poll-tests-v1";
         config.maximum_input_record_frames=8;config.require_gamepad_backend=false;
@@ -65,6 +67,30 @@ int main(int argc,char** argv){
             platform.finalize_clean_shutdown();
         }
         check(recorded_frames(config.input_record_path)==2,"host menu input was recorded");
-        std::cout<<"SONIC_INPUT_POLL_TEST_OK actual_platform joystick_query_orders=both success_and_failures replay_cursor recording_count sequence scope_cleanup\n";return 0;
+        _putenv_s("SARECOMP_BENCHMARK_ISOLATED_INPUT","1");
+        _putenv_s("KATANA_SONIC_GAMEPLAY_PROBE","1");
+        _putenv_s("KATANA_SONIC_GAMEPLAY_INPUT_PROFILE","2");
+        check(!sonic::input::isolated_gameplay_input(),"isolation admitted another input profile");
+        _putenv_s("KATANA_SONIC_GAMEPLAY_INPUT_PROFILE","3");
+        _putenv_s("KATANA_PORT_BACKGROUND_TEST","0");
+        check(!sonic::input::isolated_gameplay_input(),"isolation admitted a visible session");
+        _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
+        check(sonic::input::isolated_gameplay_input(),"isolated fixture was not admitted");
+        bool rejected=false;try{NativePortPlatformServices conflicting(config);}
+        catch(const NativePortPlatformError& e){rejected=e.failure()==NativePortPlatformFailure::InvalidConfig;}
+        check(rejected,"isolated fixture admitted recording");
+        config.input_record_path.clear();
+        {
+            NativePortPlatformServices platform(config);
+            const auto first=platform.poll_gamepads();
+            check(first.poll_sequence==1 && first.connection_generation==0,"isolated first sequence");
+            for(const auto& pad:first.gamepads)check(!pad.connected && pad.buttons==0 && pad.left_stick_y_raw==0,"isolated snapshot is not neutral");
+            // Policy is captured per platform. A later environment change
+            // cannot reintroduce hardware queries halfway through a sample.
+            _putenv_s("SARECOMP_BENCHMARK_ISOLATED_INPUT","0");
+            for(unsigned i=0;i<24;++i)check(sonic::input::poll_host(platform).poll_sequence==1,"isolated host poll advanced sequence");
+            check(platform.poll_gamepads().poll_sequence==2 && platform.snapshot().input_polls==2,"isolated guest counter");
+        }
+        std::cout<<"SONIC_INPUT_POLL_TEST_OK actual_platform joystick_query_orders=both success_and_failures replay_cursor recording_count sequence scope_cleanup isolated_probe\n";return 0;
     }catch(const std::exception& error){std::cerr<<"SONIC_INPUT_POLL_TEST_FAIL "<<error.what()<<'\n';return 1;}
 }

@@ -24,6 +24,8 @@ parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
 parser.add_argument('--profile-stacks', action='store_true', help='Up to 32 bounded Windows stack traces outside the game module; diagnostic only')
 parser.add_argument('--winmm-order', choices=('position-first','capabilities-first'), default='capabilities-first')
+parser.add_argument('--hardware-input', choices=('fallback','isolated'), default='fallback',
+    help='Isolated skips physical devices but retains the same forward probe and normal remapping')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
 # Render interpolation was withdrawn; benchmark the original frame stream.
@@ -59,6 +61,7 @@ if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
+if args.hardware_input=='isolated': env['SARECOMP_BENCHMARK_ISOLATED_INPUT']='1'
 exe = (root/args.exe).resolve(strict=True)
 # Reference executables use the exact same frozen DLLs and installed assets.
 env['PATH'] = str(root/'out/experimental') + os.pathsep + env.get('PATH', '')
@@ -133,6 +136,9 @@ if len(steady)>1:
         presentation_fps=(int(b['presentations'])-int(a['presentations']))/seconds)
     result['cadence_witnesses']=[{key:row[key] for key in ('active_video_hz','release_slots','logical_delta')}
         for row in steady if row.get('cadence_readable')=='1']
+    result['clock_provenance']=[dict(zip(('clock_owner','clock_bound_frame','tv_mode_word'),value))
+        for value in sorted({tuple(row[key] for key in ('clock_owner','clock_bound_frame','tv_mode_word'))
+            for row in steady if row.get('tv_mode_readable')=='1'})]
     # In-process sample endpoints align CPU work with the actual title
     # boundary. Keep the older external process samples for old binaries.
     clocks=[row for row in steady if row.get('execution_cpu_valid')=='1']
@@ -167,11 +173,13 @@ profile_path=run/'execution-ip.json'
 profile=json.loads(profile_path.read_text()) if args.profile_ms and profile_path.is_file() else None
 result['profile_passed'] = not args.profile_ms or (profiler is not None and profiler.returncode==0
     and profile is not None and profile['samples']>0 and profile['errors']==0)
+result['isolated_input_confirmed'] = 'SONIC_INPUT_PROBE isolated_hardware=1 profile=3 remapping=normal' in stderr
 # This probe requests a graceful deadline at 60 seconds of gameplay. Exit 1
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
-    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed'])
+    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed']
+    and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))
 raise SystemExit(0 if result['passed'] else 1)

@@ -18,7 +18,7 @@ source = sources["native_port_platform.cpp"].decode("utf-8")
 anchor = "#include \"native_port_input_policy.hpp\""
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform include layout changed")
-source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"\n#include "sonic_sony_input.hpp"\n#include "sonic_joystick_query.hpp"')
+source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"\n#include "sonic_sony_input.hpp"\n#include "sonic_joystick_query.hpp"\n#include "sonic_input_probe.hpp"')
 anchor = "            if ((capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n"
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform Sony axis layout changed")
@@ -53,6 +53,20 @@ def replace_once(before, after):
         raise RuntimeError("Pinned input source boundary changed: "+before[:72])
     source = source.replace(before, after)
 
+# The existing forward probe owns P1 above the platform boundary. A private
+# isolated measurement may skip physical discovery without enabling replay
+# (which would also bypass normal input remapping and change the fixture).
+replace_once('        validate_config(config);\n',
+    '        validate_config(config);\n'
+    '        if (isolated_gameplay_input_ && (!config.input_record_path.empty() ||\n'
+    '            !config.input_replay_path.empty() || !config.input_initial_state_path.empty()))\n'
+    '            fail_platform(NativePortPlatformFailure::InvalidConfig,\n'
+    '                ERROR_INVALID_PARAMETER, "isolated-probe-trace-exclusive");\n')
+replace_once('        xinput_ = load_xinput();\n',
+    '        if (!isolated_gameplay_input_) xinput_ = load_xinput();\n')
+replace_once('            xinput_.get_state != nullptr || joyGetNumDevs() != 0u;',
+    '            isolated_gameplay_input_ || xinput_.get_state != nullptr || joyGetNumDevs() != 0u;')
+
 # Physical discovery and slot retention stay in the SDK. Port-owned keyboard
 # and remapping run once above this boundary, avoiding a second injected pad.
 replace_once('        const auto gameplay_keyboard_enabled = keyboard_controls_ != nullptr &&\n            keyboard_controls_->enabled.load(std::memory_order_acquire);\n        const auto keyboard = keyboard_gamepad_state(gameplay_keyboard_enabled);\n        if (candidates.empty()) {',
@@ -81,10 +95,24 @@ replace_once('        if (!input_replay_mode_) {\n'+initialization+'\n        }'
 replace_once('    [[nodiscard]] NativePortInputSnapshot poll_gamepads() {\n        require_owner_thread();\n        if (input_initial_state_pending_) {',
     '    void initialize_physical_input() {\n'
     '        if (physical_input_initialized_) return;\n'
+    '        if (isolated_gameplay_input_) {\n'
+    '            physical_input_initialized_ = true;\n'
+    '            std::fprintf(stderr, "SONIC_INPUT_PROBE isolated_hardware=1 profile=3 remapping=normal\\n");\n'
+    '            return;\n        }\n'
     '        if (sony_input_.initialize()) { physical_input_initialized_ = true; return; }\n'+initialization+'\n'
     '        physical_input_initialized_ = true;\n    }\n\n'
     '    [[nodiscard]] NativePortInputSnapshot poll_gamepads() {\n        require_owner_thread();\n'
     '        const bool host_poll = ::sonic::input::host_poll_active();\n'
+    '        if (isolated_gameplay_input_) {\n'
+    '            NativePortInputSnapshot neutral{};\n'
+    '            neutral.poll_sequence = physical_input_snapshot_.poll_sequence;\n'
+    '            if (!host_poll) saturating_increment(neutral.poll_sequence);\n'
+    '            physical_input_snapshot_ = neutral;\n'
+    '            if (!host_poll) {\n'
+    '                input_snapshot_ = neutral;\n'
+    '                saturating_increment(telemetry_->snapshot.input_polls);\n'
+    '            }\n'
+    '            return neutral;\n        }\n'
     '        if (input_initial_state_pending_ && !host_poll) {')
 replace_once('        if (input_replay_mode_) {\n            input_snapshot_ = input_trace_->next();',
              '        if (input_replay_mode_ && !host_poll) {\n            input_snapshot_ = input_trace_->next();')
@@ -133,6 +161,7 @@ replace_once('        input_snapshot_ = {};\n',
 replace_once('    NativePortInputSnapshot input_snapshot_;\n',
              '    NativePortInputSnapshot input_snapshot_;\n'
              '    NativePortInputSnapshot physical_input_snapshot_;\n'
+             '    const bool isolated_gameplay_input_ = ::sonic::input::isolated_gameplay_input();\n'
              '    bool physical_input_initialized_ = false;\n')
 # Native PuruPuru deadlines cannot depend on game/presentation progress. The
 # worker only calls the identity-bound native transport, never guest state.

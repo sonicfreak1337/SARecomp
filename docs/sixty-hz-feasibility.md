@@ -26,8 +26,9 @@ The current bootstrap explicitly adopts a **50-Hz** active video clock.
 Historical Emerald/Windy witnesses show two slots per gameplay frame, giving a
 nominal **25 updates/s** when work fits the budget. The host configuration's
 `simulation_rate_hz=30` is not evidence of actual title cadence. The newest
-Options runs do not log the effective title rate, so they cannot establish that
-50 Hz persists through every later initialization or that it changed to 60 Hz.
+Options runs originally did not log the effective title rate. The later
+hardware-isolated gameplay run below establishes the owner for one route,
+not every later initialization or saved state.
 
 ## Authority and limits
 
@@ -54,7 +55,8 @@ AOT paths below are relative to
 - `src/native_title_adapter.cpp:28480-28491` checks the checkpoint's applied
   horizontal/vertical/border tuple (008D034B/0270035F/002C026C), then calls
   `bind_sonic_native_video_refresh(50)`.
-  The nearby comment at 28364 claiming native time starts at 60 Hz is stale.
+  The nearby comment claiming native time starts at 60 Hz was stale; it is
+  corrected in the September 13 provenance follow-up.
 - `bind_sonic_native_video_refresh` at 2160 owns active Hz and resets the
   rational deadline phase. It is not a display-FPS preference.
 - The applied-mode constructor at 24993-25008 can subsequently bind 60 or 50,
@@ -75,6 +77,30 @@ AOT paths below are relative to
 - The checkpoint words read in this audit were release=1, ready=1, delta=1,
   TV-mode word at 0x8C754B44=1. Do not reinterpret that persisted enum as the
   current rate; the applied constructor owns the rate.
+
+### September 13 provenance follow-up
+
+The bootstrap binds `postpal-main-ram.bin`, 16 MiB, SHA256
+`3704eb66597dc1a3c2e66d48fd050e0924c97ff2b956774aa4e2700319c0c80a`.
+Both that image and the native-ready image above contain TV-mode=1,
+release=1, ready=1 and delta=1 at the documented words. The actual
+horizontal/vertical/border tuple remains the authority for bootstrap Hz;
+the stored TV enum is not independently decoded by this check.
+
+Each existing refresh bind now records its source and binding frame, without
+changing the rate or resetting any additional game state. Development-state
+restore identifies itself separately; no save format changes. The private
+gameplay witness also records the original TV-mode word. In
+`runs/clock-restored-ec-01`, every sampled gameplay interval reports
+`clock_owner=postpal-checkpoint`, `clock_bound_frame=0`, TV-mode=1,
+active video=50, release=2 and delta=2. Thus the measured 50-Hz source is
+the common bootstrap, not an unobserved mode switch inside this EC route.
+
+The hidden/muted 60-second run passed its planned stop with copied saves and
+no runtime failure. It used original AOT, no FPU/RAM experiment and no IP
+sampler. It does not establish the intended TV enum, PAL compensation,
+credits timing, or equal state after one delta=2 versus two delta=1 updates.
+Those are still prerequisites for a timing-faithful 60-update enhancement.
 
 Latest local evidence was checked explicitly:
 

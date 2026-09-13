@@ -15,7 +15,7 @@ set(components native_title_adapter.cpp sonic_private_scenario_launcher.hpp
     sonic_quit_prompt.hpp sonic_quit_prompt.cpp sonic_quit_prompt_image.cpp
     sonic_legacy_video.hpp sonic_legacy_video.cpp
     sonic_settings_fields.inc sonic_input_bindings.hpp sonic_input.hpp sonic_input.cpp sonic_rumble.hpp
-    sonic_sony_input.hpp sonic_sony_sdl_api.hpp sonic_sony_input.cpp sonic_joystick_query.hpp
+    sonic_sony_input.hpp sonic_sony_sdl_api.hpp sonic_sony_input.cpp sonic_joystick_query.hpp sonic_input_probe.hpp
     sonic_tutorial_prompt.hpp sonic_tutorial_prompt.cpp sonic_tutorial_prompt_adapter.inc
     sonic_tutorial_art.hpp sonic_tutorial_art.cpp sonic_tutorial_control_spans.inc sonic_tutorial_page_adapter.inc
     sonic_configuration_lock.hpp sonic_audio_settings.hpp sonic_movie_audio.hpp sonic_subtitles.hpp
