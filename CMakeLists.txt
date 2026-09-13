@@ -351,6 +351,7 @@ target_include_directories(sonic_legacy_video_tests PRIVATE "${SONIC_ROOT}/src"
     "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
 target_compile_options(sonic_legacy_video_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_legacy_video_tests PRIVATE
+    bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)

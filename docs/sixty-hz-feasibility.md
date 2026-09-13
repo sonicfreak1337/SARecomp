@@ -24,7 +24,9 @@ of increasing the number of simulation updates.
 
 The current bootstrap explicitly adopts a **50-Hz** active video clock.
 Historical Emerald/Windy witnesses show two slots per gameplay frame, giving a
-nominal **25 updates/s** when work fits the budget. The host configuration's
+nominal **25 outer boundaries/s** when work fits the budget. This must not be
+called 25 task-update passes/s: the executed substep proof below establishes
+multiple update bodies inside one original wrapper. The host configuration's
 `simulation_rate_hz=30` is not evidence of actual title cadence. The newest
 Options runs originally did not log the effective title rate. The later
 hardware-isolated gameplay run below establishes the owner for one route,
@@ -140,6 +142,69 @@ on the original default path. There is no demonstrated saved-60/applied-50
 mismatch in that run. Changing it to 60 is a change of the original regional
 mode, not an established timing-preserving CPU optimization. Higher update
 frequency still needs the delta/substep/event equivalence proof below.
+
+### Original update-loop orchestration: executed counterexample
+
+The September 13 component now executes the SHA-bound original wrapper
+8C04EA4A through its return, with four deterministic, logged callee boundaries:
+body 8C04E714, wait 8C0517F6, elapsed source 8C06C0F2 and post-service
+8C08A3FA. No whole-game update is substituted or claimed. The standalone
+test links the existing component interpreter; the product still uses AOT.
+The complete Boot SHA above is checked before execution. The wrapper byte
+interval [8C04EA4A,8C04EB7E) has SHA256
+`f449ab2427da7811a124637626efaa377d204f533e690ddd69f5df8b26b74f08`.
+
+The wrapper resets iteration [8C754E08] to zero, repeatedly reads logical
+delta [8C754E04], and calls the body before incrementing iteration. That body
+contains controller preparation, coroutine scheduling, and update-list
+traversal through task+16 at 8C0986F6; it is not only a motion integrator.
+The wrapper accumulates pressed-button words from the two indirect controller
+records (+16) across intermediate waits. It publishes the union and calls
+the post-service once per wrapper, rather than once per body pass.
+
+With stored TV word1 and iteration0, the byte phase at 8C19DD6C increments.
+Delta2/phase3 adds a pass without resetting phase; phase>=5 adds a pass and
+resets phase. At iteration1, an elapsed result not less than1850 also adds a
+pass. The original branch and delay-slot ordering are executed in the test.
+
+| Controlled case | Body iterations | Intermediate wait arguments | Post calls | Final iteration / phase |
+| --- | --- | --- | ---: | --- |
+| TV0, delta2, phase2, elapsed1000 | 0,1 | 1 | 1 | 2 / 2 |
+| Same initial state, two delta1 wrappers | 0 then0 | none | 2 | 1 / 2 |
+| TV1, delta2, phase2, elapsed1000 | 0,1,2 | 2,1 | 1 | 3 / 3 |
+| Same initial state, two delta1 wrappers | 0 then0 | none | 2 | 1 / 4 |
+| TV0, delta2, elapsed1850 | 0,1,2 | 1,1 | 1 | 3 / 0 |
+
+Press-edge publication also differs: a fixture edge supplied at the existing
+wait is unioned into the delta2 result; the split delta1 wrappers have no such
+internal wait. Caller-saved inputs are controlled; original callee-saved
+registers, FR15, stack and return are checked. The actual outer caller between
+split invocations is outside this component, so splitting cannot be justified
+as equivalent by ignoring that caller either.
+
+Starting at TV1/phase0, five consecutive delta2 wrappers with elapsed below
+the threshold execute **2,2,3,2,3 bodies**, twelve total, and return phase to
+zero. At a hypothetical steady 25 wrappers/s this branch pattern corresponds
+to sixty body passes/s. This is a conditional arithmetic consequence, not a
+live 60-Hz physics/animation measurement: callee effects, the real elapsed
+source, every outer mode and actual callback counts still matter. In
+particular the native elapsed leaf currently reports a one-second counter
+phase; whether additional original counter reset paths affect this caller
+needs an explicit ownership check before changing any clock behavior.
+
+Result: one delta2 wrapper is **not** generally equivalent to two delta1
+wrappers. Changing only the divider/delta would change update counts, input
+edges and post-service frequency. The next useful measurement must count the
+real body/player-update passes separately from image boundaries; repeated
+output frames and configured simulation-rate fields cannot answer that.
+
+All earlier video-component cases and the new wrapper cases pass in
+`.local/menu-preview/update-loop-contract-01.log`. The build compiled only
+`sonic_legacy_video_tests`; there was no game/AOT rebuild or visible test.
+References: retained `unit-v8C04DC58-8C04ECFA-c5709913296e7386.cpp`, entry
+54374, phase56226, timer56657, wait57068, press57633, post57793; original
+call sites include 8C04DC2C/DC6C, 8C04DF64/DFA2 and 8C04E006/E040/E04E.
+Do not substitute adjacent wrapper 8C04E95A, which has different contracts.
 
 Latest local evidence was checked explicitly:
 

@@ -1,7 +1,12 @@
 #include "sonic_legacy_video.hpp"
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/native_port_texture_asset.hpp"
+#define NOMINMAX
+#include <windows.h>
+#include <bcrypt.h>
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -30,6 +35,15 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
     std::ifstream file(path,std::ios::binary);require(bool(file),"retail source missing");
     return {std::istreambuf_iterator<char>(file),{}};
 }
+std::string digest(std::span<const std::uint8_t> bytes) {
+    std::array<unsigned char,32> result{};
+    require(bytes.size()<=ULONG_MAX && BCryptHash(BCRYPT_SHA256_ALG_HANDLE,nullptr,0,
+        const_cast<PUCHAR>(bytes.data()),ULONG(bytes.size()),result.data(),ULONG(result.size()))>=0,
+        "source digest failed");
+    constexpr char hex[]="0123456789abcdef";std::string text(64,'0');
+    for(std::size_t i=0;i<result.size();++i){text[i*2]=hex[result[i]>>4];text[i*2+1]=hex[result[i]&15];}
+    return text;
+}
 void until(CpuState& cpu,std::uint32_t end,unsigned limit=24) {
     for(unsigned n=0;cpu.pc!=end && n<limit;++n) {
         (void)execute_dynamic_sh4_block(cpu,services,1u);
@@ -40,6 +54,91 @@ void until(CpuState& cpu,std::uint32_t end,unsigned limit=24) {
 auto registers(const CpuState& cpu) {
     return std::tuple(cpu.r,cpu.fr,cpu.xf,cpu.pc,cpu.pr,cpu.sr,cpu.macl,cpu.mach,cpu.t,cpu.read_fpscr());
 }
+struct LoopResult {
+    std::vector<unsigned> iterations, waits;
+    std::string sequence;
+    unsigned timer_calls=0, post_calls=0, published_press1=0, published_press2=0;
+};
+// Execute only the original orchestration wrapper. These four callee boundaries
+// are deterministic fixtures, NOT replacements for gameplay/physics or timing.
+LoopResult run_update_loop(CpuState& cpu,float elapsed=1000.0f) {
+    constexpr auto returned=0x8CF80000u;
+    cpu.pc=0x8C04EA4Au;cpu.pr=returned;cpu.write_sr(sr_md_mask);cpu.write_fpscr(0u);
+    cpu.exception_generation=0;cpu.trap_pending=false;
+    for(unsigned i=0;i<16;++i)cpu.r[i]=0x13579000u+i;
+    cpu.r[15]=0x8CF00000u;cpu.fr[15]=0x3F800001u;
+    const auto before=cpu.r;const auto before_fr15=cpu.fr[15];
+    LoopResult result;
+    const auto word=[&](std::uint32_t address){return cpu.memory.read_u32(address&0x1fffffffu);};
+    for(unsigned steps=0;cpu.pc!=returned && steps<2048;++steps) {
+        const auto iteration=word(0x8C754E08u);
+        if(cpu.pc==0x8C04E714u) {
+            require(cpu.pr==0x8C04EA94u,"body caller changed");
+            result.iterations.push_back(iteration);result.sequence+='B';cpu.pc=cpu.pr;
+        } else if(cpu.pc==0x8C0517F6u) {
+            require(cpu.pr==0x8C04EB38u,"wait caller changed");
+            result.waits.push_back(cpu.r[4]);result.sequence+='W';
+            // New edge observations arrive at the existing wait boundary.
+            cpu.memory.write_u32((word(0x8C754CE8u)+16u)&0x1fffffffu,4u);
+            cpu.memory.write_u32((word(0x8C754CECu)+16u)&0x1fffffffu,8u);
+            cpu.pc=cpu.pr;
+        } else if(cpu.pc==0x8C06C0F2u) {
+            require(cpu.pr==0x8C04EB18u && iteration==1u,"timer caller changed");
+            ++result.timer_calls;result.sequence+='T';
+            cpu.fr[0]=std::bit_cast<std::uint32_t>(elapsed);cpu.pc=cpu.pr;
+        } else if(cpu.pc==0x8C08A3FAu) {
+            require(cpu.pr==0x8C04EB66u,"post caller changed");
+            ++result.post_calls;result.sequence+='P';
+            result.published_press1=word(word(0x8C754CE8u)+16u);
+            result.published_press2=word(word(0x8C754CECu)+16u);
+            cpu.pc=cpu.pr;
+        } else {
+            require(cpu.pc>=0x8C04EA4Au && cpu.pc<0x8C04EB7Eu,"escaped original loop wrapper");
+            (void)execute_dynamic_sh4_block(cpu,services,1u);
+        }
+        require(cpu.exception_generation==0u && !cpu.trap_pending,"original loop exception");
+    }
+    require(cpu.pc==returned && cpu.pr==returned && cpu.r[0]==0u,"loop return changed");
+    require(std::equal(cpu.r.begin()+8,cpu.r.end(),before.begin()+8) && cpu.fr[15]==before_fr15,
+        "loop callee-saved state changed");
+    return result;
+}
+void update_loop_contract(CpuState& cpu) {
+    const auto word=[&](std::uint32_t address){return cpu.memory.read_u32(address&0x1fffffffu);};
+    const auto phase=[&](){return cpu.memory.read_u8(0x0C19DD6Cu);};
+    const auto seed=[&](unsigned tv,unsigned delta,unsigned initial_phase) {
+        cpu.memory.write_u32(0x0C754B44u,tv);cpu.memory.write_u32(0x0C754E04u,delta);
+        cpu.memory.write_u8(0x0C19DD6Cu,std::uint8_t(initial_phase));
+        cpu.memory.write_u32(0x0C754CE8u,0x8CD01000u);cpu.memory.write_u32(0x0C754CECu,0x8CD02000u);
+        cpu.memory.write_u32(0x0CD01010u,1u);cpu.memory.write_u32(0x0CD02010u,2u);
+    };
+    seed(0,2,2);const auto two=run_update_loop(cpu);
+    require(two.iterations==std::vector<unsigned>{0,1} && two.waits==std::vector<unsigned>{1}
+        && two.sequence=="BWBTP" && two.post_calls==1 && two.timer_calls==1
+        && two.published_press1==5 && two.published_press2==10
+        && word(0x8C754E08u)==2 && phase()==2,"ordinary delta2 contract differs");
+    seed(0,1,2);const auto one_a=run_update_loop(cpu);const auto one_b=run_update_loop(cpu);
+    require(one_a.sequence=="BP" && one_b.sequence=="BP" && one_a.waits.empty() && one_b.waits.empty()
+        && one_a.published_press1==1 && one_b.published_press1==1
+        && word(0x8C754E08u)==1 && phase()==2,"split delta1 contract differs");
+    seed(1,2,2);const auto pal_two=run_update_loop(cpu);
+    require(pal_two.iterations==std::vector<unsigned>{0,1,2} && pal_two.waits==std::vector<unsigned>{2,1}
+        && pal_two.sequence=="BWBTWBP"
+        && word(0x8C754E08u)==3 && phase()==3,"PAL delta2 extra-step contract differs");
+    seed(1,1,2);const auto pal_one_a=run_update_loop(cpu);const auto pal_one_b=run_update_loop(cpu);
+    require(pal_one_a.sequence=="BP" && pal_one_b.sequence=="BP" && phase()==4
+        && word(0x8C754E08u)==1,"PAL split delta1 contract differs");
+    seed(1,2,0);std::vector<unsigned> cycle;unsigned bodies=0;
+    for(unsigned n=0;n<5;++n){const auto r=run_update_loop(cpu);cycle.push_back(unsigned(r.iterations.size()));bodies+=unsigned(r.iterations.size());}
+    require(cycle==std::vector<unsigned>{2,2,3,2,3} && bodies==12 && phase()==0,
+        "original PAL five-wrapper phase cycle differs");
+    seed(0,2,0);const auto slow=run_update_loop(cpu,1850.0f);
+    require(slow.iterations==std::vector<unsigned>{0,1,2} && slow.waits==std::vector<unsigned>{1,1}
+        && slow.sequence=="BWBTWBP" && word(0x8C754E08u)==3,"timer threshold extra-step differs");
+    std::cout<<"SONIC_RETAIL_UPDATE_LOOP_PASS ordinary_delta2=BWBTP split_delta1=BP,BP "
+        <<"pal_phase2_delta2_bodies=3 pal_phase2_split_bodies=2 pal_cycle=2,2,3,2,3 "
+        <<"pal_cycle_bodies=12 wrappers=5 timer_threshold=1850 tested=orchestration_only\n";
+}
 }
 int main(int argc,char** argv) {
     try {
@@ -48,6 +147,8 @@ int main(int argc,char** argv) {
         const auto boot=read(content/"boot.bin");
         const auto advertise=decompress_native_port_prs(read(content/"SONICAD/ADVERTISE.PRS"));
         require(boot.size()==6735296u && advertise.size()==935496u,"unexpected retail sources");
+        require(digest(boot)=="b3563abfa536deacfbb508f44bc45936010e761865fe3d9ca4344511372768af",
+            "retail boot source SHA differs");
         CpuState cpu{.memory=Memory{0u}};
         auto ram=std::make_shared<LinearMemoryDevice>(0x1000000u);
         cpu.memory.map_region("ram",0x0C000000u,ram);
@@ -130,7 +231,8 @@ int main(int argc,char** argv) {
             require(horizontal==(mode==1?0x008D034Bu:0x007E0345u) &&
                 vertical==(mode==1?0x0270035Fu:0x020C0359u),"original video constructor tuple changed");
         }
-        std::cout<<"SONIC_LEGACY_VIDEO_TESTS_OK retail_calls="<<cases<<" apply=test=restore=ok cpu_ram_preserved=1 menu_continuation=ok clock_arguments=4 constructors=2\n";
+        update_loop_contract(cpu);
+        std::cout<<"SONIC_LEGACY_VIDEO_TESTS_OK retail_calls="<<cases<<" apply=test=restore=ok cpu_ram_preserved=1 menu_continuation=ok clock_arguments=4 constructors=2 update_loop=ok\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

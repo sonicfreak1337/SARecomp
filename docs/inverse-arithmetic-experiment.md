@@ -98,3 +98,9 @@ default remains OFF, which restores the untouched selected AOT member.
 DIRECT and prepared-RAM experiments remain disabled. No user setting, save,
 game cadence or immutable baseline file changes. This is not baseline
 promotion and does not implement 60-Hz rendering or simulation.
+
+Final retained-candidate relink: `.local/menu-preview/build-inverse-retained.log`,
+ownership/native closure PASS, 1,910,121,984 bytes. Current experimental
+`out/experimental/game.exe` SHA256:
+`06b46378ec11fe37eaaa4bf66a30f8d6ac9bc57c3dec353fd40f4e780284823d`.
+The later standalone timing-component build does not modify that executable.
