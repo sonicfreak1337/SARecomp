@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "sonic_input.hpp"
+#include "sonic_joystick_query.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -29,6 +30,13 @@ std::uint64_t recorded_frames(const fs::path& path){
 }
 int main(int argc,char** argv){
     try{
+        for(bool position_ok:{false,true})for(bool caps_ok:{false,true})for(bool control:{false,true}){
+            std::string calls;
+            const bool admitted=sonic::input::query_connected_joystick(control,
+                [&]{calls+='P';return position_ok;},[&]{calls+='C';return caps_ok;});
+            check(admitted==(position_ok&&caps_ok),"joystick error path admitted or rejected a device");
+            check(calls==(control?(caps_ok?"CP":"C"):(position_ok?"PC":"P")),"joystick query order or early rejection");
+        }
         check(argc==2,"fresh test directory required");const auto root=fs::absolute(argv[1]);check(!fs::exists(root),"test directory exists");
         fs::create_directories(root/"content");fs::create_directories(root/"data");
         SetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",L"1");
@@ -57,6 +65,6 @@ int main(int argc,char** argv){
             platform.finalize_clean_shutdown();
         }
         check(recorded_frames(config.input_record_path)==2,"host menu input was recorded");
-        std::cout<<"SONIC_INPUT_POLL_TEST_OK actual_platform replay_cursor recording_count sequence scope_cleanup\n";return 0;
+        std::cout<<"SONIC_INPUT_POLL_TEST_OK actual_platform joystick_query_orders=both success_and_failures replay_cursor recording_count sequence scope_cleanup\n";return 0;
     }catch(const std::exception& error){std::cerr<<"SONIC_INPUT_POLL_TEST_FAIL "<<error.what()<<'\n';return 1;}
 }

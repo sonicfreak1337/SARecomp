@@ -98,6 +98,11 @@ add_executable(sonic_dispatch_memo_tests EXCLUDE_FROM_ALL tools/test_dispatch_me
 target_include_directories(sonic_dispatch_memo_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_dispatch_memo_tests PRIVATE /EHsc /utf-8)
 add_executable(game launcher/main.cpp)
+
+# Private, bounded CPU sampling utility; no product dependency or overhead.
+add_executable(sonic_execution_sampler EXCLUDE_FROM_ALL tools/sample_execution_thread.cpp)
+target_compile_options(sonic_execution_sampler PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_execution_sampler PRIVATE psapi dbghelp)
 target_include_directories(game PRIVATE "${CMAKE_BINARY_DIR}/generated")
 add_executable(sonic_menu_preview EXCLUDE_FROM_ALL tools/menu_preview.cpp
     src/sonic_menu.cpp src/sonic_menu_text.cpp src/sonic_menu_image.cpp

@@ -21,6 +21,9 @@ parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
+parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
+parser.add_argument('--profile-stacks', action='store_true', help='Up to 32 bounded Windows stack traces outside the game module; diagnostic only')
+parser.add_argument('--winmm-order', choices=('position-first','capabilities-first'), default='capabilities-first')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
 # Render interpolation was withdrawn; benchmark the original frame stream.
@@ -29,6 +32,10 @@ parser.add_argument('--anisotropy', type=int, choices=(1,2,4,8,16), default=1)
 args = parser.parse_args()
 if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
+if args.profile_ms and not 1000 <= args.profile_ms <= 30000: parser.error('Profile duration must be 1000..30000 ms')
+if args.profile_stacks and not args.profile_ms: parser.error('--profile-stacks requires --profile-ms')
+sampler_exe = root/'build-performance/sonic_execution_sampler.exe'
+if args.profile_ms and not sampler_exe.is_file(): parser.error('Build sonic_execution_sampler first')
 busy = subprocess.run(['powershell.exe','-NoProfile','-Command',
     "if (Get-Process game,ninja,clang-cl,lld-link -ErrorAction SilentlyContinue) {exit 1}"],
     creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True)
@@ -51,6 +58,7 @@ env.update({
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
 if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
+if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
 exe = (root/args.exe).resolve(strict=True)
 # Reference executables use the exact same frozen DLLs and installed assets.
 env['PATH'] = str(root/'out/experimental') + os.pathsep + env.get('PATH', '')
@@ -68,6 +76,7 @@ def rows(text, prefix):
 samples=[]
 started=time.monotonic()
 forced=False
+profiler=None
 with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
     startup = subprocess.STARTUPINFO()
     startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
@@ -89,11 +98,20 @@ with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
                 samples.append({'frame':last_frame,'elapsed_ms':int(row['elapsed_ms']),
                     'monotonic_ns':int(row['monotonic_ns']),'observer_ms':elapsed*1000,
                     'cpu_ms':cpu_ms(process)})
+                if args.profile_ms and profiler is None and int(row['elapsed_ms'])>=10000 and row.get('execution_cpu_valid')=='1':
+                    profiler=subprocess.Popen([str(sampler_exe),str(process.pid),row['execution_thread_id'],
+                        str(args.profile_ms),str(run/'execution-ip.json')]+(['--stacks'] if args.profile_stacks else []),stdout=out,stderr=err,stdin=subprocess.DEVNULL,
+                        startupinfo=startup,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.BELOW_NORMAL_PRIORITY_CLASS)
             if elapsed>110:
                 process.kill(); forced=True; break
         process.wait()
     finally:
         if process.poll() is None: process.kill(); process.wait()
+        # The owned game must be stopped before forcibly retiring a failed
+        # sampler: terminating a sampler during SuspendThread could strand it.
+        if profiler is not None:
+            try: profiler.wait(timeout=5)
+            except subprocess.TimeoutExpired: profiler.kill();profiler.wait()
 stderr=(run/'stderr.log').read_text(errors='replace')
 stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
@@ -101,6 +119,7 @@ steady=[r for r in gameplay if int(r['elapsed_ms'])>=10000]
 result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(args),
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
     'hidden':True,'muted':True,'captures':False,'input_profile':3,'cpu_samples':samples,
+    'profile_instrumented':bool(args.profile_ms),'profiler_exit_code':profiler.returncode if profiler else None,
     'gameplay_samples':gameplay,'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in stderr,
     'failures':[line for line in (stderr+'\n'+stdout).splitlines() if line.startswith((
         'KATANA_CRASH_CAPSULE ', 'KATANA_NATIVE_PORT_CONTRACT ', 'KATANA_RUNTIME_DISPATCH_ERROR'))]}
@@ -144,11 +163,15 @@ for line in stdout.splitlines():
 frontiers = [json.loads(line.partition(' ')[2]) for line in stderr.splitlines()
     if line.startswith('KATANA_RUNTIME_STOP_FRONTIER ')]
 result['stop_reason'] = frontiers[-1]['stop_reason'] if frontiers else None
+profile_path=run/'execution-ip.json'
+profile=json.loads(profile_path.read_text()) if args.profile_ms and profile_path.is_file() else None
+result['profile_passed'] = not args.profile_ms or (profiler is not None and profiler.returncode==0
+    and profile is not None and profile['samples']>0 and profile['errors']==0)
 # This probe requests a graceful deadline at 60 seconds of gameplay. Exit 1
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
-    and len(steady) > 1 and len(cpu) > 1)
+    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed'])
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))
 raise SystemExit(0 if result['passed'] else 1)

@@ -18,7 +18,7 @@ source = sources["native_port_platform.cpp"].decode("utf-8")
 anchor = "#include \"native_port_input_policy.hpp\""
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform include layout changed")
-source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"\n#include "sonic_sony_input.hpp"')
+source = source.replace(anchor, anchor+'\n#include "sonic_camera_input.hpp"\n#include "sonic_presentation.hpp"\n#include "sonic_input.hpp"\n#include "sonic_rumble.hpp"\n#include "sonic_sony_input.hpp"\n#include "sonic_joystick_query.hpp"')
 anchor = "            if ((capabilities.wCaps & JOYCAPS_HASZ) != 0u &&\n"
 if source.count(anchor) != 1:
     raise RuntimeError("Camera platform Sony axis layout changed")
@@ -100,6 +100,26 @@ replace_once('        std::vector<NativeGamepadCandidate> candidates;\n',
              '        }\n')
 replace_once('        const auto joystick_count = joyGetNumDevs();\n',
              '        const auto joystick_count = sony_input_.active() ? 0u : joyGetNumDevs();\n')
+# joyGetNumDevs counts driver slots, including physically absent joysticks.
+# Query state before potentially expensive metadata. Admission still requires
+# both successful queries; identity, slot retention and hotplug policy follow.
+replace_once('''            JOYCAPSW capabilities{};
+            if (joyGetDevCapsW(source_index,
+                               &capabilities,
+                               sizeof(capabilities)) != JOYERR_NOERROR)
+                continue;
+            JOYINFOEX info{};
+            info.dwSize = sizeof(info);
+            info.dwFlags = JOY_RETURNALL;
+            if (joyGetPosEx(source_index, &info) != JOYERR_NOERROR) continue;''',
+    '''            JOYCAPSW capabilities{};
+            JOYINFOEX info{};
+            info.dwSize = sizeof(info);
+            info.dwFlags = JOY_RETURNALL;
+            if (!::sonic::input::query_connected_joystick(
+                    ::sonic::input::legacy_capabilities_first(),
+                    [&] { return joyGetPosEx(source_index, &info) == JOYERR_NOERROR; },
+                    [&] { return joyGetDevCapsW(source_index, &capabilities, sizeof(capabilities)) == JOYERR_NOERROR; })) continue;''')
 replace_once('        NativePortInputSnapshot result = input_snapshot_;\n        saturating_increment(result.poll_sequence);',
              '        NativePortInputSnapshot result = physical_input_snapshot_;\n        if (!host_poll) saturating_increment(result.poll_sequence);')
 replace_once('            const auto& previous = input_snapshot_.gamepads[slot];',
