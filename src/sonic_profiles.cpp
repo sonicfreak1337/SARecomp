@@ -1,5 +1,11 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "linux/sonic_file_lock.hpp"
+#include <ctime>
+#include <sys/syscall.h>
+#endif
 #include "sonic_profiles.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_startup.hpp"
@@ -8,6 +14,7 @@
 #include <array>
 #include <chrono>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -30,7 +37,11 @@ void backup_failed() noexcept {
     backup_state.state=recovery::BackupState::Failed;
     ++backup_state.failures;
 }
+#ifdef _WIN32
 struct Handle {HANDLE value=INVALID_HANDLE_VALUE;~Handle(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}};
+#else
+struct Handle {int value=-1;~Handle(){if(value>=0)::close(value);}};
+#endif
 void require(bool b){if(!b)throw std::runtime_error("save-profile-validation");}
 bool identifier(std::string_view s){return !s.empty()&&s.size()<=64&&s.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")==s.npos;}
 bool save_id(std::string_view s){return !s.empty()&&s.size()<=64&&s.front()!='.'&&s.back()!='.'&&s.find("..")==s.npos&&s.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")==s.npos;}
@@ -41,32 +52,60 @@ fs::path checked(fs::path p){
     p=fs::absolute(p).lexically_normal();
     auto relative=p.lexically_relative(base_path);require(!relative.empty()&&*relative.begin()!=L"..");
     for(auto walk=p;!walk.empty();walk=walk.parent_path()){
+#ifdef _WIN32
         const DWORD a=GetFileAttributesW(walk.c_str());if(a!=INVALID_FILE_ATTRIBUTES)require(!(a&FILE_ATTRIBUTE_REPARSE_POINT));
+#else
+        std::error_code error;const auto status=fs::symlink_status(walk,error);
+        require(!fs::is_symlink(status)&&(!error||error==std::errc::no_such_file_or_directory));
+#endif
         if(walk==base_path)break;
     }
     return p;
 }
 std::vector<std::byte> read(const fs::path& path,bool external=false){
     if(!external)checked(path);
+#ifdef _WIN32
     Handle h{CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr)};
     require(h.value!=INVALID_HANDLE_VALUE);FILE_ATTRIBUTE_TAG_INFO attributes{};
     require(GetFileInformationByHandleEx(h.value,FileAttributeTagInfo,&attributes,sizeof(attributes))&&!(attributes.FileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)));
     LARGE_INTEGER size{};require(GetFileSizeEx(h.value,&size)&&size.QuadPart>=0&&size.QuadPart<=limit);
     std::vector<std::byte> result(std::size_t(size.QuadPart));DWORD n=0;
     require(ReadFile(h.value,result.data(),DWORD(result.size()),&n,nullptr)&&n==result.size());return result;
+#else
+    Handle h{linux_host::open_regular(path,O_RDONLY)};struct stat info{};
+    require(h.value>=0&&::fstat(h.value,&info)==0&&S_ISREG(info.st_mode)&&info.st_nlink==1&&info.st_size>=0&&std::uint64_t(info.st_size)<=limit);
+    std::vector<std::byte> result(std::size_t(info.st_size));
+    for(std::size_t offset=0;offset<result.size();){const auto count=::pread(h.value,result.data()+offset,result.size()-offset,off_t(offset));if(count<0&&errno==EINTR)continue;require(count>0);offset+=std::size_t(count);}
+    return result;
+#endif
 }
 std::string unique_name(std::string_view prefix){
+#ifdef _WIN32
     SYSTEMTIME t{};GetSystemTime(&t);char value[96]{};
     std::snprintf(value,sizeof(value),"%.*s%04u%02u%02u-%02u%02u%02u-%03u-%lu",int(prefix.size()),prefix.data(),t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,t.wMilliseconds,GetCurrentProcessId());
+#else
+    const auto now=std::chrono::system_clock::now();const auto seconds=std::chrono::system_clock::to_time_t(now);std::tm t{};::gmtime_r(&seconds,&t);char value[96]{};
+    const auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count()%1000;
+    std::snprintf(value,sizeof(value),"%.*s%04d%02d%02d-%02d%02d%02d-%03d-%d",int(prefix.size()),prefix.data(),t.tm_year+1900,t.tm_mon+1,t.tm_mday,t.tm_hour,t.tm_min,t.tm_sec,int(ms),int(::getpid()));
+#endif
     static unsigned sequence=0;return std::string(value)+"-"+std::to_string(++sequence);
 }
 void atomic_write(const fs::path& path,std::span<const std::byte> bytes,bool replace=false){
     checked(path);fs::create_directories(path.parent_path());checked(path);
     const auto temporary=path.parent_path()/(unique_name("pending-")+".tmp");
     try {
+#ifdef _WIN32
         {Handle h{CreateFileW(temporary.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH|FILE_FLAG_OPEN_REPARSE_POINT,nullptr)};
          require(h.value!=INVALID_HANDLE_VALUE);DWORD n=0;require(WriteFile(h.value,bytes.data(),DWORD(bytes.size()),&n,nullptr)&&n==bytes.size());require(FlushFileBuffers(h.value));}
         require(MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_WRITE_THROUGH|(replace?MOVEFILE_REPLACE_EXISTING:0)));
+#else
+        Handle h{linux_host::open_regular(temporary,O_WRONLY|O_CREAT|O_EXCL,0600)};require(h.value>=0);
+        for(std::size_t offset=0;offset<bytes.size();){const auto count=::write(h.value,bytes.data()+offset,bytes.size()-offset);if(count<0&&errno==EINTR)continue;require(count>0);offset+=std::size_t(count);}
+        require(::fsync(h.value)==0);
+        Handle directory{linux_host::open_directory(path.parent_path())};require(directory.value>=0);
+        require(::syscall(SYS_renameat2,directory.value,temporary.filename().c_str(),directory.value,path.filename().c_str(),replace?0:1)==0);
+        require(::fsync(directory.value)==0);
+#endif
     }catch(...){std::error_code e;fs::remove(checked(temporary),e);throw;}
 }
 fs::path primary(std::string_view profile){return data_root(profile)/project/"saves"/(std::string(slot)+".ksave");}
@@ -215,7 +254,7 @@ void apply_pending_restore(){
     backup_state.state=recovery::BackupState::Waiting;next_poll=0;
     // Primary publication is the commit point. Never retry that transaction
     // because a redundant recovery copy could not be refreshed.
-    try{atomic_write(fs::path(path.wstring()+L".bak"),committed,true);}catch(...){OutputDebugStringW(L"SARecomp: restored primary; redundant VMU backup repair deferred.\n");}
+    try{atomic_write(fs::path(path.wstring()+L".bak"),committed,true);}catch(...){std::cerr<<"SARecomp: restored primary; redundant VMU backup repair deferred.\n";}
 }
 fs::path export_diagnostics(){
     const auto& s=presentation::settings();std::ostringstream out;
@@ -233,8 +272,15 @@ fs::path export_diagnostics(){
 #define SONIC_SETTING(name,initial,minimum,maximum) out<<#name<<": "<<s.name<<'\n';
 #include "sonic_settings_fields.inc"
 #undef SONIC_SETTING
-    out<<"No save files, memory dump, user names, machine identifiers or personal paths included.\n";
+    const auto capsule=diagnostics::pending_crash.view();
+    out<<"No save files or full memory dumps are attached.\n";
+    if(!capsule.empty())out<<"The requested crash capsule includes guest registers and bounded memory samples.\n";
     const auto content=out.str();const auto path=checked(library/"diagnostics"/(unique_name("diagnostic-")+".txt"));
-    atomic_write(path,std::as_bytes(std::span(content.data(),content.size())));return path;
+    atomic_write(path,std::as_bytes(std::span(content.data(),content.size())));
+    if(!capsule.empty()){
+        auto crash_path=path;crash_path.replace_extension(".crash.log");
+        atomic_write(crash_path,std::as_bytes(std::span(capsule.data(),capsule.size())));
+    }
+    return path;
 }
 }

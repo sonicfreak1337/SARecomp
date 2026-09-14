@@ -11,6 +11,8 @@
 #include "sonic_restart.hpp"
 #include "sonic_diagnostics.hpp"
 #include "native_provider_identity.hpp"
+#include "sonic_configuration.hpp"
+#include "sonic_errors.hpp"
 
 #include "katana/runtime/native_port_telemetry.hpp"
 #include "katana/runtime/native_port_texture_asset.hpp"
@@ -100,6 +102,10 @@ void native_product_write_fault_descriptor(
 #endif
 void native_product_write_fault_bytes(
         std::string_view bytes) noexcept {
+    sonic::diagnostics::pending_crash.append(bytes);
+#if !defined(SARECOMP_AUTOMATIC_CRASH_CAPSULES)
+    return;
+#endif
 #if defined(_WIN32)
     native_product_write_fault_handle(
         GetStdHandle(STD_ERROR_HANDLE), bytes);
@@ -130,6 +136,7 @@ void native_product_write_fault_u64(
 class NativeProductCrashSession final {
   public:
     void arm(const std::filesystem::path& executable_path) noexcept {
+#if defined(SARECOMP_AUTOMATIC_CRASH_CAPSULES)
       try {
         const auto root = sonic::paths::data_root(executable_path) / "logs";
         std::error_code directory_error;
@@ -182,6 +189,9 @@ class NativeProductCrashSession final {
       } catch(...) {
         std::fputs("KATANA_CRASH_CAPSULE_FILE_UNAVAILABLE stderr_only=1\n",stderr);
       }
+#else
+      (void)executable_path;
+#endif
     }
     ~NativeProductCrashSession() noexcept {
         native_product_flush_fault_file();
@@ -245,9 +255,11 @@ void native_product_write_crash_capsule_v1(
 }
 bool native_product_claim_crash() noexcept {
     std::uint32_t expected = 0u;
-    return native_product_crash_latch.compare_exchange_strong(
+    const bool claimed=native_product_crash_latch.compare_exchange_strong(
         expected, 1u, std::memory_order_acq_rel,
         std::memory_order_relaxed);
+    if(claimed)sonic::diagnostics::pending_crash.begin();
+    return claimed;
 }
 void native_product_capture_cpu() noexcept {
     const auto* const cpu = native_product_cpu.load(
@@ -355,6 +367,7 @@ void native_product_emit_claimed_crash(
         "KATANA_CRASH_CAPSULE version=5 " );
     native_product_write_fault_bytes(line_v5.view());
     native_product_write_fault_bytes("\n");
+    sonic::diagnostics::pending_crash.finish();
     native_product_flush_fault_file();
 }
 void native_product_emit_crash(
@@ -423,6 +436,12 @@ LONG WINAPI native_product_unhandled_exception_filter(
         native_product_emit_claimed_crash(
             code, "windows-seh", code, "host-seh-boundary",
             {}, 0u, 0u);
+        sonic::diagnostics::record(sonic::diagnostics::Failure::Runtime,code);
+        try {
+            if(sonic::profiles::library_root().empty())
+                sonic::profiles::initialize(native_product_user_data_root());
+            sonic::errors::show();
+        } catch(...) {}
         }
     }
     const auto previous = native_product_previous_filter.load(
@@ -512,7 +531,11 @@ int run_game(int argc, char** argv) {
     const bool input_replay_launch = (argc == 3 || argc == 5) &&
         std::string_view(argv[1]) == "--replay-input" &&
         std::string_view(argv[2]).size() != 0u;
+#ifdef _WIN32
     bool automatic_input_record_launch = argc == 1;
+#else
+    bool automatic_input_record_launch = false;
+#endif
     const bool direct_launch = argc == 1 || input_record_launch ||
         input_replay_launch;
     try {
@@ -602,7 +625,11 @@ int run_game(int argc, char** argv) {
         std::filesystem::path content_root;
         if (direct_launch) {
             const auto configuration_path =
+#ifdef _WIN32
                 executable_path.parent_path() /
+#else
+                sonic::paths::content_store_root(executable_path) /
+#endif
                 "katana-content-root.txt";
             std::error_code configuration_error;
             const bool has_configuration =
@@ -637,7 +664,7 @@ int run_game(int argc, char** argv) {
                 content_root =
                     std::filesystem::path(configured_root);
                 if (content_root.is_relative())
-                    content_root = executable_path.parent_path() /
+                    content_root = configuration_path.parent_path() /
                                    content_root;
             } else {
                 content_root = executable_path.parent_path() /

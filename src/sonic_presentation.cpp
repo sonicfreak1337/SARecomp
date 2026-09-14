@@ -15,7 +15,11 @@
 #include <mutex>
 #include <sstream>
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "linux/deck_detection.hpp"
+#endif
 
 namespace sonic::presentation {
 namespace {
@@ -222,6 +226,16 @@ Settings read_settings(const std::filesystem::path& path) {
             selected.bindings[found-input::action_names.begin()]=binding;
         } else throw std::runtime_error("Unknown Sonic display setting");
     }
+    // Windows profiles remain portable; Linux has the native Vulkan backend.
+#ifndef _WIN32
+    selected.renderer=rendering::Renderer::Vulkan;
+    if(linux_host::steam_deck()){
+        selected.window_mode=rendering::WindowMode::Fullscreen;
+        if(!linux_host::external_display_connected()){
+            selected.width=1280;selected.height=800;
+        }
+    }
+#endif
     validate(selected);
     return selected;
 }
@@ -251,8 +265,12 @@ void save_settings(const std::filesystem::path& path,const Settings& value) {
         output.flush();
         if (!output) throw std::runtime_error("Sonic configuration could not be written");
     }
+#ifdef _WIN32
     if (!MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
         throw std::runtime_error("Sonic configuration could not be published");
+#else
+    linux_host::publish_file(temporary,path);
+#endif
 }
 Settings merge_settings(const Settings& before,const Settings& edited,Settings latest) {
     validate(edited);

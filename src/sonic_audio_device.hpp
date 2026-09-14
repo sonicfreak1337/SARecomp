@@ -2,9 +2,14 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
 #include <mmeapi.h>
 #include <mmdeviceapi.h>
+#else
+#include <SDL3/SDL.h>
+#include <time.h>
+#endif
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -21,10 +26,16 @@ inline std::atomic<std::uint64_t> resumes{0};
 inline void changed() noexcept { changes.fetch_add(1,std::memory_order_release); }
 inline void resumed() noexcept {resumes.fetch_add(1,std::memory_order_release);changed();}
 inline std::uint64_t real_now() noexcept {
+#ifndef _WIN32
+    timespec value{};
+    if(clock_gettime(CLOCK_BOOTTIME,&value)==0)
+        return std::uint64_t(value.tv_sec)*1'000'000'000+value.tv_nsec;
+#endif
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 inline std::uint64_t working_time() noexcept {
+#ifdef _WIN32
     using Precise=void(WINAPI*)(PULONGLONG);
     static const auto precise=[]{
         auto address=GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"QueryUnbiasedInterruptTimePrecise");
@@ -35,7 +46,14 @@ inline std::uint64_t working_time() noexcept {
     if(precise)precise(&ticks);
     else if(!QueryUnbiasedInterruptTime(&ticks))return real_now();
     return ticks*100;
+#else
+    timespec value{};
+    if(clock_gettime(CLOCK_MONOTONIC,&value)==0)
+        return std::uint64_t(value.tv_sec)*1'000'000'000+value.tv_nsec;
+    return real_now();
+#endif
 }
+#ifdef _WIN32
 // Test substitution runs only in a hidden process, before its audio domain
 // starts. Production retains the actual WinMM functions and sample cursor.
 struct Api {
@@ -108,4 +126,28 @@ public:
     }
     Watch(const Watch&)=delete;
 };
+#else
+inline std::uint64_t now() noexcept {return real_now();}
+// The watch never touches an endpoint or the audio execution domain. SDL
+// migrates default logical devices itself; the owner refreshes its latency
+// estimate after notifications and retries unavailable output at most 1 Hz.
+class Watch {
+    bool initialized_=false,watching_=false;
+    static bool SDLCALL event(void*,SDL_Event* event) noexcept {
+        if((event->type==SDL_EVENT_AUDIO_DEVICE_ADDED ||
+            event->type==SDL_EVENT_AUDIO_DEVICE_REMOVED ||
+            event->type==SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) && !event->adevice.recording)changed();
+        return true;
+    }
+public:
+    Watch() noexcept {ensure();}
+    bool ensure() noexcept {
+        if(!initialized_)initialized_=SDL_InitSubSystem(SDL_INIT_AUDIO);
+        if(initialized_&&!watching_)watching_=SDL_AddEventWatch(event,this);
+        return initialized_;
+    }
+    ~Watch(){if(watching_)SDL_RemoveEventWatch(event,this);if(initialized_)SDL_QuitSubSystem(SDL_INIT_AUDIO);}
+    Watch(const Watch&)=delete;
+};
+#endif
 }

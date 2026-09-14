@@ -4,6 +4,9 @@
 #include <array>
 #include <cmath>
 #include <utility>
+#ifndef _WIN32
+#include "linux/deck_detection.hpp"
+#endif
 namespace sonic::menu {
 namespace {
 using presentation::Settings;
@@ -17,7 +20,7 @@ constexpr Field fields[]{
 const Field* field(std::string_view id){for(const auto& f:fields)if(f.id==id)return &f;return nullptr;}
 std::wstring copy(std::string_view id,int l){return std::wstring(text(id,l));}
 constexpr std::array languages{L"日本語",L"English",L"Français",L"Español",L"Deutsch"};
-constexpr std::pair<unsigned,unsigned> resolutions[]{{640,480},{1280,720},{1920,1080},{2560,1440},{3440,1440},{3840,1600},{3840,2160},{5120,2160}};
+constexpr std::pair<unsigned,unsigned> resolutions[]{{640,480},{1280,720},{1280,800},{1920,1080},{2560,1440},{3440,1440},{3840,1600},{3840,2160},{5120,2160}};
 std::wstring value_text(std::string_view id,const Settings& s,int l,input::GlyphStyle style){
     if(id.starts_with("bind_")){
         const auto name=id.substr(5);const auto it=std::find(input::action_names.begin(),input::action_names.end(),name);
@@ -82,7 +85,16 @@ std::vector<Row> Model::rows()const{
     if(page_=="title"){
         group({"display","audio","camera","controls","interface","profiles","system"});add("sound_test",false,title_);group({"about","save","back"});
     }else if(page_=="display"){
-        for(auto id:{"renderer","resolution","window_mode","widescreen","render_percent"})add(id,true);
+        for(auto id:{"renderer","resolution","window_mode","widescreen","render_percent"}) {
+#ifdef _WIN32
+            add(id,true);
+#else
+            const auto name=std::string_view(id);
+            const bool deck=linux_host::steam_deck();
+            add(id,true,name!="renderer" && !(deck && name=="window_mode") &&
+                !(deck && name=="resolution" && !linux_host::external_display_connected()));
+#endif
+        }
         add("vsync",true);add("gameplay_timing",true);add("back");
     }else if(page_=="audio"){
         group({"master_volume","music_volume","voice_volume","effects_volume","mute_background"});

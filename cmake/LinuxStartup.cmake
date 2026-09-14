@@ -1,0 +1,8 @@
+add_library(sonic_linux_startup STATIC "${SONIC_ROOT}/src/linux/sonic_startup.cpp")
+target_compile_options(sonic_linux_startup PRIVATE -O2 -g0 -ffunction-sections -fdata-sections)
+target_link_libraries(sonic_linux_startup PUBLIC sonic_linux_platform Threads::Threads)
+add_executable(sonic-startup-ui "${SONIC_ROOT}/src/linux/startup_ui.cpp" "${SONIC_ROOT}/src/ui/sonic_raster.cpp")
+target_include_directories(sonic-startup-ui PRIVATE "${SONIC_ROOT}/.local/ui-deps")
+target_compile_options(sonic-startup-ui PRIVATE -O2 -g0 -Wno-nullability-completeness)
+target_link_libraries(sonic-startup-ui PRIVATE SDL3::SDL3)
+set_target_properties(sonic-startup-ui PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")

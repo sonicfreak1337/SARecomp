@@ -1,6 +1,10 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "linux/ui_raster_adapter.hpp"
+#endif
 #include "sonic_tutorial_art.hpp"
 #include "sonic_input.hpp"
 #include <algorithm>

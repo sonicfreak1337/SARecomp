@@ -1,5 +1,9 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+constexpr unsigned VK_MENU=0x12,VK_RETURN=0x0d,VK_ESCAPE=0x1b;
+#endif
 #include "sonic_quit_prompt.hpp"
 #include "sonic_presentation.hpp"
 #include "sonic_language.hpp"

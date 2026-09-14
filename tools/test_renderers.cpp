@@ -5,8 +5,13 @@
 #include <filesystem>
 #include <iostream>
 #include <vector>
+#if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <SDL3/SDL.h>
+static void _putenv_s(const char* name,const char* value){setenv(name,value,1);}
+#endif
 using namespace katana::runtime;
 
 int main(int argc,char** argv) {
@@ -96,6 +101,7 @@ int main(int argc,char** argv) {
         }
         device.finish();
         std::cout<<"SONIC_RENDERER_TEST_OK backend="<<argv[1]<<" frames="<<device.snapshot().begun_frames<<'\n';
+#if defined(_WIN32)
         // Simulate losing the monitor holding this hidden window. No desktop
         // display settings, real devices, focus, or user input are changed.
         HWND recovery_window=nullptr;
@@ -166,6 +172,19 @@ int main(int argc,char** argv) {
             std::cout<<"SONIC_FULLSCREEN_TEST_OK backend="<<argv[1]<<" enter=1 repeat_ignored=1 restore=1 swapchain_resizes="
                      <<device.snapshot().swap_chain_resizes<<'\n';
         }
+#else
+        // Only our SDL event queue is exercised; no desktop input is injected.
+        SDL_Event display{};display.type=SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED;
+        if(!SDL_PushEvent(&display))throw std::runtime_error("SDL display event rejected");
+        packet.topology=NativePortPrimitiveTopology::TriangleList;packet.indices=indices;
+        device.begin_frame();device.draw(packet);device.present();device.finish();
+        if(device.snapshot().presented_frames<14)throw std::runtime_error("Display event interrupted rendering");
+        SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
+        device.begin_frame();device.draw(packet);device.present();device.finish();
+        device.poll_events();
+        if(device.lifecycle_state()!=NativePortLifecycleState::Shutdown)throw std::runtime_error("SDL close request was lost");
+        std::cout<<"SONIC_LINUX_GRAPHICS_OK hidden=1 draw_contracts=13 display_event=ok close=drained\n";
+#endif
         return 0;
     } catch(const NativePortGraphicsError& e) {
         std::cerr<<e.what()<<" failure="<<unsigned(e.failure())<<" operation="<<e.operation_id()<<'\n'; return 1;

@@ -1,5 +1,10 @@
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#endif
 #include "volk.h"
 #include "sonic_vulkan.hpp"
 #include "sonic_vulkan_present.hpp"
@@ -61,7 +66,11 @@ struct VulkanRenderer::Impl {
         std::vector<std::function<void()>> retired; bool pending=false;
     };
     VkInstance instance{}; VkSurfaceKHR surface{}; VkPhysicalDevice physical{}; VkDevice device{};
+#ifdef _WIN32
     HWND window{};
+#else
+    SDL_Window* window{};
+#endif
     bool exclusive_extension=false,exclusive_requested=false,exclusive_controlled=false;
     bool exclusive_acquired=false,exclusive_attempted=false;
     VkDebugUtilsMessengerEXT debug_messenger{};
@@ -102,8 +111,20 @@ struct VulkanRenderer::Impl {
     }
     void destroy_swapchain();
     bool wants_exclusive() const {
+#ifdef _WIN32
         return selected_window_mode==WindowMode::Fullscreen && IsWindowVisible(window) &&
             !(GetWindowLongPtrW(window,GWL_STYLE)&WS_OVERLAPPEDWINDOW);
+#else
+        // SDL owns display mode changes; Win32 exclusive WSI is not portable.
+        return false;
+#endif
+    }
+    bool window_visible() const {
+#ifdef _WIN32
+        return IsWindowVisible(window);
+#else
+        return !(SDL_GetWindowFlags(window)&SDL_WINDOW_HIDDEN);
+#endif
     }
     unsigned memory_type(unsigned mask,VkMemoryPropertyFlags flags) {
         for(unsigned i=0;i<memory_properties.memoryTypeCount;++i)
@@ -216,9 +237,21 @@ struct VulkanRenderer::Impl {
 };
 
 void VulkanRenderer::Impl::initialize(void* window) {
+#ifdef _WIN32
     this->window=static_cast<HWND>(window);
+#else
+    this->window=static_cast<SDL_Window*>(window);
+#endif
     check(volkInitialize(),"vulkan-loader");
+#ifdef _WIN32
     std::vector<const char*> extensions{VK_KHR_SURFACE_EXTENSION_NAME,VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
+#else
+    Uint32 sdl_extension_count=0;
+    const auto* sdl_extensions=SDL_Vulkan_GetInstanceExtensions(&sdl_extension_count);
+    if(!sdl_extensions) throw NativePortGraphicsError(
+        NativePortGraphicsFailure::HardwareDeviceUnavailable,0,"sdl-vulkan-extensions");
+    std::vector<const char*> extensions(sdl_extensions,sdl_extensions+sdl_extension_count);
+#endif
     unsigned instance_count=0;
     check(vkEnumerateInstanceExtensionProperties(nullptr,&instance_count,nullptr),"vulkan-instance-extensions");
     std::vector<VkExtensionProperties> instance_extensions(instance_count);
@@ -246,9 +279,16 @@ void VulkanRenderer::Impl::initialize(void* window) {
     if(validation) { instance_info.enabledLayerCount=1; instance_info.ppEnabledLayerNames=&validation_layer; instance_info.pNext=&debug; }
     check(vkCreateInstance(&instance_info,nullptr,&instance),"vulkan-instance"); volkLoadInstance(instance);
     if(validation) check(vkCreateDebugUtilsMessengerEXT(instance,&debug,nullptr,&debug_messenger),"vulkan-validation-messenger");
+#ifdef _WIN32
     VkWin32SurfaceCreateInfoKHR surface_info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
     surface_info.hinstance=GetModuleHandleW(nullptr); surface_info.hwnd=static_cast<HWND>(window);
     check(vkCreateWin32SurfaceKHR(instance,&surface_info,nullptr,&surface),"vulkan-surface");
+#else
+    if(!SDL_Vulkan_CreateSurface(this->window,instance,nullptr,&surface)) {
+        std::cerr<<"SONIC_VULKAN_SURFACE_FAILURE reason="<<SDL_GetError()<<'\n';
+        throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceCreation,0,"sdl-vulkan-surface");
+    }
+#endif
     unsigned count=0; check(vkEnumeratePhysicalDevices(instance,&count,nullptr),"vulkan-gpus");
     std::vector<VkPhysicalDevice> devices(count); check(vkEnumeratePhysicalDevices(instance,&count,devices.data()),"vulkan-gpus");
     int best=-1;
@@ -260,7 +300,7 @@ void VulkanRenderer::Impl::initialize(void* window) {
         if(p.apiVersion<VK_API_VERSION_1_3 || !f13.dynamicRendering || !f13.synchronization2 || !f13.shaderDemoteToHelperInvocation ||
            !features.features.fragmentStoresAndAtomics || !features.features.geometryShader ||
            !features.features.fillModeNonSolid || !features.features.depthClamp || !features.features.samplerAnisotropy ||
-           p.limits.maxStorageBufferRange < std::uint64_t(config.maximum_type2_fragment_nodes)*24) continue;
+           p.limits.maxStorageBufferRange < 24u) continue;
         unsigned n=0; vkGetPhysicalDeviceQueueFamilyProperties(candidate,&n,nullptr);
         std::vector<VkQueueFamilyProperties> families(n); vkGetPhysicalDeviceQueueFamilyProperties(candidate,&n,families.data());
         for(unsigned family=0;family<n;++family) {
@@ -271,6 +311,10 @@ void VulkanRenderer::Impl::initialize(void* window) {
         }
     }
     if(!physical) throw NativePortGraphicsError(NativePortGraphicsFailure::HardwareDeviceUnavailable,0,"vulkan-required-features");
+    // This is an upper budget, not a minimum device requirement. All gather
+    // and resolve shaders receive the same device-supported arena capacity.
+    config.maximum_type2_fragment_nodes=std::min(config.maximum_type2_fragment_nodes,
+        properties.limits.maxStorageBufferRange/24u);
     vkGetPhysicalDeviceMemoryProperties(physical,&memory_properties);
     float priority=1;
     VkDeviceQueueCreateInfo queue_info{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO}; queue_info.queueFamilyIndex=queue_family;
@@ -284,10 +328,12 @@ void VulkanRenderer::Impl::initialize(void* window) {
     check(vkEnumerateDeviceExtensionProperties(physical,nullptr,&extension_count,nullptr),"vulkan-device-extensions");
     std::vector<VkExtensionProperties> available(extension_count);
     check(vkEnumerateDeviceExtensionProperties(physical,nullptr,&extension_count,available.data()),"vulkan-device-extensions");
+#ifdef _WIN32
     exclusive_extension=capabilities2 && std::any_of(available.begin(),available.end(),[](const auto& ext){
         return std::strcmp(ext.extensionName,VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME)==0;
     });
     if(exclusive_extension) device_extensions.push_back(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
+#endif
     VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; info.pNext=&f13; info.pEnabledFeatures=&features;
     info.queueCreateInfoCount=1; info.pQueueCreateInfos=&queue_info;
     info.enabledExtensionCount=unsigned(device_extensions.size()); info.ppEnabledExtensionNames=device_extensions.data();
@@ -370,7 +416,9 @@ void VulkanRenderer::Impl::initialize(void* window) {
 }
 
 void VulkanRenderer::Impl::destroy_swapchain() {
+#ifdef _WIN32
     if(exclusive_acquired && swapchain) vkReleaseFullScreenExclusiveModeEXT(device,swapchain);
+#endif
     exclusive_acquired=exclusive_attempted=exclusive_controlled=false;
     for(auto& image:swap_images) destroy(image);
     swap_images.clear();
@@ -382,6 +430,7 @@ void VulkanRenderer::Impl::destroy_swapchain() {
 void VulkanRenderer::Impl::create_swapchain() {
     if(swapchain) { finish(); destroy_swapchain(); }
     exclusive_requested=wants_exclusive();
+#ifdef _WIN32
     VkSurfaceFullScreenExclusiveInfoEXT exclusive{VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
     VkSurfaceFullScreenExclusiveWin32InfoEXT monitor{VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
     exclusive.fullScreenExclusive=VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
@@ -396,9 +445,11 @@ void VulkanRenderer::Impl::create_swapchain() {
     }
     if(exclusive_requested && !exclusive_controlled)
         std::cerr<<"SONIC_FULLSCREEN_FALLBACK backend=vulkan mode=borderless reason=exclusive-unavailable\n";
+#endif
     VkSurfaceCapabilitiesKHR caps{};
     const auto caps_result=vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps);
     if(caps_result!=VK_SUCCESS) {
+#ifdef _WIN32
         RECT client{},outer{};DWORD pid=0;
         const auto client_ok=GetClientRect(window,&client),outer_ok=GetWindowRect(window,&outer);
         const auto owner=GetWindowThreadProcessId(window,&pid);
@@ -407,6 +458,12 @@ void VulkanRenderer::Impl::create_swapchain() {
             <<" client_ok="<<client_ok<<" client="<<client.right<<','<<client.bottom
             <<" outer_ok="<<outer_ok<<" outer="<<outer.left<<','<<outer.top<<','<<outer.right<<','<<outer.bottom
             <<" owner_thread="<<owner<<" current_thread="<<GetCurrentThreadId()<<" pid="<<pid<<'\n';
+#else
+        int width=0,height=0;
+        SDL_GetWindowSizeInPixels(window,&width,&height);
+        std::cerr<<"SONIC_VULKAN_SURFACE_FAILURE visible="<<window_visible()
+            <<" pixels="<<width<<','<<height<<" sdl="<<SDL_GetError()<<'\n';
+#endif
     }
     check(caps_result,"vulkan-surface-caps");
     swap_extent=caps.currentExtent;
@@ -426,14 +483,16 @@ void VulkanRenderer::Impl::create_swapchain() {
     else if(std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_MAILBOX_KHR)!=modes.end()) mode=VK_PRESENT_MODE_MAILBOX_KHR;
     else if(!config.synchronize_present && std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_IMMEDIATE_KHR)!=modes.end()) mode=VK_PRESENT_MODE_IMMEDIATE_KHR;
     VkSwapchainCreateInfoKHR create{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR}; create.surface=surface;
+#ifdef _WIN32
     if(exclusive_controlled) create.pNext=&exclusive;
+#endif
     create.minImageCount=std::max(3u,caps.minImageCount); if(caps.maxImageCount) create.minImageCount=std::min(create.minImageCount,caps.maxImageCount);
     create.imageFormat=swap_format; create.imageColorSpace=selected->colorSpace; create.imageExtent=swap_extent;
     create.imageArrayLayers=1; create.imageUsage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; create.preTransform=caps.currentTransform;
     create.compositeAlpha=VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; create.presentMode=mode; create.clipped=true;
     check(vkCreateSwapchainKHR(device,&create,nullptr,&swapchain),"vulkan-swapchain");
     std::cerr<<"SONIC_VULKAN_PRESENT mode="<<(mode==VK_PRESENT_MODE_MAILBOX_KHR?"mailbox":mode==VK_PRESENT_MODE_IMMEDIATE_KHR?"immediate":"fifo")
-        <<" vsync_setting="<<sonic::presentation::settings().vsync<<" visible="<<IsWindowVisible(window)<<'\n';
+        <<" vsync_setting="<<sonic::presentation::settings().vsync<<" visible="<<window_visible()<<'\n';
     check(vkGetSwapchainImagesKHR(device,swapchain,&n,nullptr),"vulkan-swap-images");
     std::vector<VkImage> images(n); check(vkGetSwapchainImagesKHR(device,swapchain,&n,images.data()),"vulkan-swap-images");
     swap_images.resize(n); present_semaphores.resize(n);
@@ -779,6 +838,9 @@ void VulkanRenderer::draw(const NativePortDrawPacket& packet,std::span<const Nat
     if(index_count) { vkCmdBindIndexBuffer(p.command,ib,io,VK_INDEX_TYPE_UINT32); vkCmdDrawIndexed(p.command,index_count,1,0,0,0); }
     else vkCmdDraw(p.command,vertex_count,1,0,0);
 }
+std::uint32_t VulkanRenderer::type_two_node_capacity()const noexcept {
+    return impl_->config.maximum_type2_fragment_nodes;
+}
 void VulkanRenderer::begin_type_two() {
     auto& p=*impl_; p.ensure_type_two();
     p.copy_image(p.working,p.type_base); p.copy_image(p.depth,p.type_depth);
@@ -823,6 +885,7 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     if(p.wants_exclusive()!=p.exclusive_requested) p.swap_dirty=true;
     if(!presentation_policy::swapchain(p.swap_dirty,nonblocking,[&]{p.create_swapchain();}))return false;
     if(!p.swapchain || p.swap_dirty) return false;
+#ifdef _WIN32
     if(p.exclusive_controlled) {
         if(GetForegroundWindow()!=p.window) {
             if(p.exclusive_acquired) vkReleaseFullScreenExclusiveModeEXT(p.device,p.swapchain);
@@ -834,6 +897,7 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
             std::cerr<<"SONIC_VULKAN_FULLSCREEN exclusive="<<p.exclusive_acquired<<'\n';
         }
     }
+#endif
     // Finish any partial simulation submission without resolving its live OIT list.
     // A repeated image must not wait for a fenced submission slot that the
     // GPU/present queue still owns. Keep the live prefix intact and retry at
@@ -851,7 +915,9 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     unsigned index=0;
     auto acquired=vkAcquireNextImageKHR(p.device,p.swapchain,nonblocking?0:UINT64_MAX,p.current->acquire,{},&index);
     if(acquired==VK_NOT_READY || acquired==VK_TIMEOUT) return false;
+#ifdef _WIN32
     if(acquired==VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {p.exclusive_acquired=p.exclusive_attempted=false;return false;}
+#endif
     if(acquired==VK_ERROR_OUT_OF_DATE_KHR) {p.swap_dirty=true; return false;}
     if(acquired==VK_SUBOPTIMAL_KHR) p.swap_dirty=true; else check(acquired,"vulkan-acquire");
     auto& completed=p.completed_host_image?p.textures.at(p.completed_host_image):p.completed;

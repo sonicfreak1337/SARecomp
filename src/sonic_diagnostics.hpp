@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string_view>
+#include "sonic_crash_consent.hpp"
 namespace sonic::diagnostics {
 enum class Failure:unsigned {None,Graphics,Contract,Runtime,Restart,Unknown};
 inline std::atomic<Failure> failure{Failure::None};

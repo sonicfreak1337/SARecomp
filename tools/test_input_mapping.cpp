@@ -1,5 +1,9 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <SDL3/SDL.h>
+#endif
 #include "sonic_input.hpp"
 #include "sonic_presentation.hpp"
 #include <cmath>
@@ -12,12 +16,19 @@ using namespace sonic;
 using katana::runtime::NativePortInputSnapshot;
 void check(bool value,const char* why){if(!value)throw std::runtime_error(why);}
 bool same_float(float a,float b){return std::abs(a-b)<.0001f;}
+void test_environment(const char* key,const char* value){
+#ifdef _WIN32
+    check(_putenv_s(key,value)==0,"test environment");
+#else
+    check(::setenv(key,value,1)==0,"test environment");
+#endif
+}
 int main(int argc,char** argv){
     try{
         check(argc==2,"fresh test directory required");
         const auto root=fs::absolute(argv[1]);check(!fs::exists(root),"test directory exists");fs::create_directories(root);
-        _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
-        const auto ini=root/"sonic-display.ini";_putenv_s("SARECOMP_DISPLAY_CONFIG",ini.string().c_str());
+        test_environment("KATANA_PORT_BACKGROUND_TEST","1");
+        const auto ini=root/"sonic-display.ini";test_environment("SARECOMP_DISPLAY_CONFIG",ini.string().c_str());
         presentation::Settings settings;settings.setup_complete=true;settings.keyboard_enabled=1;
         presentation::save_settings(ini,settings);presentation::initialize(root/"game.exe");
         input::Snapshot keyboard;keyboard.focused=true;input::test_snapshot(&keyboard);
@@ -69,9 +80,21 @@ int main(int argc,char** argv){
         raw.left_stick_x_raw=32767;sample=input::sample(physical);check(same_float(sample.move_x,1),"movement deadzone lost full range");
         check(input::binding_name(input::Binding{0,'Q',0,0},input::GlyphStyle::Keyboard)==input::binding_name(input::Binding{'Q',0,0,0},input::GlyphStyle::Keyboard),"alternate-only key shown as unbound");
         raw={};raw.connected=true;
+#ifdef _WIN32
         (void)input::window_message(nullptr,WM_XBUTTONDOWN,std::uintptr_t(XBUTTON1)<<16,0);
+#else
+        test_environment("SDL_VIDEODRIVER","dummy");check(SDL_InitSubSystem(SDL_INIT_VIDEO),SDL_GetError());
+        auto* window=SDL_CreateWindow("Isolated input test",64,64,SDL_WINDOW_HIDDEN);check(window!=nullptr,SDL_GetError());
+        input::window_created(window);SDL_Event event{};event.type=SDL_EVENT_MOUSE_BUTTON_DOWN;event.button.button=SDL_BUTTON_X1;
+        input::window_event(window,event);
+#endif
         sample=input::sample(physical);check(sample.glyphs==input::GlyphStyle::Keyboard,"mouse side button did not update prompt family");
+#ifdef _WIN32
         (void)input::window_message(nullptr,WM_XBUTTONUP,std::uintptr_t(XBUTTON1)<<16,0);
+#else
+        event.type=SDL_EVENT_MOUSE_BUTTON_UP;input::window_event(window,event);input::window_created(nullptr);
+        SDL_DestroyWindow(window);SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#endif
         input::test_snapshot(nullptr);
         std::cout<<"SONIC_INPUT_MAPPING_OK trigger_swap=analog digital_alternatives=1 disconnect=neutral reconnect_glyphs=sony,xbox deadzone=retained settings=persisted\n";
         return 0;

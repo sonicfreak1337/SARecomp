@@ -1,7 +1,8 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param([ValidateRange(1,16)][int] $Jobs = 8,
-      [string[]] $Target = @('game'))
+      [string[]] $Target = @('game'),
+      [string] $Output = '')
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $build = Join-Path $root 'build-performance'
@@ -41,7 +42,9 @@ $timer = [Diagnostics.Stopwatch]::StartNew()
 $buildStartedUtc = [DateTime]::UtcNow
 & python (Join-Path $PSScriptRoot 'prepare-product.py')
 if ($LASTEXITCODE -ne 0) { throw 'Sonic working product preparation failed.' }
-& cmake -S $root -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' `
+$outputArguments=@()
+if($Output){$outputArguments=@('-DSARECOMP_PRODUCT_OUTPUT='+[IO.Path]::GetFullPath($Output).Replace('\','/'))}
+& cmake -S $root -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' @outputArguments `
     "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_MAKE_PROGRAM=$ninja" '-DCMAKE_LINKER_TYPE=LLD'
 if ($LASTEXITCODE -ne 0) { throw 'Sonic configure failed.' }
 $bound = Get-SonicBoundNinja -BuildRoot $build

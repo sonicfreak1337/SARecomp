@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(SonicAdventureRecompiled VERSION 0.49.9 LANGUAGES CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(cmake/SonicLinux.cmake)
+    return()
+endif()
+
 # This project consumes the accepted SDK/AOT. It has no Katana source target.
 file(REAL_PATH "${CMAKE_SOURCE_DIR}" SONIC_ROOT)
 file(REAL_PATH "${CMAKE_BINARY_DIR}" SONIC_BUILD)
@@ -254,6 +259,9 @@ target_compile_options(sonic_static_chain_tests PRIVATE /EHsc /utf-8)
 target_include_directories(sonic_dispatch_memo_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_dispatch_memo_tests PRIVATE /EHsc /utf-8)
 add_executable(game launcher/main.cpp)
+enable_language(RC)
+configure_file("${SONIC_ROOT}/cmake/windows-icon.rc.in" "${CMAKE_BINARY_DIR}/sonic-icon.rc" @ONLY)
+target_sources(game PRIVATE "${CMAKE_BINARY_DIR}/sonic-icon.rc")
 
 # Private, bounded CPU sampling utility; no product dependency or overhead.
 add_executable(sonic_execution_sampler EXCLUDE_FROM_ALL tools/sample_execution_thread.cpp)
@@ -393,7 +401,14 @@ include(cmake/SonicCompactAot.cmake)
 include(cmake/SonicFpuRuntime.cmake)
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
 target_link_libraries(game PRIVATE sonic_minicart_aot)
-set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SONIC_ROOT}/out/experimental")
+set(SARECOMP_PRODUCT_OUTPUT "${SONIC_ROOT}/out/experimental" CACHE PATH "Isolated product output; never the baseline")
+cmake_path(IS_PREFIX SONIC_ROOT "${SARECOMP_PRODUCT_OUTPUT}" NORMALIZE product_inside_project)
+if(NOT product_inside_project OR NOT SARECOMP_PRODUCT_OUTPUT MATCHES "/out/[^/]+/?$")
+    message(FATAL_ERROR "Product output must be its own directory directly under out")
+endif()
+set_target_properties(game PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SARECOMP_PRODUCT_OUTPUT}")
+set_target_properties(sonic_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SARECOMP_PRODUCT_OUTPUT}")
+target_sources(sonic_config PRIVATE "${CMAKE_BINARY_DIR}/sonic-icon.rc")
 target_link_options(game PRIVATE /STACK:16777216 "/MAP:${CMAKE_BINARY_DIR}/game-native-port.map"
     /threads:3 "/lldltocache:${CMAKE_BINARY_DIR}/thinlto-cache")
 set(SARECOMP_HOT_CODE_ORDER "" CACHE FILEPATH "Private measured COMDAT layout experiment; empty keeps original link order")

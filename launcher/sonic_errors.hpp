@@ -3,12 +3,19 @@
 #include "sonic_menu_runtime.hpp"
 #include "sonic_menu_text.hpp"
 #include "sonic_profiles.hpp"
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <SDL3/SDL.h>
+#include <codecvt>
+#include <locale>
+#endif
 #include <string>
 
 namespace sonic::errors {
 struct State {int language;std::wstring body;};
 inline std::wstring label(std::string_view key,int language){return std::wstring(menu::text(key,language));}
+#ifdef _WIN32
 inline INT_PTR CALLBACK procedure(HWND window,UINT message,WPARAM word,LPARAM data){
     auto* state=reinterpret_cast<State*>(GetWindowLongPtrW(window,DWLP_USER));
     if(message==WM_INITDIALOG){
@@ -53,4 +60,19 @@ inline void show() noexcept {
         DialogBoxIndirectParamW(GetModuleHandleW(nullptr),&dialog.header,nullptr,procedure,reinterpret_cast<LPARAM>(&state));
     }catch(...){} // Failure reporting must never replace the original failure.
 }
+#else
+inline void show() noexcept {
+    if(diagnostics::failure.load()==diagnostics::Failure::None)return;
+    if(const auto* hidden=std::getenv("KATANA_PORT_BACKGROUND_TEST");hidden&&std::string_view(hidden)=="1")return;
+    if(std::getenv("SARECOMP_DISPLAY_TRIAL_FD"))return;
+    try {
+        const int language=menu::effective_text_language();std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8;
+        const auto body=utf8.to_bytes(label(diagnostics::failure.load()==diagnostics::Failure::Graphics?"graphics_stopped":"game_stopped",language)+L"\n\n"+label("diagnostics_help",language));
+        const auto export_label=utf8.to_bytes(label("export_diagnostics",language)),close_label=utf8.to_bytes(label("close",language));
+        const SDL_MessageBoxButtonData buttons[]={{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT|SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,close_label.c_str()},{0,1,export_label.c_str()}};
+        const SDL_MessageBoxData dialog{SDL_MESSAGEBOX_ERROR,nullptr,"Sonic Adventure: Recompiled",body.c_str(),2,buttons,nullptr};
+        int choice=0;if(SDL_ShowMessageBox(&dialog,&choice)&&choice==1){const auto report=profiles::export_diagnostics();const auto message=utf8.to_bytes(label("report_saved",language))+"\n\n"+report.string();SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Sonic Adventure: Recompiled",message.c_str(),nullptr);}
+    }catch(...){}
+}
+#endif
 }

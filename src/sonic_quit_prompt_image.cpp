@@ -1,5 +1,9 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "linux/ui_raster_adapter.hpp"
+#endif
 #include "sonic_quit_prompt.hpp"
 #include <array>
 #include <stdexcept>

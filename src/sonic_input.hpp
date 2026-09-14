@@ -3,6 +3,9 @@
 #include "katana/runtime/native_port_platform.hpp"
 #include <array>
 #include <string>
+#ifndef _WIN32
+union SDL_Event;
+#endif
 namespace sonic::input {
 struct Snapshot {
     std::array<bool,256> keys{};
@@ -20,8 +23,14 @@ float axis_deadzone(float value,unsigned percent) noexcept;
 // Receives Win32 events on the render/window thread. Never injects OS input.
 void window_created(void* window);
 bool window_message(void* window,unsigned message,std::uintptr_t word,std::intptr_t data) noexcept;
+#ifndef _WIN32
+// SDL events and cursor state belong to the Linux render/window owner.
+void window_event(void* window,const SDL_Event&) noexcept;
+void window_update(void* window) noexcept;
+#endif
 Snapshot sample(const katana::runtime::NativePortInputSnapshot&,bool modal=false);
 bool window_focused() noexcept;
+bool key_down(unsigned key) noexcept;
 // Host dialogs poll real devices without consuming or recording guest input.
 katana::runtime::NativePortInputSnapshot poll_host(katana::runtime::NativePortPlatformServices&);
 bool host_poll_active() noexcept;

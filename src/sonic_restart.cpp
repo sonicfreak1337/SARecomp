@@ -1,3 +1,4 @@
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
 #include "sonic_restart.hpp"
@@ -101,3 +102,6 @@ bool confirm_display(NativePortDesktopHost& host,NativePortPlatformServices& pla
     }
 }
 }
+#else
+#include "linux/sonic_restart_posix.inc"
+#endif

@@ -26772,7 +26772,7 @@ read_sonic_native_development_cpu(SonicNativeDevelopmentStateReader& reader) {
 // and ABI major numbers alone do not identify a decoder/resampler build.
 // This runs once on an explicit state request, never on the frame hot path.
 [[nodiscard]] const std::string& sonic_native_development_binary_identity() {
-    static const std::string identity = [] {
+    static const std::string identity = []() -> std::string {
 #if defined(_WIN32)
         const auto hash_file = [](const std::filesystem::path& path) {
             struct Hash final {

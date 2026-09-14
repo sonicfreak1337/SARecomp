@@ -2,11 +2,16 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "linux/sonic_file_lock.hpp"
+#endif
 #include <cwctype>
 #include <filesystem>
 #include <stdexcept>
 namespace sonic::presentation {
+#ifdef _WIN32
 class ConfigurationLock {
     HANDLE mutex_=nullptr;
 public:
@@ -22,4 +27,7 @@ public:
     ConfigurationLock(const ConfigurationLock&)=delete;
     ConfigurationLock& operator=(const ConfigurationLock&)=delete;
 };
+#else
+using ConfigurationLock=linux_host::FileLock;
+#endif
 }

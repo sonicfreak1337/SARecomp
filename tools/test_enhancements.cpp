@@ -7,6 +7,7 @@
 #include "sonic_audio_settings.hpp"
 #include "sonic_subtitles.hpp"
 #include "sonic_startup.hpp"
+#include "sonic_diagnostics.hpp"
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -240,6 +241,17 @@ int main(int argc,char** argv){
         const auto report=read(profiles::export_diagnostics());const std::string report_text(reinterpret_cast<const char*>(report.data()),report.size());
         check(report_text.find("Backup state: failed")!=std::string::npos&&report_text.find("Audio output: idle")!=std::string::npos,"recovery diagnostics missing");
         check(report_text.find(source_hash)==std::string::npos&&report_text.find("SONICADV_ALF")==std::string::npos&&report_text.find(fault_data.string())==std::string::npos,"diagnostics included personal save identity");
+        const auto reports=profiles::library_root()/"diagnostics";
+        const auto count_reports=[&]{return std::distance(fs::directory_iterator(reports),fs::directory_iterator{});};
+        const auto previous_reports=count_reports();
+        diagnostics::pending_crash.begin();
+        diagnostics::pending_crash.append("KATANA_CRASH_CAPSULE version=5 {\"schema\":\"consent-test\"}\n");
+        diagnostics::pending_crash.finish();
+        check(count_reports()==previous_reports,"crash wrote a capsule before consent");
+        const auto crash_report=profiles::export_diagnostics();auto capsule=crash_report;capsule.replace_extension(".crash.log");
+        const auto crash_bytes=read(capsule);
+        check(std::string_view(reinterpret_cast<const char*>(crash_bytes.data()),crash_bytes.size())==diagnostics::pending_crash.view(),"consented capsule was not exported intact");
+        check(count_reports()==previous_reports+2,"diagnostic export added unexpected files");
         check(startup::file_digest(fault_save)==startup::digest(corrupt),"backup repair overwrote the primary");
         presentation::apply_live(settings);
         check(startup::file_digest(argv[2])==source_hash,"source save modified");

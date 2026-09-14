@@ -1,6 +1,10 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
 #include <gdiplus.h>
+#else
+#include "linux/ui_raster_adapter.hpp"
+#endif
 #include "sonic_menu.hpp"
 #include "sonic_menu_text.hpp"
 #include "sonic_startup.hpp"
@@ -13,6 +17,7 @@ namespace {Image background;}
 void load_background(const std::filesystem::path& path){
     if(!background.pixels.empty())return;
     if(startup::file_digest(path)!="87b1a09d2a384825c0a82d05b857136fec64ac282f56cfc441d8ae57bc5d9330")throw std::runtime_error("menu-background-identity");
+#ifdef _WIN32
     Gdiplus::GdiplusStartupInput startup;ULONG_PTR token=0;
     if(Gdiplus::GdiplusStartup(&token,&startup,nullptr)!=Gdiplus::Ok)throw std::runtime_error("menu-background-decoder");
     struct Stop {ULONG_PTR token;~Stop(){Gdiplus::GdiplusShutdown(token);}} stop{token};
@@ -27,6 +32,12 @@ void load_background(const std::filesystem::path& path){
     }
     image.UnlockBits(&data);
     background=std::move(next);
+#else
+    const auto next=ui::Image::load(path);
+    if(next.width!=2560||next.height!=1920)throw std::runtime_error("menu-background-dimensions");
+    background={next.width,next.height,{}};background.pixels.resize(next.pixels.size());
+    std::memcpy(background.pixels.data(),next.pixels.data(),next.pixels.size());
+#endif
 }
 Image rasterize(const Model& model,unsigned width,unsigned height){
     if(width<320||height<240||width>7680||height>4320)throw std::invalid_argument("menu-extent");

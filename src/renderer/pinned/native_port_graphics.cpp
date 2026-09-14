@@ -50,7 +50,12 @@
 
 #include <array>
 #else
+#include <condition_variable>
 #include <unistd.h>
+#include <SDL3/SDL.h>
+#include <codecvt>
+#include <locale>
+#include "../../linux/deck_detection.hpp"
 #endif
 
 namespace katana::runtime {
@@ -1453,6 +1458,7 @@ class NativePortGraphicsBackend final {
         try {
             if (sonic::rendering::selected_renderer == sonic::rendering::Renderer::Vulkan) {
                 vulkan_ = std::make_unique<sonic::rendering::VulkanRenderer>(window_, config_);
+                config_.maximum_type2_fragment_nodes = vulkan_->type_two_node_capacity();
             } else {
                 create_device(); create_pipeline(); create_render_surface(); create_white_texture();
                 ensure_performance_overlay_pipeline();
@@ -7217,68 +7223,7 @@ if (!vulkan_) {
 
 #else
 
-class NativePortGraphicsBackend final {
-  public:
-    NativePortGraphicsBackend(
-        const NativePortGraphicsConfig& config,
-        NativePortRuntimeOptionsBridge*) {
-        validate_graphics_config(config);
-        throw NativePortGraphicsError(
-            NativePortGraphicsFailure::UnsupportedHost,
-            1u,
-            "unsupported-host");
-    }
-
-    void show() {}
-    void poll_events() {}
-    [[nodiscard]] NativePortLifecycleState lifecycle_state() const {
-        return NativePortLifecycleState::Shutdown;
-    }
-    [[nodiscard]] NativePortGraphicsLayout layout() const {
-        return {};
-    }
-    [[nodiscard]] std::uint32_t effective_presentation_rate(std::uint32_t manual) const noexcept { return manual; }
-    [[nodiscard]] bool driver_paces_output() const noexcept { return false; }
-    [[nodiscard]] NativePortTextureHandle create_texture(
-        const NativePortTextureConfig&,
-        std::span<const NativePortImageView>) {
-        throw NativePortGraphicsError(
-            NativePortGraphicsFailure::UnsupportedHost, 1u, "unsupported-host");
-    }
-    void update_texture(NativePortTextureHandle, const NativePortImageView&) {}
-    void update_texture(NativePortTextureHandle,
-                        std::span<const NativePortImageView>) {}
-    void destroy_texture(NativePortTextureHandle) {}
-    [[nodiscard]] NativePortMeshHandle create_mesh(
-        const NativePortMeshConfig&) {
-        throw NativePortGraphicsError(
-            NativePortGraphicsFailure::UnsupportedHost, 1u, "unsupported-host");
-    }
-    void destroy_mesh(NativePortMeshHandle) {}
-    void begin_frame(const NativePortFrameConfig&) {}
-    void draw(const NativePortDrawPacket&) {}
-    void flush_type2_translucency() {}
-    void present() {}
-    void complete_frame() {}
-    [[nodiscard]] bool completed_frame_ready() const noexcept { return false; }
-    [[nodiscard]] bool completed_image_available() const noexcept { return false; }
-    NativePortBackendPresentOutcome present_completed_image_on_deadline(
-        const char* = "repeat-present") {
-        return NativePortBackendPresentOutcome::Presented;
-    }
-    void abort_frame_after_command_failure() noexcept {}
-    void publish_telemetry() noexcept {}
-    NativePortBackendPresentOutcome repeat_present(
-        const char* = "repeat-present") {
-        return NativePortBackendPresentOutcome::Presented;
-    }
-    void present_image(const NativePortImageView&,
-                       NativePortViewportTarget,
-                       NativePortImageFit, bool = false) {}
-    [[nodiscard]] NativePortGraphicsSnapshot snapshot() const {
-        return {};
-    }
-};
+#include "../../linux/native_port_graphics_sdl.inc"
 
 #endif
 
@@ -8083,6 +8028,8 @@ class NativePortGraphicsDevice::Impl final {
                 code == 0u ? 1u : code,
                 "render-consumer-wake");
         }
+#else
+        signal_consumer_noexcept();
 #endif
     }
 
@@ -8090,6 +8037,14 @@ class NativePortGraphicsDevice::Impl final {
 #ifdef _WIN32
         if (!serial() && consumer_wake_event_ != nullptr)
             static_cast<void>(SetEvent(consumer_wake_event_));
+#else
+        if (!serial()) {
+            {
+                std::lock_guard guard(consumer_wake_mutex_);
+                consumer_wake_pending_ = true;
+            }
+            consumer_wake_condition_.notify_one();
+        }
 #endif
     }
 
@@ -8252,9 +8207,15 @@ class NativePortGraphicsDevice::Impl final {
                 NativePortFrameQueueError::ConsumerException, 0u);
             break;
 #else
-            auto lease = queue_->wait_begin_consume();
-            if (!lease.has_value()) break;
-            if (consume_lease(*backend, *lease)) break;
+            // A static host menu produces no new draw packets. Waiting only
+            // on the command queue starves SDL input and repeat presentation.
+            // Keep the window owner pumping at bounded latency while letting
+            // newly published work and shutdown wake it immediately.
+            std::unique_lock wake_lock(consumer_wake_mutex_);
+            consumer_wake_condition_.wait_for(wake_lock,
+                std::chrono::milliseconds(std::min(8u, presentation_wait_milliseconds(*backend))),
+                [this] { return consumer_wake_pending_; });
+            consumer_wake_pending_ = false;
 #endif
         }
         request_consumer_shutdown();
@@ -9211,6 +9172,10 @@ class NativePortGraphicsDevice::Impl final {
     std::thread consumer_thread_;
 #ifdef _WIN32
     HANDLE consumer_wake_event_ = nullptr;
+#else
+    std::mutex consumer_wake_mutex_;
+    std::condition_variable consumer_wake_condition_;
+    bool consumer_wake_pending_ = false;
 #endif
     ConsumerStateMailbox consumer_state_mailbox_;
     std::uint64_t consumer_state_revision_ = 0u;

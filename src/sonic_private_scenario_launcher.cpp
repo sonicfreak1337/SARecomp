@@ -2,9 +2,14 @@
 
 #include <algorithm>
 #include <limits>
+#include <cstdlib>
+#include <cstring>
+#include "sonic_input.hpp"
 
 #if defined(_WIN32)
 #include <windows.h>
+#else
+constexpr unsigned VK_UP=0x26,VK_DOWN=0x28,VK_LEFT=0x25,VK_RIGHT=0x27,VK_RETURN=0x0d,VK_ESCAPE=0x1b;
 #endif
 
 namespace sonic_native_private {
@@ -196,7 +201,7 @@ constexpr std::uint32_t kTitleButtonRight = 1u << 7u;
     return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 &&
            (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
 #else
-    return false;
+    return sonic::input::key_down(0x11) && sonic::input::key_down(0x79);
 #endif
 }
 
@@ -204,8 +209,7 @@ constexpr std::uint32_t kTitleButtonRight = 1u << 7u;
 #if defined(_WIN32)
     return (GetAsyncKeyState(key) & 0x8000) != 0;
 #else
-    static_cast<void>(key);
-    return false;
+    return sonic::input::key_down(static_cast<unsigned>(key));
 #endif
 }
 
@@ -217,21 +221,16 @@ constexpr std::uint32_t kTitleButtonRight = 1u << 7u;
 }
 
 [[nodiscard]] const ScenarioDescriptor* environment_scenario() noexcept {
-#if defined(_WIN32)
     if (automatic_scenario_consumed) return nullptr;
-    std::array<char, 64u> requested{};
-    const auto length = GetEnvironmentVariableA(
-        "KATANA_SONIC_PRIVATE_SCENARIO", requested.data(),
-        static_cast<DWORD>(requested.size()));
-    if (length == 0u || length >= requested.size()) return nullptr;
-    const std::string_view id(requested.data(), length);
+    const auto* requested = std::getenv("KATANA_SONIC_PRIVATE_SCENARIO");
+    if (!requested) return nullptr;
+    const auto length = std::strlen(requested);
+    if (length == 0u || length >= 64u) return nullptr;
+    const std::string_view id(requested, length);
     const auto descriptors = scenario_descriptors();
     const auto found =
         std::ranges::find(descriptors, id, &ScenarioDescriptor::id);
     return found == descriptors.end() ? nullptr : &*found;
-#else
-    return nullptr;
-#endif
 }
 
 void reset_launcher(const void* const title_state) noexcept {

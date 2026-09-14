@@ -23,6 +23,7 @@ public:
               std::uint64_t mesh, std::uint64_t texture, katana::runtime::NativePortPixelRect,
               std::span<const std::byte> constants, bool type_two);
     void begin_type_two();
+    std::uint32_t type_two_node_capacity()const noexcept;
     void resolve_type_two();
     void complete_frame();
     // Backend-owned output-resolution menu image, separate from the game pair.

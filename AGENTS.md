@@ -53,7 +53,7 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 - The optional native Vulkan renderer lives in `src/renderer/` alongside the
   retained D3D11 path. Selection is in the native Options menu and requires a
   restart. Keep D3D11 and the accepted baseline available. See
-  `docs/vulkan-renderer.md`; this does not yet provide a Linux host. Never
+  `docs/vulkan-renderer.md`; native Linux support is being integrated. Never
   claim that Vulkan fixes the measured guest-execution bottleneck without
   matched measurements.
 - `sonic-config.exe` is the English first-start settings dialog. Keep display
@@ -70,8 +70,14 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   follows the display. Original retains both original scene cadence and
   title-requested output, without autonomous repeats. Game timing is a
   restart-only Original/Recompiled selector. No numeric FPS or anisotropy UI;
-  old INI values are ignored. Interpolation remains retired. Windows performance
-  work is active; Linux is paused and the release candidate is not approved.
+  old INI values are ignored. Interpolation remains retired.
+- On 2026-09-14 the user promoted current main `57210a0` to the replacement
+  1.0 candidate and resumed Linux/Steam Deck work. The old Windows RC1 is
+  superseded; r354 remains immutable. Linux must ship an installer accepting
+  original GDI + tracks, never requiring a Katana export or end-user compile.
+  Steam Deck is always fullscreen: native 1280x800 / 16:10 in handheld mode,
+  supported external display resolutions/aspects when docked, and safe return
+  to the internal display on undock. Original 4:3 remains an explicit choice.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

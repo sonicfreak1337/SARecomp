@@ -1,9 +1,16 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <SDL3/SDL.h>
+#include "linux/controller_state.hpp"
+#endif
 #include "sonic_input.hpp"
 #include "sonic_presentation.hpp"
+#ifdef _WIN32
 #include "sonic_audio_device.hpp"
 #include "sonic_rumble.hpp"
+#endif
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -15,7 +22,11 @@ namespace {
 std::mutex lock;
 Snapshot os;
 std::optional<Snapshot> injected;
+#ifdef _WIN32
 std::atomic<HWND> window{nullptr};
+#else
+std::atomic<SDL_Window*> window{nullptr};
+#endif
 std::atomic<bool> modal{false},camera_active{false},replaying{false};
 std::atomic<unsigned> sony_slots{0};
 std::atomic<float> look_dx{0},look_dy{0};
@@ -36,6 +47,7 @@ bool held(const Snapshot& s,Action action,const Bindings& bindings) noexcept {
     return (b.key && s.keys[b.key]) || (b.alternate && s.keys[b.alternate]) ||
         (b.mouse && s.mouse[b.mouse]) || (s.connected && (s.pad&b.pad));
 }
+#ifdef _WIN32
 void window_created(void* handle) {
     const auto h=static_cast<HWND>(handle);window=h;
     RAWINPUTDEVICE device{1,2,0,h};RegisterRawInputDevices(&device,1,sizeof(device));
@@ -99,12 +111,23 @@ bool window_message(void* handle,unsigned message,std::uintptr_t word,std::intpt
     }catch(...){}
     return false;
 }
+#else
+#include "linux/input_window_sdl.inc"
+#endif
 void note_controller(unsigned slot,bool sony,bool connected) noexcept {
     if(slot>=4)return;const auto bit=1u<<slot;
     if(sony && connected)sony_slots.fetch_or(bit);else sony_slots.fetch_and(~bit);
+#ifndef _WIN32
+    if(sony && connected)::sonic::linux_host::sony_controller_slots.fetch_or(bit);
+    else ::sonic::linux_host::sony_controller_slots.fetch_and(~bit);
+#endif
 }
 void set_replay(bool enabled) noexcept {replaying=enabled;}
 bool replay() noexcept {return replaying.load();}
+bool key_down(unsigned key) noexcept {
+    std::lock_guard guard(lock);
+    return os.focused && key < os.keys.size() && os.keys[key];
+}
 bool window_focused() noexcept {
     try {std::lock_guard guard(lock);return hidden()?(injected&&injected->focused):os.focused;}
     catch(...){return false;}
@@ -115,6 +138,9 @@ katana::runtime::NativePortInputSnapshot poll_host(katana::runtime::NativePortPl
     return platform.poll_gamepads();
 }
 Snapshot sample(const katana::runtime::NativePortInputSnapshot& pads,bool) {
+#ifndef _WIN32
+    sony_slots.store(::sonic::linux_host::sony_controller_slots.load());
+#endif
     Snapshot result;
     {std::lock_guard guard(lock);result=os;os.mouse_dx=os.mouse_dy=0;os.wheel=0;
      if(hidden()){result={};if(injected)result=*injected;}}
@@ -144,7 +170,7 @@ void transform(katana::runtime::NativePortInputSnapshot& pads,const Snapshot& so
     const auto& config=presentation::settings();
     if(replay()) {if(suppressed||modal.load())for(auto& pad:pads.gamepads){const bool connected=pad.connected;pad={};pad.connected=connected;}return;}
     auto logical=source;
-    if(logical.keys[VK_MENU])logical.keys[VK_RETURN]=false; // Alt+Enter belongs to the window.
+    if(logical.keys[0x12])logical.keys[0x0d]=false; // Alt+Enter belongs to the window.
     if(!config.keyboard_enabled || !source.focused){logical.keys={};logical.mouse={};}
     const auto old=pads.gamepads[0];auto& p=pads.gamepads[0];
     p={};p.connected=old.connected || (config.keyboard_enabled && source.focused);p.packet_number=old.packet_number;
@@ -182,7 +208,11 @@ std::wstring binding_name(const Binding& b,GlyphStyle style) {
         std::wstring result;for(unsigned i=0;i<16;++i)if(b.pad&(1u<<i)){if(!result.empty())result+=L" / ";result+=(style==GlyphStyle::PlayStation?sony:xbox)[i];}return result;
     }
     const auto key=b.key?b.key:b.alternate;
+#ifdef _WIN32
     if(key){wchar_t name[64]{};const auto scan=MapVirtualKeyW(key,MAPVK_VK_TO_VSC_EX);const auto extended=(scan&0xff00)?1u<<24:0u;GetKeyNameTextW(LONG((scan&255)<<16|extended),name,64);if(*name)return name;}
+#else
+    if(key)if(const auto name=sdl_key_label(key);!name.empty())return name;
+#endif
     if(b.mouse)return L"Mouse "+std::to_wstring(b.mouse);
     return L"—";
 }

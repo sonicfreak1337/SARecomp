@@ -171,7 +171,10 @@ inline constexpr std::string_view
         // Fixed product output: 60 without VSync, monitor-paced with VSync;
         // Original timing is authoritative for both update and output cadence.
         // Authenticated MINICART results AOT supplement and Big's bound HUD owners.
-        "sha256:d0937199555c030982f71ff1f3f5d6ed5ed790dcf00cf222c53868f2168acb8a"};
+        // Native Linux host integration retains the shared game/UI contracts.
+        // Release crash records remain in memory until the user exports them.
+        // Windows API branches and the retained guest AOT remain unchanged.
+        "sha256:d3688ecf2aaaeec34d13f3a10adf7655a5de611093133b21ad673f3feb4e550a"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
