@@ -1,0 +1,297 @@
+*** Begin Patch
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/src/native_title_adapter.cpp
+@@
+         << " source_plan_evictions=" << sonic_native_title_state.model_source_plans.stats.evictions
+         << " source_plan_verified_triangles=" << sonic_native_title_state.model_source_plans.stats.verified_triangles
+         << " source_plan_verified_uvs=" << sonic_native_title_state.model_source_plans.stats.verified_uvs
++        << " source_plan_batched_meshes=" << sonic_native_title_state.model_source_plans.stats.batched_meshes
++        << " source_plan_batched_vertices=" << sonic_native_title_state.model_source_plans.stats.batched_vertices
++        << " source_plan_verified_emission_vertices=" << sonic_native_title_state.model_source_plans.stats.verified_emission_vertices
++        << " source_plan_verified_emission_indices=" << sonic_native_title_state.model_source_plans.stats.verified_emission_indices
+         << " mesh_cache_eligible=" << cache.eligible
+         << " mesh_cache_hits=" << cache.hits
+         << " mesh_cache_misses=" << cache.misses
+@@
+                 const auto* flag=std::getenv("SARECOMP_MESH_SOURCE_PLAN");
+                 return !flag || std::string_view(flag)!="0";
+             }();
+-            static const bool source_plan_verify=sonic_native_diagnostic_enabled("SARECOMP_MESH_SOURCE_PLAN_VERIFY");
++            static const bool source_plan_verify=
++                sonic_native_diagnostic_enabled("SARECOMP_MESH_SOURCE_PLAN_VERIFY") ||
++                sonic_native_diagnostic_enabled("SARECOMP_MESH_EMISSION_PLAN_VERIFY");
++            static const bool emission_plan_requested=[] {
++                const auto* flag=std::getenv("SARECOMP_MESH_EMISSION_PLAN");
++                return !flag || std::string_view(flag)!="0";
++            }();
+             const sonic::geometry::MeshPlan* source_plan=nullptr;
+             auto& source_plan_cache=sonic_native_title_state.model_source_plans;
+             if(source_plan_requested && sonic_native_gameplay_math_active() && model_transform &&
+@@
+                 }
+             }
+             std::size_t verified_plan_triangle=0u;
++            // Clipping is live per draw. A missing/clipped referenced point,
++            // unsupported indexed mode or extra reconstruction oracle retains
++            // the existing triangle loop. Only successful, complete meshes batch.
++            const bool source_plan_batch=source_plan && emission_plan_requested &&
++                indexed_corners && !indexed_corners_verify &&
++                source_plan->admits_indexed_emission(
++                    sonic_native_title_state.transformed_point_clipped,max_native_draw_vertices);
++            std::size_t verified_emission_corner=0;
+             struct PendingModelCorner final {
+                 std::vector<katana::runtime::NativePortVertex>* output;
+                 ~PendingModelCorner() {
+@@
+                     if (point_index >= point_count ||
+                         vertices.size() >= max_native_draw_vertices)
+                         return false;
++                    if(source_plan_batch && source_plan_verify){
++                        if(verified_emission_corner>=source_plan->indexed_vertices.size())return false;
++                        const auto expected=source_plan->indexed_vertices[verified_emission_corner++];
++                        if(expected.point!=point_index || expected.corner!=corner_index)return false;
++                        ++source_plan_cache.stats.verified_emission_vertices;
++                    }
+                     // The live read guard rejects scalar/observed access and
+                     // invalidates if that contract changes. Keep ENV and the
+                     // normal diagnostic path staged as before. Existing spare
+@@
+                     return DerivedPolygonNormalResult::Success;
+                 };
+ 
+-            if(source_plan && !source_plan_verify){
++            if(source_plan_batch && !source_plan_verify){
++                if(!vertices.empty() || !source_plan->emit_indexed(corner_indices.indices,append_corner))
++                    return graphics_abort(context,sonic_native_graphics_error_layout);
++                ++source_plan_cache.stats.batched_meshes;
++                source_plan_cache.stats.batched_vertices+=vertices.size();
++                corner_cursor=source_plan->corner_count;
++                stream_offset=source_plan->stream_bytes.size();
++            }else if(source_plan && !source_plan_verify){
+                 for(const auto& polygon:source_plan->polygons){
+                     corner_cursor=polygon.first_corner;
+                     if(indexed_corners)corner_indices.begin_polygon(polygon.corner_count);
+@@
+             }
+             if(source_plan && (verified_plan_triangle!=source_plan->triangles.size() || corner_cursor!=source_plan->corner_count || stream_offset!=source_plan->stream_bytes.size()))
+                 return graphics_abort(context,sonic_native_graphics_error_layout);
++            }
++            if(source_plan_batch && source_plan_verify){
++                if(verified_emission_corner!=source_plan->indexed_vertices.size() ||
++                   vertices.size()!=source_plan->indexed_vertices.size() ||
++                   corner_indices.indices!=source_plan->indexed_indices)
++                    return graphics_abort(context,sonic_native_graphics_error_layout);
++                source_plan_cache.stats.verified_emission_indices+=corner_indices.indices.size();
+             }
+ 
+             if (vertices.empty()) {
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/src/sonic_mesh_plan.cpp
+@@
+     plan.fpscr_mode=cpu.read_fpscr()&0x001C0003u;
+     plan.host_mode=_mm_getcsr()&0xE040u;
+     std::size_t offset=0;
++    std::vector<std::uint32_t> emitted;
+     for(unsigned polygon=0;polygon<count;++polygon){
+         unsigned corners=type==0u?3u:4u;bool reversed=false;
+         if(type>=2u){
+@@
+         const auto indices=span(reader,stream,offset,std::size_t(corners)*2);
+         if(indices.empty())return {};
+         const auto first=std::uint32_t(plan.triangles.size()),base=plan.corner_count;
++        emitted.assign(corners,std::numeric_limits<std::uint32_t>::max());
+         const auto add=[&](unsigned a,unsigned b,unsigned c){
+             MeshPlanTriangle t{{u16(indices.data()+a*2),u16(indices.data()+b*2),u16(indices.data()+c*2)},
+                                {base+a,base+b,base+c}};
+             if(std::ranges::any_of(t.points,[&](unsigned point){return point>=request.point_count;}))return false;
+-            plan.triangles.push_back(t);return true;
++            plan.triangles.push_back(t);
++            for(unsigned i=0;i<3u;++i){
++                auto& vertex=emitted[t.corners[i]-base];
++                if(vertex==std::numeric_limits<std::uint32_t>::max()){
++                    vertex=std::uint32_t(plan.indexed_vertices.size());
++                    plan.indexed_vertices.push_back({t.points[i],std::uint16_t(t.corners[i])});
++                }
++                plan.indexed_indices.push_back(vertex);
++            }
++            return true;
+         };
+         if(type==0u){if(!add(0,1,2))return {};}
+         else if(type==1u){if(!add(0,1,2) || !add(2,1,3))return {};}
+@@
+ }
+ std::size_t MeshPlan::allocation_bytes()const noexcept {
+     return sizeof(MeshPlan)+stream_bytes.capacity()+uv_bytes.capacity()+
+-        triangles.capacity()*sizeof(MeshPlanTriangle)+polygons.capacity()*sizeof(MeshPlanPolygon)+uvs.capacity()*sizeof(uvs[0]);
++        triangles.capacity()*sizeof(MeshPlanTriangle)+polygons.capacity()*sizeof(MeshPlanPolygon)+uvs.capacity()*sizeof(uvs[0])+
++        indexed_vertices.capacity()*sizeof(MeshPlanCorner)+indexed_indices.capacity()*sizeof(std::uint32_t);
++}
++bool MeshPlan::admits_indexed_emission(std::span<const std::uint8_t> clipped,
++                                     std::size_t budget)const noexcept {
++    if(indexed_vertices.empty() || indexed_vertices.size()>budget || indexed_indices.size()>budget)return false;
++    return std::ranges::all_of(indexed_vertices,[&](const MeshPlanCorner& v){
++        return v.point<clipped.size() && clipped[v.point]==0u;
++    });
+ }
+ void MeshPlanCache::erase(std::unordered_map<std::uint64_t,Entry>::iterator it) noexcept {
+     bytes_-=it->second.plan.allocation_bytes();ages_.erase(it->second.age);entries_.erase(it);
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/src/sonic_mesh_plan.hpp
+@@
+ struct MeshPlanPolygon {
+     std::uint32_t first_triangle{},triangle_count{},first_corner{},corner_count{};
+ };
++struct MeshPlanCorner {
++    std::uint16_t point{},corner{};
++    bool operator==(const MeshPlanCorner&)const=default;
++};
+ struct MeshPlan {
+     MeshPlanRequest request;
+     std::uint32_t fpscr_mode{},host_mode{},corner_count{};
+@@
+     std::vector<MeshPlanTriangle> triangles;
+     std::vector<MeshPlanPolygon> polygons;
+     std::vector<std::array<float,2>> uvs;
++    // First-use order is per authored corner, never just per model point.
++    // Each live draw still builds its current position/normal/color/UV vertex.
++    std::vector<MeshPlanCorner> indexed_vertices;
++    std::vector<std::uint32_t> indexed_indices;
+     [[nodiscard]] std::size_t allocation_bytes()const noexcept;
++    [[nodiscard]] bool admits_indexed_emission(std::span<const std::uint8_t> clipped,
++                                              std::size_t budget)const noexcept;
++    // Called only after live admission, with the caller's vertex/index buffers
++    // empty. Reserve before any live corner work; never retry after a failure.
++    template<class IndexBuffer,class Append>
++    bool emit_indexed(IndexBuffer& indices,Append&& append)const {
++        if(!indices.empty())return false;
++        indices.reserve(indexed_indices.size());
++        for(const auto& v:indexed_vertices)if(!append(v.point,v.corner))return false;
++        indices.insert(indices.end(),indexed_indices.begin(),indexed_indices.end());
++        return true;
++    }
+ };
+ struct MeshPlanStats {
+     std::uint64_t lookups{},hits{},misses{},builds{},changes{},declines{},evictions{};
+     std::uint64_t verified_triangles{},verified_uvs{};
++    std::uint64_t batched_meshes{},batched_vertices{},verified_emission_vertices{},verified_emission_indices{};
+ };
+ class MeshPlanCache final {
+ public:
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/tools/test_mesh_plan.cpp
+@@
+ #include "sonic_mesh_plan.hpp"
+ #include "sonic_model_uv.hpp"
++#include "sonic_corner_indices.hpp"
+ #include <algorithm>
+ #include <bit>
+ #include <cstring>
+@@
+ void triangle(const MeshPlan& p,std::size_t i,std::array<std::uint16_t,3> points,std::array<std::uint32_t,3> corners){
+     require(i<p.triangles.size() && p.triangles[i].points==points && p.triangles[i].corners==corners,"authored triangle order/seam");
+ }
++void emission(const MeshPlan& p){
++    CornerIndices retained;std::vector<MeshPlanCorner> original,batched;
++    for(const auto& polygon:p.polygons){
++        retained.begin_polygon(polygon.corner_count);
++        for(unsigned i=0;i<polygon.triangle_count;++i){
++            const auto& t=p.triangles[polygon.first_triangle+i];
++            require(retained.append_shared(original,
++                {t.corners[0]-polygon.first_corner,t.corners[1]-polygon.first_corner,t.corners[2]-polygon.first_corner},
++                65536,[&](std::size_t k){original.push_back({t.points[k],std::uint16_t(t.corners[k])});return true;}),
++                "retained corner emission");
++        }
++    }
++    std::vector<std::uint32_t> indices;
++    require(p.emit_indexed(indices,[&](std::uint16_t point,std::uint16_t corner){batched.push_back({point,corner});return true;}),"batched emission");
++    require(original==p.indexed_vertices && original==batched && retained.indices==p.indexed_indices && retained.indices==indices,
++            "retained first-use/index sequence differs");
++    require(std::ranges::all_of(indices,[&](auto i){return i<batched.size();}),"invalid planned output index");
++}
+ int main()try{
+     unsigned cases=0;
+     {
+@@
+         triangle(*p,0,{9,4,2},{0,1,2});triangle(*p,1,{2,4,6},{2,1,3});triangle(*p,2,{2,6,8},{2,3,4});
+         triangle(*p,3,{3,1,5},{6,5,7});triangle(*p,4,{3,5,7},{6,7,8});triangle(*p,5,{7,5,9},{8,7,9});
+         require(p->polygons[1].first_triangle==3 && p->polygons[1].first_corner==5 && p->corner_count==10,"polygon boundaries");
++        require(p->indexed_vertices==std::vector<MeshPlanCorner>{{9,0},{4,1},{2,2},{6,3},{8,4},{3,6},{1,5},{5,7},{7,8},{9,9}},"reversed first-use order");
++        require(p->indexed_indices==std::vector<std::uint32_t>{0,1,2,2,1,3,2,3,4,5,6,7,5,7,8,8,7,9},"complete authored index order");
++        emission(*p);
+         for(unsigned i=0;i<10;++i){const auto expected=sonic::model_uv::decode(std::int16_t(int(i)*255-510),std::int16_t(32767-int(i)*257),true,f.cpu);
+             require(!std::memcmp(expected.data(),p->uvs[i].data(),sizeof(expected)),"TitleBasic UV bits");}
+         const auto* hit=cache.get(f.request,f.reader(),f.cpu);require(hit==p && cache.stats.hits==1,"exact source hit");
+@@
+         if(type==0u){require(p->triangles.size()==1,"triangle count");triangle(*p,0,{0,1,2},{0,1,2});}
+         if(type==1u){require(p->triangles.size()==2,"quad count");triangle(*p,1,{2,1,2},{2,1,3});}
+         if(type==3u){require(p->triangles.size()==3,"type3 strips");triangle(*p,1,{2,4,6},{2,1,3});}
++        emission(*p);
+         ++cases;
+     }
+     for(unsigned variant=0;variant<9;++variant){
+@@
+         require(state.cache.get(f.request,f.reader(),f.cpu),"owner cache admission");
+         state={};require(state.cache.stats.hits==0 && state.cache.stats.builds==0,"title-owner reset");++cases;
+     }
++    for(unsigned seed=0;seed<32;++seed){
++        Fixture f(2u+(seed&1u),4);MeshPlanCache cache;unsigned offset=0;
++        for(unsigned poly=0;poly<4;++poly){
++            const auto count=3u+(seed*7u+poly*5u)%12u;
++            Fixture::put16(f.ram.data()+0x1000+offset,std::uint16_t(count|(((seed+poly)&1u)?0x8000u:0u)));offset+=2;
++            for(unsigned i=0;i<count;++i){Fixture::put16(f.ram.data()+0x1000+offset,std::uint16_t((i*i+seed+poly)%16u));offset+=2;}
++        }
++        const auto* p=cache.get(f.request,f.reader(),f.cpu);require(p,"mixed strip plan");emission(*p);++cases;
++    }
++    {
++        Fixture f;MeshPlanCache cache;const auto* p=cache.get(f.request,f.reader(),f.cpu);require(p,"live emission fixture");
++        std::array<std::uint8_t,16> clipped{};
++        require(p->admits_indexed_emission(clipped,18),"exact expanded index budget");++cases;
++        require(!p->admits_indexed_emission(clipped,17),"expanded index budget must not use vertex count");++cases;
++        clipped[9]=1;require(!p->admits_indexed_emission(clipped,65536),"current clipping flag");clipped[9]=0;
++        require(p->admits_indexed_emission(clipped,65536),"clip state must be live");++cases;
++        clipped[0]=1;require(p->admits_indexed_emission(clipped,65536),"unreferenced clip flag");++cases;
++        require(!p->admits_indexed_emission(std::span(clipped).first(9),65536),"missing referenced clip flag");++cases;
++        for(unsigned failure:{0u,5u,9u}){
++            unsigned calls=0;std::vector<MeshPlanCorner> prefix;std::vector<std::uint32_t> indices;
++            require(!p->emit_indexed(indices,[&](auto point,auto corner){
++                if(calls++==failure)return false;prefix.push_back({point,corner});return true;
++            }),"failed append retried or ignored");
++            require(calls==failure+1u && prefix.size()==failure && indices.empty(),"partial append publication/retry");++cases;
++        }
++        struct RejectAllocation:std::vector<std::uint32_t>{void reserve(std::size_t){throw std::bad_alloc{};}} failing;
++        unsigned calls=0;bool threw=false;
++        try{static_cast<void>(p->emit_indexed(failing,[&](auto,auto){++calls;return true;}));}catch(const std::bad_alloc&){threw=true;}
++        require(threw && calls==0 && failing.empty(),"reserve must precede live emission");++cases;
++        std::vector<std::uint32_t> occupied{7};
++        require(!p->emit_indexed(occupied,[&](auto,auto){++calls;return true;}) && calls==0 && occupied[0]==7,"nonempty output");++cases;
++        MeshPlan limit;limit.indexed_vertices={{0,0},{0,1},{0,2}};limit.indexed_indices.assign(65535,0);
++        clipped[0]=0;require(limit.admits_indexed_emission(clipped,65536),"largest complete triangle count");
++        limit.indexed_indices.resize(65538);require(!limit.admits_indexed_emission(clipped,65536),"logical index overflow with few vertices");++cases;
++    }
+     std::cout<<"SONIC_MESH_PLAN_TEST_OK cases="<<cases<<'\n';return 0;
+ }catch(const std::exception& e){std::cerr<<"SONIC_MESH_PLAN_TEST_FAILED "<<e.what()<<'\n';return 1;}
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/src/native_port_manifest.cpp
+@@
+         // Fixed product output: 60 without VSync, monitor-paced with VSync;
+         // Original timing is authoritative for both update and output cadence.
+         // Authenticated MINICART results AOT supplement and Big's bound HUD owners.
+-        "sha256:3111430648cee10205e93e343da9c40387ed9448b1d7148412422a686a2e2228"};
++        "sha256:b1271e31d741aeed9451f620ca146072795783568ad6e79e4c6781bb4202c384"};
+ static_assert(sonic_native_title_adapter_source_identity ==
+               sonic_native_title_adapter_provider_implementation_identity);
+ static_assert(
+*** Update File: C:/Users/ultim/Desktop/Sonic Adventure Recompiled/tools/benchmark-stage.py
+@@
+ parser.add_argument('--collision-candidates', choices=('native','retained'), default='native', help='Matched complete TOUCH-POLY owner comparison')
+ parser.add_argument('--motion-sampling', choices=('native','retained'), default='native', help='Matched complete motion/keyframe and SRT owner comparison')
+ parser.add_argument('--mesh-plan', choices=('cached','retained','verify'), default='cached', help='Matched authored topology/UV source-plan cache')
++parser.add_argument('--mesh-emission', choices=('batched','retained','verify'), default='batched', help='Matched indexed first-use/index emission plan')
+ parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
+ parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
+ parser.add_argument('--indexed-corners', choices=('on','off'), default='off', help='Transient authored-corner reuse experiment')
+@@
+ env['SARECOMP_NATIVE_MOTION_SAMPLING']='1' if args.motion_sampling=='native' else '0'
+ env['SARECOMP_MESH_SOURCE_PLAN']='0' if args.mesh_plan=='retained' else '1'
+ env['SARECOMP_MESH_SOURCE_PLAN_VERIFY']='1' if args.mesh_plan=='verify' else '0'
++env['SARECOMP_MESH_EMISSION_PLAN']='0' if args.mesh_emission=='retained' else '1'
++env['SARECOMP_MESH_EMISSION_PLAN_VERIFY']='1' if args.mesh_emission=='verify' else '0'
+ env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
+ env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '0'
+ env.update({
+*** End Patch

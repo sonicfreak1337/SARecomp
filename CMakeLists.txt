@@ -259,6 +259,9 @@ add_executable(game launcher/main.cpp)
 add_executable(sonic_execution_sampler EXCLUDE_FROM_ALL tools/sample_execution_thread.cpp)
 target_compile_options(sonic_execution_sampler PRIVATE /EHsc /utf-8)
 target_link_libraries(sonic_execution_sampler PRIVATE psapi dbghelp)
+add_executable(sonic_exception_tracer EXCLUDE_FROM_ALL tools/trace_process_exceptions.cpp)
+target_compile_options(sonic_exception_tracer PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_exception_tracer PRIVATE psapi dbghelp)
 target_include_directories(game PRIVATE "${CMAKE_BINARY_DIR}/generated")
 add_executable(sonic_menu_preview EXCLUDE_FROM_ALL tools/menu_preview.cpp
     src/sonic_menu.cpp src/sonic_menu_text.cpp src/sonic_menu_image.cpp

@@ -42,6 +42,7 @@ parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
 parser.add_argument('--profile-stacks', action='store_true', help='Up to 32 bounded Windows stack traces outside the game module; diagnostic only')
+parser.add_argument('--trace-exceptions', action='store_true', help='Trace host exceptions in the owned game; diagnostic, not a timing comparison')
 parser.add_argument('--winmm-order', choices=('position-first','capabilities-first'), default='capabilities-first')
 parser.add_argument('--hardware-input', choices=('fallback','isolated'), default='fallback',
     help='Isolated skips physical devices but retains the same forward probe and normal remapping')
@@ -68,6 +69,8 @@ if (args.native_triangle_contacts or args.native_atan_math) and args.gameplay_ti
 if args.original_math_families and (args.native_triangle_contacts or args.native_atan_math): parser.error('Native and retained family overrides conflict')
 sampler_exe = root/'build-performance/sonic_execution_sampler.exe'
 if args.profile_ms and not sampler_exe.is_file(): parser.error('Build sonic_execution_sampler first')
+tracer_exe=root/'build-performance/sonic_exception_tracer.exe'
+if args.trace_exceptions and not tracer_exe.is_file(): parser.error('Build sonic_exception_tracer first')
 busy = subprocess.run(['powershell.exe','-NoProfile','-Command',
     "if (Get-Process game,ninja,clang-cl,lld-link -ErrorAction SilentlyContinue) {exit 1}"],
     creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True)
@@ -132,6 +135,7 @@ samples=[]
 started=time.monotonic()
 forced=False
 profiler=None
+tracer=None
 with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
     startup = subprocess.STARTUPINFO()
     startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
@@ -142,6 +146,9 @@ with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
         startupinfo=startup,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.BELOW_NORMAL_PRIORITY_CLASS)
     print(f'SONIC_BENCHMARK_STARTED pid={process.pid} tag={args.tag} hidden=1 muted=1',flush=True)
     try:
+        if args.trace_exceptions:
+            tracer=subprocess.Popen([str(tracer_exe),str(process.pid),str(exe)],stdout=out,stderr=err,stdin=subprocess.DEVNULL,
+                startupinfo=startup,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         last_frame=-1
         while process.poll() is None:
             time.sleep(0.5)
@@ -167,6 +174,9 @@ with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
         if profiler is not None:
             try: profiler.wait(timeout=5)
             except subprocess.TimeoutExpired: profiler.kill();profiler.wait()
+        if tracer is not None:
+            try: tracer.wait(timeout=5)
+            except subprocess.TimeoutExpired: tracer.kill();tracer.wait()
 stderr=(run/'stderr.log').read_text(errors='replace')
 stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
@@ -232,6 +242,9 @@ profile_path=run/'execution-ip.json'
 profile=json.loads(profile_path.read_text()) if args.profile_ms and profile_path.is_file() else None
 result['profile_passed'] = not args.profile_ms or (profiler is not None and profiler.returncode==0
     and profile is not None and profile['samples']>0 and profile['errors']==0)
+result['exception_trace_exit_code']=tracer.returncode if tracer else None
+result['exception_trace_passed']=not args.trace_exceptions or (tracer is not None and tracer.returncode==0
+    and f'SONIC_EXCEPTION_TRACE_ATTACHED pid={process.pid}' in stdout)
 result['isolated_input_confirmed'] = 'SONIC_INPUT_PROBE isolated_hardware=1 profile=3 remapping=normal' in stderr
 if args.update_timing:
     (run/'update-timing.json').write_text(json.dumps({
@@ -285,7 +298,7 @@ if args.render_completion:
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
-    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed']
+    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed'] and result['exception_trace_passed']
     and (not args.update_timing or result['update_timing_passed'])
     and (not args.render_completion or result['render_completion_passed'])
     and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
