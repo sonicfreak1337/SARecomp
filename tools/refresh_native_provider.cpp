@@ -425,7 +425,7 @@ RenderHookExtension render_hook_extension(
     using namespace katana::runtime;
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
-    unsigned candidates_added=0;
+    unsigned candidates_added=0,motion_added=0;
     unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0,amy_effect_added=0,matrix_vectors_added=0;
     struct ReviewedRumble {std::uint32_t address,size;std::string_view symbol,sha;};
     constexpr std::array rumble_hooks{
@@ -526,6 +526,16 @@ RenderHookExtension render_hook_extension(
         const bool candidates=hook.symbol=="sonic_native_collision_candidates" &&
             hook.guest_address==0x8C029B00u && hook.covered_size==0xB6Cu &&
             hook.code_identity=="sha256:744ca095c47e07d9b87ed43cf54e013c45349cd472852cf44cee85dd7b946832";
+        const bool motion=(
+            (hook.symbol=="sonic_native_motion_position" && hook.guest_address==0x8C0400A0u && hook.covered_size==0x58u &&
+             hook.code_identity=="sha256:e030d045a21abfba6378dbed0b98214f6897dfb0c755aedb7e3158e61a94e819") ||
+            (hook.symbol=="sonic_native_motion_scale" && hook.guest_address==0x8C0400F8u && hook.covered_size==0x58u &&
+             hook.code_identity=="sha256:428bb930950b18bfd5d35b714a63b8c6d1ddcb4fd7107170935aa6ed12e203a3") ||
+            (hook.symbol=="sonic_native_motion_rotate_zyx" && hook.guest_address==0x8C040150u && hook.covered_size==0x58u &&
+             hook.code_identity=="sha256:2b3e88bb227cafbe94a2c676b80c6b68f976992ead98a923219afd38e770d4b7") ||
+            (hook.symbol=="sonic_native_motion_rotate_yxz" && hook.guest_address==0x8C0401A8u && hook.covered_size==0x58u &&
+             hook.code_identity=="sha256:989583a5b58daa5bd5b50eea6b8a326414246a6fa259b28dfedfe7b8d7eb1222")
+        );
         const bool atan=(
             (hook.symbol=="sonic_native_atan" && hook.guest_address==0x8C10EEC4u && hook.covered_size==0x1E0u &&
              hook.code_identity=="sha256:1361220e5d950f6c9548df0303e16156c0aceb2c3f19753d7329dc28070d6496") ||
@@ -535,7 +545,7 @@ RenderHookExtension render_hook_extension(
              hook.code_identity=="sha256:4c9efceb0a2491382e2251fb758565cb4073f1292ea079692f68e79e22246b82") ||
             (hook.symbol=="sonic_native_atan_scale" && hook.guest_address==0x8C10E6F8u && hook.covered_size==0xC0u &&
              hook.code_identity=="sha256:316c8b53e094bc27f5d85d3be392105d732e2aae3609409e41b862ce1dddb4ca"));
-        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !candidates && !atan && !amy_effect && !matrix_vectors) ||
+        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !candidates && !motion && !atan && !amy_effect && !matrix_vectors) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != ((rumble||amy_effect)?NativePortHookOriginalPolicy::ReplacesOriginal:
@@ -555,11 +565,11 @@ RenderHookExtension render_hook_extension(
         }
         result.hooks.push_back(hook);
         result.added.push_back(hook);
-        if(candidates) ++candidates_added;else if(language) ++language_added;else if(camera) ++camera_added;
+        if(motion) ++motion_added;else if(candidates) ++candidates_added;else if(language) ++language_added;else if(camera) ++camera_added;
         else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;
         else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(matrix_vectors) ++matrix_vectors_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else if(amy_effect) ++amy_effect_added;else ++rendering_added;
     }
-    if (old != before.hooks.size() || candidates_added>1u ||
+    if (old != before.hooks.size() || candidates_added>1u || (motion_added!=0u && motion_added!=4u) ||
         (rendering_added!=0u && rendering_added!=2u) ||
         (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u ||
         (rumble_added!=0u && rumble_added!=4u) || cadence_added>1u || palette_added>1u || normals_added>1u ||

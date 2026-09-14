@@ -15,6 +15,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_collision_math.hpp sonic_collision_math.cpp
     sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
     sonic_collision_candidates.hpp sonic_collision_candidates.cpp ../tools/prepare_collision_candidates.py
+    sonic_motion_sampling.hpp sonic_motion_sampling.cpp ../tools/prepare_motion_sampling.py
     sonic_atan_math.hpp sonic_atan_math.cpp
     sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp
     sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp

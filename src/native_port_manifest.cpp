@@ -171,7 +171,7 @@ inline constexpr std::string_view
         // Fixed product output: 60 without VSync, monitor-paced with VSync;
         // Original timing is authoritative for both update and output cadence.
         // Authenticated MINICART results AOT supplement and Big's bound HUD owners.
-        "sha256:d0214ce9eb79d89c7fdc35ee0ae9ef7de08f7f08b766986f557cd982a02cf914"};
+        "sha256:1a8a9350bba29679f26308d071e2da0bbafca8b6ff2b4f0791c7e292749a2f2d"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -1710,6 +1710,38 @@ int main(const int argc, char* argv[]) {
                 katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
                 "sonic_native_collision_candidates",
                 "sha256:744ca095c47e07d9b87ed43cf54e013c45349cd472852cf44cee85dd7b946832",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C0400A0u, 0x58u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_motion_position",
+                "sha256:e030d045a21abfba6378dbed0b98214f6897dfb0c755aedb7e3158e61a94e819",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C0400F8u, 0x58u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_motion_scale",
+                "sha256:428bb930950b18bfd5d35b714a63b8c6d1ddcb4fd7107170935aa6ed12e203a3",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C040150u, 0x58u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_motion_rotate_zyx",
+                "sha256:2b3e88bb227cafbe94a2c676b80c6b68f976992ead98a923219afd38e770d4b7",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C0401A8u, 0x58u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_motion_rotate_yxz",
+                "sha256:989583a5b58daa5bd5b50eea6b8a326414246a6fa259b28dfedfe7b8d7eb1222",
                 sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C10FAF8u, 0x104u,

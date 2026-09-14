@@ -62,6 +62,7 @@
 #include "sonic_matrix_inverse.hpp"
 #include "sonic_triangle_contacts.hpp"
 #include "sonic_collision_candidates.hpp"
+#include "sonic_motion_sampling.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
 #include "sonic_atan_math.hpp"
@@ -1859,6 +1860,8 @@ struct SonicNativeGameplayProbe final {
     std::uint64_t triangle_contacts_original_calls=0u;
     std::uint64_t collision_candidates_native_calls=0u;
     std::uint64_t collision_candidates_original_calls=0u;
+    std::uint64_t motion_sampling_native_calls=0u;
+    std::uint64_t motion_sampling_original_calls=0u;
     std::array<std::uint64_t,4u> matrix_vector_native_calls{};
     std::array<std::uint64_t,4u> matrix_vector_original_calls{};
     std::array<std::uint64_t,4u> atan_native_calls{};
@@ -17976,6 +17979,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " triangle_contacts_original_calls=" << probe.triangle_contacts_original_calls
               << " collision_candidates_native_calls=" << probe.collision_candidates_native_calls
               << " collision_candidates_original_calls=" << probe.collision_candidates_original_calls
+              << " motion_sampling_native_calls=" << probe.motion_sampling_native_calls
+              << " motion_sampling_original_calls=" << probe.motion_sampling_original_calls
               << " matrix_vector_point_native_calls=" << probe.matrix_vector_native_calls[0]
               << " matrix_vector_point_original_calls=" << probe.matrix_vector_original_calls[0]
               << " matrix_vector_direction_native_calls=" << probe.matrix_vector_native_calls[1]
@@ -34427,6 +34432,37 @@ sonic_native_collision_candidates(katana::runtime::NativePortContext& context) n
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     }catch(...){return graphics_abort(context,sonic_native_graphics_error_model_transform);}
 }
+
+static katana::runtime::NativePortHookResult
+sonic_native_motion_sampling_impl(katana::runtime::NativePortContext& context) noexcept {
+    using namespace katana::runtime;
+    if(!sonic_native_gameplay_math_active() || !context.cpu)
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    static const bool enabled=[] {
+        const auto* flag=std::getenv("SARECOMP_NATIVE_MOTION_SAMPLING");
+        return !flag || std::string_view(flag)!="0";
+    }();
+    auto& probe=sonic_native_title_state.gameplay_probe;
+    try{
+        auto* const services=katana_port_generated::runtime_dispatch_detail::active_services;
+        if(enabled && services && sonic::motion_sampling::try_execute(*context.cpu,services->immutable_write_guard())){
+            ++probe.motion_sampling_native_calls;
+            return {NativePortHookAction::Return,0u,0u};
+        }
+        if(++probe.motion_sampling_original_calls<=4u && enabled)
+            std::cerr<<"SONIC_MOTION_SAMPLING_ORIGINAL frame="<<context.frame_index
+                <<" pc="<<context.cpu->pc<<" fpscr="<<context.cpu->fpscr<<'\n';
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    }catch(...){return graphics_abort(context,sonic_native_graphics_error_model_transform);}
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_motion_position(katana::runtime::NativePortContext& c) noexcept {return sonic_native_motion_sampling_impl(c);}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_motion_scale(katana::runtime::NativePortContext& c) noexcept {return sonic_native_motion_sampling_impl(c);}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_motion_rotate_zyx(katana::runtime::NativePortContext& c) noexcept {return sonic_native_motion_sampling_impl(c);}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_motion_rotate_yxz(katana::runtime::NativePortContext& c) noexcept {return sonic_native_motion_sampling_impl(c);}
 
 static katana::runtime::NativePortHookResult
 sonic_native_atan_impl(katana::runtime::NativePortContext& context,std::size_t index) noexcept {

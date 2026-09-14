@@ -497,6 +497,32 @@ target_link_libraries(sonic_near_collision_tests PRIVATE bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
 
+set(SONIC_MOTION_SAMPLING_DIR "${CMAKE_BINARY_DIR}/generated/motion-sampling")
+set(SONIC_MOTION_SAMPLING_GENERATED "${SONIC_MOTION_SAMPLING_DIR}/motion-identities.inc")
+set(SONIC_MOTION_REFERENCE "${SONIC_MOTION_SAMPLING_DIR}/motion-reference-interpreter.cpp")
+foreach(owner position scale rotate-zyx rotate-yxz key-index float-key angle-key)
+    list(APPEND SONIC_MOTION_SAMPLING_GENERATED "${SONIC_MOTION_SAMPLING_DIR}/${owner}-body.inc")
+endforeach()
+add_custom_command(OUTPUT ${SONIC_MOTION_SAMPLING_GENERATED} "${SONIC_MOTION_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare_motion_sampling.py"
+        --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+        --output "${SONIC_MOTION_SAMPLING_DIR}"
+        --interpreter "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp"
+    DEPENDS "${SONIC_ROOT}/tools/prepare_motion_sampling.py" "${SONIC_ROOT}/tools/prepare_collision_candidates.py"
+        "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+        "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp"
+    VERBATIM)
+add_executable(sonic_motion_sampling_tests EXCLUDE_FROM_ALL tools/test_motion_sampling.cpp
+    src/sonic_motion_sampling.cpp ${SONIC_MOTION_SAMPLING_GENERATED} "${SONIC_MOTION_REFERENCE}")
+target_sources(katana_native_title_adapter PRIVATE src/sonic_motion_sampling.cpp ${SONIC_MOTION_SAMPLING_GENERATED})
+target_include_directories(katana_native_title_adapter PRIVATE "${SONIC_MOTION_SAMPLING_DIR}")
+target_include_directories(sonic_motion_sampling_tests PRIVATE "${SONIC_ROOT}/src"
+    "${SONIC_MOTION_SAMPLING_DIR}" "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_motion_sampling_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_motion_sampling_tests PRIVATE bcrypt
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
+
 add_executable(sonic_corner_indices_tests EXCLUDE_FROM_ALL tools/test_corner_indices.cpp)
 target_include_directories(sonic_corner_indices_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_corner_indices_tests PRIVATE /EHsc /utf-8)
