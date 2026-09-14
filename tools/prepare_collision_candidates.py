@@ -28,9 +28,9 @@ SOURCE_RANGES = sorted([
     (0x8C639E08, 0x130), (0x8C10CD1C, 0xC0),
 ])
 
-def emit_identities(ram):
+def emit_identities(ram, source_ranges=SOURCE_RANGES):
     lines = ['// Authenticated immutable source bytes; never decoded at runtime.']
-    for i, (address, size) in enumerate(SOURCE_RANGES):
+    for i, (address, size) in enumerate(source_ranges):
         data = ram[address-BASE:address-BASE+size]
         lines.append(f'constexpr std::array<std::uint8_t,{size}> identity_{i}{{')
         lines.extend('    '+','.join(f'0x{v:02X}' for v in data[j:j+16])+','
@@ -38,16 +38,16 @@ def emit_identities(ram):
         lines.append('};')
     lines.append('constexpr std::array identities{')
     lines.extend(f'    SourceSpan{{0x{address:08X}u,identity_{i}}},'
-                 for i, (address, _) in enumerate(SOURCE_RANGES))
+                 for i, (address, _) in enumerate(source_ranges))
     lines.append('};')
     return '\n'.join(lines)+'\n'
 
 def signed(value, bits):
     return (value ^ (1 << (bits - 1))) - (1 << (bits - 1))
 
-def inspect(ram):
+def inspect(ram, entry=ENTRY, end=END):
     words = lambda pc: struct.unpack_from('<H', ram, pc - BASE)[0]
-    pending = [ENTRY]
+    pending = [entry]
     instructions = {}
     delay_slots = set()
     calls = []
@@ -55,7 +55,7 @@ def inspect(ram):
         pc = pending.pop()
         if pc in instructions:
             continue
-        if pc < ENTRY or pc + 2 > END or pc & 1:
+        if pc < entry or pc + 2 > end or pc & 1:
             raise ValueError(f'Control flow leaves the complete owner: {pc:08X}')
         op = words(pc)
         instructions[pc] = op
@@ -159,7 +159,8 @@ def emit_simple(pc, op, ram):
             if m == 9: return f'{f}=0x3F800000u;'
     raise ValueError(f'Unreviewed instruction at {pc:08X}: {op:04X}')
 
-def emit_body(ram, instructions):
+def emit_body(ram, instructions, simple_emitter=emit_simple):
+    emit_simple = simple_emitter
     lines = ['// Generated from the authenticated PAL TOUCH-POLY owner.',
              '// Required context: cpu, load/load16/load8, store/store16, set_t, call.',
              '// call(target) executes a complete synchronous return to cpu.pr.']

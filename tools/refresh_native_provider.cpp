@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <limits>
 #include <ranges>
 #include <set>
@@ -308,6 +309,111 @@ struct TemporaryArtifacts final {
 // Sonic-local extensions: rendering, language/save and native rumble boundaries.
 // Admit only reviewed byte-bound hooks; continuing hooks need retained AOT.
 // This is not a general structural refresh or permission to change the frozen pack.
+// The bounded NEAR experiment was measured and withdrawn. Permit only this
+// exact optional static-image hook to retire; every other structural change
+// still passes the existing neutral-definition and provider checks.
+katana::runtime::NativePortDefinition without_retired_near_hook(
+    const katana::runtime::NativePortDefinition& before,
+    const katana::runtime::NativePortDefinition& after,
+    std::vector<katana::runtime::NativePortHookBinding>& remaining_hooks,
+    std::optional<katana::runtime::NativePortHookBinding>& retired) {
+    using namespace katana::runtime;
+    auto result=before;
+    const auto matches=[](const auto& h) {
+        return h.guest_address==0x8C028BFEu || h.symbol=="sonic_native_near_collision";
+    };
+    if(std::ranges::any_of(after.hooks,matches))return result;
+    remaining_hooks.assign(before.hooks.begin(),before.hooks.end());
+    for(auto it=remaining_hooks.begin();it!=remaining_hooks.end();++it){
+        if(!matches(*it))continue;
+        if(retired || it->guest_address!=0x8C028BFEu || it->covered_size!=0x246u ||
+           it->symbol!="sonic_native_near_collision" ||
+           it->code_identity!="sha256:1039a254e1a32bfd40deedc30c20cb7e4cb8c082732c926160ba58a95c6992c8" ||
+           it->kind!=NativePortHookKind::FunctionEntry ||
+           it->requirement!=NativePortHookRequirement::Required ||
+           it->original_policy!=NativePortHookOriginalPolicy::MayContinueOriginal ||
+           it->code_source!=NativePortHookCodeSource::StaticImage || !it->code_source_identity.empty())
+            fail("sonic-retired-near-contract");
+        retired=*it;
+        remaining_hooks.erase(it);
+        if(std::ranges::any_of(remaining_hooks,matches))fail("sonic-retired-near-duplicate");
+        break;
+    }
+    result.hooks=remaining_hooks;
+    return result;
+}
+
+void retire_near_metadata(std::string& dispatch,std::string& audit,
+    const katana::runtime::NativePortHookBinding& hook,std::size_t old_count) {
+    const auto region=array_region(dispatch,"native_hooks{{");
+    const std::string newline=dispatch.find("\r\n")!=std::string::npos?"\r\n":"\n";
+    const std::string symbol(hook.symbol);
+    const auto validate_counts=[&]() {
+        const auto count=[](const std::string& text,const std::string& type,const std::string& suffix) {
+            const auto end=unique_marker(text,suffix),marker=text.rfind(type,end);
+            if(marker==std::string::npos)fail("sonic-retired-near-declared-count");
+            const auto begin=marker+type.size();std::size_t result=0u;
+            const auto parsed=std::from_chars(text.data()+begin,text.data()+end,result);
+            if(parsed.ec!=std::errc{} || parsed.ptr!=text.data()+end)
+                fail("sonic-retired-near-declared-count");
+            return result;
+        };
+        const auto actual=array_region(dispatch,"native_hooks{{").entries.size();
+        if(count(dispatch,"constexpr std::array<katana::runtime::NativePortHookBinding, ",
+            "u> native_hooks{{")!=actual)fail("sonic-retired-near-hook-declaration-count");
+        const std::string marker="> required_tokens{";
+        const auto begin=unique_marker(audit,marker)+marker.size(),end=audit.find("};",begin);
+        if(end==std::string::npos)fail("sonic-retired-near-audit-boundary");
+        const auto tokens=quoted_tokens(audit,begin,end);
+        if(count(audit,"constexpr std::array<std::string_view, ",marker)!=tokens.size() ||
+           std::ranges::any_of(tokens,[](const auto& token){return token.value.empty();}))
+            fail("sonic-retired-near-audit-declaration-count");
+    };
+    validate_counts();
+    const std::string positive="    if ((source | 0x20000000u) == 0xAC028BFEu) return true;"+newline;
+    const std::string negative="        if ((source | 0x20000000u) == 0xAC028BFEu) return false;"+newline;
+    // Frozen code still has the original exact entry; retirement restores it.
+    if(dispatch.find("{{0x8C028BFEu, 0x0C028BFEu}, ")==std::string::npos &&
+       dispatch.find("{{0x8C028BFEu, 0xC028BFEu}, ")==std::string::npos)
+        fail("sonic-retired-near-missing-frozen-block");
+    // The writer below is transactional, but allow canonical replay if the
+    // caller had not yet advanced current.katana-native-port after success.
+    if(region.entries.size()+1u==old_count && dispatch.find(symbol)==std::string::npos &&
+       audit.find(symbol)==std::string::npos && dispatch.find(positive)==std::string::npos &&
+       dispatch.find(negative)==std::string::npos)return;
+    if(region.entries.size()!=old_count)fail("sonic-retired-near-cardinality");
+    const auto erase=[](std::string& text,const std::string& token) {
+        text.erase(unique_marker(text,token),token.size());
+    };
+    const std::string row="    "+hook_prefix(hook)+"\""+
+        std::string(hook.provider_implementation_identity)+"\""+hook_suffix(hook)+","+newline;
+    erase(dispatch,row);
+    const std::string type="constexpr std::array<katana::runtime::NativePortHookBinding, ";
+    const auto old_type=type+std::to_string(old_count)+"u> native_hooks{{";
+    dispatch.replace(unique_marker(dispatch,old_type),old_type.size(),
+        type+std::to_string(old_count-1u)+"u> native_hooks{{");
+    erase(dispatch,"extern \"C\" katana::runtime::NativePortHookResult "+symbol+
+        "(katana::runtime::NativePortContext&) noexcept;"+newline);
+    erase(dispatch,"        case 0x8C028BFEu: return HookDispatch{true, HookKind::FunctionEntry, HookRequirement::Required, katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal, &"+
+        symbol+", 0x8C028BFEu, 582u};"+newline);
+    erase(dispatch,positive);erase(dispatch,negative);
+    const std::string audit_newline=audit.find("\r\n")!=std::string::npos?"\r\n":"\n";
+    erase(audit,"    std::string_view{\""+symbol+"\"},"+audit_newline);
+    const std::string audit_type="constexpr std::array<std::string_view, ";
+    const auto end=unique_marker(audit,"> required_tokens{");
+    const auto marker=audit.rfind(audit_type,end);
+    if(marker==std::string::npos)fail("sonic-retired-near-audit-cardinality");
+    const auto begin=marker+audit_type.size();unsigned count=0u;
+    const auto parsed=std::from_chars(audit.data()+begin,audit.data()+end,count);
+    if(parsed.ec!=std::errc{} || parsed.ptr!=audit.data()+end || !count)
+        fail("sonic-retired-near-audit-cardinality");
+    audit.replace(begin,end-begin,std::to_string(count-1u));
+    if(dispatch.find(symbol)!=std::string::npos || audit.find(symbol)!=std::string::npos ||
+       array_region(dispatch,"native_hooks{{").entries.size()+1u!=old_count)
+        fail("sonic-retired-near-incomplete");
+    validate_counts();
+}
+
 struct RenderHookExtension {
     katana::runtime::NativePortDefinition before;
     std::vector<katana::runtime::NativePortHookBinding> hooks;
@@ -1037,7 +1143,11 @@ int main(const int argc, char* argv[]) {
         const auto after =
             katana::runtime::NativePortArtifact::load(argv[3]);
 
-        const auto render_extension = render_hook_extension(before->definition(), after->definition());
+        std::optional<katana::runtime::NativePortHookBinding> retired_near;
+        std::vector<katana::runtime::NativePortHookBinding> remaining_hooks;
+        const auto retained_before=without_retired_near_hook(
+            before->definition(),after->definition(),remaining_hooks,retired_near);
+        const auto render_extension = render_hook_extension(retained_before, after->definition());
         TemporaryArtifacts temporary;
         const auto scratch = generated_root.parent_path();
         const auto before_neutral = neutral_definition_identity(
@@ -1074,6 +1184,7 @@ int main(const int argc, char* argv[]) {
             "sha256:" + katana::io::sha256_bytes(dispatch);
         const auto audit_before_sha =
             "sha256:" + katana::io::sha256_bytes(audit);
+        if(retired_near)retire_near_metadata(dispatch,audit,*retired_near,before->definition().hooks.size());
         insert_render_hooks(dispatch, audit, render_extension, generated_root);
 
         std::string old_key;

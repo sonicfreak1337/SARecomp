@@ -55,6 +55,14 @@ target_link_libraries(sonic_native_provider_refresh PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime gdi32)
 
+add_executable(sonic_provider_retirement_tests EXCLUDE_FROM_ALL tools/test_provider_retirement.cpp)
+target_compile_definitions(sonic_provider_retirement_tests PRIVATE KATANA_ANALYZER_ABI_VERSION=80)
+target_compile_options(sonic_provider_retirement_tests PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_provider_retirement_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
+    KatanaRecomp::native_port_runtime gdi32)
+
 add_library(katana_native_title_adapter STATIC
     src/native_title_adapter.cpp
     src/native_latent_texture_dispatch_provider.cpp
@@ -464,6 +472,28 @@ target_include_directories(sonic_collision_candidates_tests PRIVATE
     "${SONIC_ROOT}/src" "${CMAKE_BINARY_DIR}/generated/collision-candidates" "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
 target_compile_options(sonic_collision_candidates_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_collision_candidates_tests PRIVATE bcrypt sonic_fpu_body
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
+
+set(SONIC_NEAR_DIR "${CMAKE_BINARY_DIR}/generated/near-collision")
+set(SONIC_NEAR_GENERATED "${SONIC_NEAR_DIR}/near-poly-body.inc"
+    "${SONIC_NEAR_DIR}/near-eligibility-body.inc" "${SONIC_NEAR_DIR}/near-identities.inc")
+add_custom_command(OUTPUT ${SONIC_NEAR_GENERATED}
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare_near_collision.py"
+        --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+        --output "${SONIC_NEAR_DIR}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare_near_collision.py"
+        "${SONIC_ROOT}/tools/prepare_collision_candidates.py"
+        "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+    VERBATIM)
+add_executable(sonic_near_collision_tests EXCLUDE_FROM_ALL tools/test_near_collision.cpp
+    src/sonic_near_collision.cpp src/sonic_collision_math.cpp src/sonic_matrix_stack.cpp
+    src/sonic_matrix_vectors.cpp ${SONIC_NEAR_GENERATED}
+    "${CMAKE_BINARY_DIR}/cull-test-sdk/src/runtime/dynamic_interpreter.cpp")
+target_include_directories(sonic_near_collision_tests PRIVATE "${SONIC_ROOT}/src"
+    "${SONIC_NEAR_DIR}" "${CMAKE_BINARY_DIR}/cull-test-sdk/include")
+target_compile_options(sonic_near_collision_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_near_collision_tests PRIVATE bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
 
