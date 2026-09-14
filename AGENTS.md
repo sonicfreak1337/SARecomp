@@ -78,6 +78,9 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Steam Deck is always fullscreen: native 1280x800 / 16:10 in handheld mode,
   supported external display resolutions/aspects when docked, and safe return
   to the internal display on undock. Original 4:3 remains an explicit choice.
+- Until Deck performance is resolved, new Deck installations default to
+  Original game timing at the user's request. Recompiled stays selectable;
+  reinstalling must preserve explicit existing settings and all saves.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

@@ -14,6 +14,7 @@
 #include "../sonic_presentation.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -46,9 +47,52 @@ constexpr VkBlendOp operations[] = {VK_BLEND_OP_ADD,VK_BLEND_OP_SUBTRACT,VK_BLEN
 constexpr VkPrimitiveTopology topologies[] = {VK_PRIMITIVE_TOPOLOGY_POINT_LIST,VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
     VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP};
 constexpr VkSamplerAddressMode addresses[] = {VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,VK_SAMPLER_ADDRESS_MODE_REPEAT,VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT};
+using PipelineKey=std::array<char,18*sizeof(std::uint32_t)>;
+struct PipelineKeyHash {
+    std::size_t operator()(const PipelineKey& key)const noexcept {
+        return std::hash<std::string_view>{}({key.data(),key.size()});
+    }
+};
+// Only updates a newly allocated, unbound set. All pointed-to descriptors
+// live until commit; no pending GPU set is modified or reused here.
+class DescriptorWrites {
+    VkDescriptorSet set_;
+    std::array<VkWriteDescriptorSet,9> writes_;
+    std::array<VkDescriptorBufferInfo,9> buffers_;
+    std::array<VkDescriptorImageInfo,9> images_;
+    unsigned count_=0;
+    VkWriteDescriptorSet& next(unsigned binding,VkDescriptorType type){
+        if(count_>=writes_.size())throw std::logic_error("vulkan-descriptor-write-capacity");
+        auto& write=writes_[count_];write={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet=set_;write.dstBinding=binding;write.descriptorCount=1;write.descriptorType=type;
+        return write;
+    }
+public:
+    explicit DescriptorWrites(VkDescriptorSet set):set_(set){}
+    DescriptorWrites(const DescriptorWrites&)=delete;
+    DescriptorWrites& operator=(const DescriptorWrites&)=delete;
+    void buffer(unsigned binding,VkDescriptorType type,VkDescriptorBufferInfo info){
+        auto& write=next(binding,type);buffers_[count_]=info;write.pBufferInfo=&buffers_[count_++];
+    }
+    void image(unsigned binding,VkDescriptorType type,VkDescriptorImageInfo info){
+        auto& write=next(binding,type);images_[count_]=info;write.pImageInfo=&images_[count_++];
+    }
+    void commit(VkDevice device)const {
+        // Same-binary diagnostic comparison, never a menu setting.
+        static const bool separate=[] {const char* value=std::getenv("SARECOMP_VULKAN_SEPARATE_WRITES");return value&&std::string_view(value)=="1";}();
+        if(separate){for(unsigned i=0;i<count_;++i)vkUpdateDescriptorSets(device,1,&writes_[i],0,nullptr);}
+        else vkUpdateDescriptorSets(device,count_,writes_.data(),0,nullptr);
+    }
+};
 }
 
 struct VulkanRenderer::Impl {
+    using DrawDescriptorKey=std::array<std::uint64_t,18>;
+    struct DrawDescriptorHash {
+        std::size_t operator()(const DrawDescriptorKey& key)const noexcept {
+            return std::hash<std::string_view>{}({reinterpret_cast<const char*>(key.data()),sizeof(key)});
+        }
+    };
     struct Image {
         VkImage image{}; VkDeviceMemory memory{}; VkImageView view{};
         VkFormat format{}; VkExtent2D extent{}; unsigned levels=1;
@@ -64,6 +108,12 @@ struct VulkanRenderer::Impl {
         std::vector<VkDescriptorPool> descriptors; unsigned descriptor_pool=0, sets=0;
         std::vector<UploadBlock> uploads; unsigned upload_block=0;
         std::vector<std::function<void()>> retired; bool pending=false;
+        // Sets and upload bytes are immutable until this submission's fence.
+        // Dynamic offsets select each draw's fresh constants inside the arena.
+        std::unordered_map<DrawDescriptorKey,VkDescriptorSet,DrawDescriptorHash> draw_sets;
+        DrawDescriptorKey last_draw_key{};VkDescriptorSet last_draw_set{};
+        decltype(NativePortFogState{}.lookup_table) last_fog{};
+        VkDescriptorBufferInfo fog_upload{};bool fog_valid=false;
     };
     VkInstance instance{}; VkSurfaceKHR surface{}; VkPhysicalDevice physical{}; VkDevice device{};
 #ifdef _WIN32
@@ -80,6 +130,8 @@ struct VulkanRenderer::Impl {
     std::vector<Image> swap_images; std::vector<VkSemaphore> present_semaphores;
     std::array<Submission,3> submissions{}; unsigned submission_index=0;
     Submission* current=nullptr; VkCommandBuffer command{}; bool rendering=false;
+    VkPipeline bound_pipeline{};
+    std::optional<NativePortPixelRect> bound_viewport;
     Image working,completed,depth,white,type_base,type_depth,type_heads,type_counts;
     Buffer type_fragments,type_status; bool type_ready=false,completed_ready=false;
     std::uint64_t completed_host_image=0;
@@ -94,9 +146,21 @@ struct VulkanRenderer::Impl {
     std::string cache_key;
     bool warming_pipelines=false;
     VkFormat depth_format=VK_FORMAT_D32_SFLOAT;
-    std::unordered_map<std::string,VkPipeline> pipelines;
-    std::unordered_set<std::string> unused_warm_pipelines;
+    std::unordered_map<PipelineKey,VkPipeline,PipelineKeyHash> pipelines;
+    std::unordered_set<PipelineKey,PipelineKeyHash> unused_warm_pipelines;
     std::vector<std::pair<NativePortSamplerState,VkSampler>> samplers;
+    const bool descriptor_cache=[] {
+        const char* value=std::getenv("SARECOMP_VULKAN_DESCRIPTOR_CACHE");
+        return !value||std::string_view(value)!="0";
+    }();
+    const bool state_cache=[] {
+        const char* value=std::getenv("SARECOMP_VULKAN_STATE_CACHE");
+        return !value||std::string_view(value)!="0";
+    }();
+    // Explicit rendering-test mode for an unavailable/locked desktop WSI.
+    // All game images still run on the real GPU and remain capturable. Only
+    // monitor presentation is omitted; this is never a product FPS result.
+    bool offscreen_test=false;
 
     explicit Impl(void* window,const NativePortGraphicsConfig& settings) : config(settings) {
         try { initialize(window); } catch (...) { cleanup(); throw; }
@@ -106,6 +170,7 @@ struct VulkanRenderer::Impl {
     void initialize(void* window);
     void create_swapchain();
     void service_swapchain() {
+        if(offscreen_test)return;
         if(wants_exclusive()!=exclusive_requested)swap_dirty=true;
         if(swap_dirty)create_swapchain();
     }
@@ -214,17 +279,28 @@ struct VulkanRenderer::Impl {
     }
     std::pair<VkBuffer,VkDeviceSize> upload(std::span<const std::byte> data,VkDeviceSize alignment=16);
     VkDescriptorSet descriptor(VkDescriptorSetLayout);
-    void uniform(VkDescriptorSet,unsigned,std::span<const std::byte>);
-    void image_descriptor(VkDescriptorSet,unsigned,const Image&,VkDescriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-    void buffer_descriptor(VkDescriptorSet,unsigned,const Buffer&);
-    void sampler_descriptor(VkDescriptorSet,const NativePortSamplerState&);
+    void uniform(DescriptorWrites&,unsigned,std::span<const std::byte>);
+    void image_descriptor(DescriptorWrites&,unsigned,const Image&,VkDescriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+    void buffer_descriptor(DescriptorWrites&,unsigned,const Buffer&);
+    void sampler_descriptor(DescriptorWrites&,const NativePortSamplerState&);
+    VkSampler sampler(const NativePortSamplerState&);
+    std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> draw_descriptor(
+        const NativePortDrawPacket&,const Image&,std::span<const std::byte>,bool);
     VkPipeline pipeline(const NativePortDrawPacket&,NativePortPrimitiveTopology,int kind,VkFormat format);
     void warm_pipelines();
     void save_pipeline_cache() noexcept;
+    void bind_pipeline(VkPipeline next) {
+        if(state_cache&&bound_pipeline==next)return;
+        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,next);
+        bound_pipeline=next;
+    }
     void viewport(NativePortPixelRect rect) {
+        if(state_cache&&bound_viewport&&bound_viewport->x==rect.x&&bound_viewport->y==rect.y&&
+            bound_viewport->width==rect.width&&bound_viewport->height==rect.height)return;
         VkViewport viewport{float(rect.x),float(rect.y),float(rect.width),float(rect.height),0,1};
         VkRect2D scissor{{int(rect.x),int(rect.y)},{rect.width,rect.height}};
         vkCmdSetViewport(command,0,1,&viewport); vkCmdSetScissor(command,0,1,&scissor);
+        bound_viewport=rect;
     }
     void copy_image(Image& source,Image& destination) {
         barrier(source,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL); barrier(destination,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -242,6 +318,14 @@ void VulkanRenderer::Impl::initialize(void* window) {
 #else
     this->window=static_cast<SDL_Window*>(window);
 #endif
+    // The host also hides background-test windows after reading its normal
+    // initially-visible setting. Check the actual window, not that setting.
+    offscreen_test=!window_visible()&&[] {
+        const char* test=std::getenv("SARECOMP_VULKAN_OFFSCREEN_TEST");
+        const char* hidden=std::getenv("KATANA_PORT_BACKGROUND_TEST");
+        return test&&std::string_view(test)=="1"&&hidden&&std::string_view(hidden)=="1";
+    }();
+    if(offscreen_test)std::cerr<<"SONIC_VULKAN_OFFSCREEN_TEST active=1\n";
     check(volkInitialize(),"vulkan-loader");
 #ifdef _WIN32
     std::vector<const char*> extensions{VK_KHR_SURFACE_EXTENSION_NAME,VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
@@ -360,10 +444,10 @@ void VulkanRenderer::Impl::initialize(void* window) {
         VkPipelineLayoutCreateInfo p{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO}; p.setLayoutCount=1; p.pSetLayouts=&set;
         check(vkCreatePipelineLayout(device,&p,nullptr,&pipeline),"vulkan-pipeline-layout");
     };
-    constexpr auto ub=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,si=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    constexpr auto ub=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,du=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,si=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         st=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,sb=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,sa=VK_DESCRIPTOR_TYPE_SAMPLER;
-    layout({{0,ub},{1,ub},{4,si},{12,sa}},draw_layout,draw_pipeline_layout);
-    layout({{0,ub},{1,ub},{4,si},{12,sa},{9,si},{17,st},{18,sb},{19,st},{20,sb}},capture_layout,capture_pipeline_layout);
+    layout({{0,du},{1,du},{4,si},{12,sa}},draw_layout,draw_pipeline_layout);
+    layout({{0,du},{1,du},{4,si},{12,sa},{9,si},{17,st},{18,sb},{19,st},{20,sb}},capture_layout,capture_pipeline_layout);
     layout({{2,ub},{5,si},{6,si},{7,sb},{8,si},{9,sb}},resolve_layout,resolve_pipeline_layout);
     layout({{4,si},{12,sa}},composite_layout,composite_pipeline_layout);
     layout({{2,ub}},overlay_layout,overlay_pipeline_layout);
@@ -518,10 +602,15 @@ bool VulkanRenderer::Impl::start(bool nonblocking) {
     for(auto& retire:s.retired) retire(); s.retired.clear();
     check(vkResetCommandPool(device,s.pool,0),"vulkan-reset-command-pool");
     for(auto pool:s.descriptors) check(vkResetDescriptorPool(device,pool,0),"vulkan-reset-descriptors");
+    s.draw_sets.clear();s.last_draw_set={};s.fog_valid=false;
     s.descriptor_pool=0; s.sets=0; s.upload_block=0;
     for(auto& block:s.uploads) block.used=0;
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     check(vkBeginCommandBuffer(s.command,&begin),"vulkan-begin-commands");
+    // Vulkan state survives rendering boundaries, but not a new recording.
+    // Every graphics binding (scene, Type2, composite, overlay) uses the
+    // helpers above, so their cached values describe the actual command stream.
+    bound_pipeline={};bound_viewport.reset();
     current=&s; command=s.command;
     return true;
 }
@@ -558,7 +647,7 @@ VkDescriptorSet VulkanRenderer::Impl::descriptor(VkDescriptorSetLayout layout) {
     start();
     if(current->sets==4096) { ++current->descriptor_pool; current->sets=0; }
     if(current->descriptor_pool==current->descriptors.size()) {
-        const VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,12288},{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,24576},
+        const VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,12288},{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,8192},{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,24576},
             {VK_DESCRIPTOR_TYPE_SAMPLER,4096},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,8192},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,8192}};
         VkDescriptorPoolCreateInfo create{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; create.maxSets=4096;
         create.poolSizeCount=std::size(sizes); create.pPoolSizes=sizes;
@@ -570,26 +659,17 @@ VkDescriptorSet VulkanRenderer::Impl::descriptor(VkDescriptorSetLayout layout) {
     VkDescriptorSet result; check(vkAllocateDescriptorSets(device,&info,&result),"vulkan-descriptor-set"); ++current->sets;
     return result;
 }
-void VulkanRenderer::Impl::uniform(VkDescriptorSet set,unsigned binding,std::span<const std::byte> data) {
+void VulkanRenderer::Impl::uniform(DescriptorWrites& writes,unsigned binding,std::span<const std::byte> data) {
     auto [buffer,offset]=upload(data,std::max<VkDeviceSize>(16,properties.limits.minUniformBufferOffsetAlignment));
-    VkDescriptorBufferInfo info{buffer,offset,data.size()};
-    VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}; write.dstSet=set; write.dstBinding=binding;
-    write.descriptorCount=1; write.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; write.pBufferInfo=&info;
-    vkUpdateDescriptorSets(device,1,&write,0,nullptr);
+    writes.buffer(binding,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,{buffer,offset,data.size()});
 }
-void VulkanRenderer::Impl::image_descriptor(VkDescriptorSet set,unsigned binding,const Image& image,VkDescriptorType type) {
-    VkDescriptorImageInfo info{{},image.view,image.layout};
-    VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}; write.dstSet=set; write.dstBinding=binding;
-    write.descriptorCount=1; write.descriptorType=type; write.pImageInfo=&info;
-    vkUpdateDescriptorSets(device,1,&write,0,nullptr);
+void VulkanRenderer::Impl::image_descriptor(DescriptorWrites& writes,unsigned binding,const Image& image,VkDescriptorType type) {
+    writes.image(binding,type,{{},image.view,image.layout});
 }
-void VulkanRenderer::Impl::buffer_descriptor(VkDescriptorSet set,unsigned binding,const Buffer& buffer) {
-    VkDescriptorBufferInfo info{buffer.buffer,0,buffer.size};
-    VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}; write.dstSet=set; write.dstBinding=binding;
-    write.descriptorCount=1; write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; write.pBufferInfo=&info;
-    vkUpdateDescriptorSets(device,1,&write,0,nullptr);
+void VulkanRenderer::Impl::buffer_descriptor(DescriptorWrites& writes,unsigned binding,const Buffer& buffer) {
+    writes.buffer(binding,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,{buffer.buffer,0,buffer.size});
 }
-void VulkanRenderer::Impl::sampler_descriptor(VkDescriptorSet set,const NativePortSamplerState& state) {
+VkSampler VulkanRenderer::Impl::sampler(const NativePortSamplerState& state) {
     auto found=std::find_if(samplers.begin(),samplers.end(),[&](const auto& value){return value.first==state;});
     VkSampler sampler{};
     if(found!=samplers.end()) sampler=found->second;
@@ -603,20 +683,76 @@ void VulkanRenderer::Impl::sampler_descriptor(VkDescriptorSet set,const NativePo
         create.anisotropyEnable=state.filter==NativePortTextureFilter::Anisotropic; create.maxAnisotropy=std::min(float(state.maximum_anisotropy),properties.limits.maxSamplerAnisotropy);
         check(vkCreateSampler(device,&create,nullptr,&sampler),"vulkan-sampler"); samplers.emplace_back(state,sampler);
     }
-    VkDescriptorImageInfo info{sampler,{},{}}; VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-    write.dstSet=set; write.dstBinding=12; write.descriptorCount=1; write.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLER; write.pImageInfo=&info;
-    vkUpdateDescriptorSets(device,1,&write,0,nullptr);
+    return sampler;
+}
+void VulkanRenderer::Impl::sampler_descriptor(DescriptorWrites& writes,const NativePortSamplerState& state) {
+    writes.image(12,VK_DESCRIPTOR_TYPE_SAMPLER,{sampler(state),{},{}});
+}
+std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> VulkanRenderer::Impl::draw_descriptor(
+    const NativePortDrawPacket& packet,const Image& texture,std::span<const std::byte> constants,bool type_two) {
+    const auto alignment=std::max<VkDeviceSize>(16,properties.limits.minUniformBufferOffsetAlignment);
+    const auto [constant_buffer,constant_offset]=upload(constants,alignment);
+    auto& s=*current;
+    const auto fog=bytes(packet.fog.lookup_table);
+    VkDescriptorBufferInfo fog_info;
+    if(descriptor_cache&&s.fog_valid&&std::memcmp(&s.last_fog,fog.data(),fog.size())==0) {
+        fog_info=s.fog_upload;
+    }else {
+        const auto [buffer,offset]=upload(fog,alignment);
+        fog_info={buffer,offset,fog.size()};
+        if(descriptor_cache){std::memcpy(&s.last_fog,fog.data(),fog.size());s.fog_upload=fog_info;s.fog_valid=true;}
+    }
+    if(constant_offset>UINT32_MAX||fog_info.offset>UINT32_MAX)
+        throw std::logic_error("vulkan-dynamic-uniform-offset");
+    const std::array<std::uint32_t,2> offsets{std::uint32_t(constant_offset),std::uint32_t(fog_info.offset)};
+    const auto sample=sampler(packet.sampler);
+    DrawDescriptorKey key{};
+    if(descriptor_cache) {
+        const auto handle=[](auto value){return std::bit_cast<std::uint64_t>(value);};
+        key={handle(constant_buffer),constants.size(),handle(fog_info.buffer),fog_info.range,
+            handle(texture.view),std::uint64_t(texture.layout),handle(sample),std::uint64_t(type_two)};
+        if(type_two) {
+            key[8]=handle(type_depth.view);key[9]=type_depth.layout;
+            key[10]=handle(type_heads.view);key[11]=type_heads.layout;
+            key[12]=handle(type_counts.view);key[13]=type_counts.layout;
+            key[14]=handle(type_fragments.buffer);key[15]=type_fragments.size;
+            key[16]=handle(type_status.buffer);key[17]=type_status.size;
+        }
+        if(s.last_draw_set&&s.last_draw_key==key)return {s.last_draw_set,offsets};
+        if(const auto found=s.draw_sets.find(key);found!=s.draw_sets.end()) {
+            s.last_draw_key=key;s.last_draw_set=found->second;return {found->second,offsets};
+        }
+    }
+    const auto set=descriptor(type_two?capture_layout:draw_layout);
+    DescriptorWrites writes(set);
+    writes.buffer(0,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,{constant_buffer,0,constants.size()});
+    writes.buffer(1,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,{fog_info.buffer,0,fog_info.range});
+    image_descriptor(writes,4,texture);writes.image(12,VK_DESCRIPTOR_TYPE_SAMPLER,{sample,{},{}});
+    if(type_two) {
+        image_descriptor(writes,9,type_depth);
+        image_descriptor(writes,17,type_heads,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        image_descriptor(writes,19,type_counts,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        buffer_descriptor(writes,18,type_fragments);buffer_descriptor(writes,20,type_status);
+    }
+    writes.commit(device);
+    if(descriptor_cache) {
+        // A pathological stream may continue allocating normal sets. The
+        // optional lookup cache has a bounded size and never drops a draw.
+        if(s.draw_sets.size()<4096)s.draw_sets.emplace(key,set);
+        s.last_draw_key=key;s.last_draw_set=set;
+    }
+    return {set,offsets};
 }
 VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,NativePortPrimitiveTopology topology,int kind,VkFormat format) {
     // Semantic keys, never struct padding or per-draw material/clip constants.
-    std::string key;
-    auto add=[&](unsigned value) { for(unsigned shift=0;shift<32;shift+=8) key.push_back(char(value>>shift)); };
+    PipelineKey key;std::size_t position=0;
+    auto add=[&](unsigned value) { for(unsigned shift=0;shift<32;shift+=8) key[position++]=char(value>>shift); };
     add(kind); add(format); add(unsigned(topology));
     const auto& blend=packet.blend; const auto& z=packet.depth; const auto& raster=packet.rasterizer;
     add(blend.enabled); add(unsigned(blend.source_color)); add(unsigned(blend.destination_color)); add(unsigned(blend.color_operation));
     add(unsigned(blend.source_alpha)); add(unsigned(blend.destination_alpha)); add(unsigned(blend.alpha_operation)); add(blend.color_write_mask);
     add(z.test_enabled); add(z.write_enabled); add(unsigned(z.compare)); add(unsigned(raster.cull)); add(unsigned(raster.fill)); add(raster.front_counter_clockwise); add(raster.depth_clip_enabled);
-    if(auto it=pipelines.find(key);it!=pipelines.end()) {if(!warming_pipelines)unused_warm_pipelines.erase(it->first);return it->second;}
+    if(auto it=pipelines.find(key);it!=pipelines.end()) {if(!warming_pipelines&&!unused_warm_pipelines.empty())unused_warm_pipelines.erase(it->first);return it->second;}
     if(pipelines.size()>=config.maximum_pipeline_states) {
         // Historical warmup must never take budget away from this playthrough.
         // These objects have never been bound, so no in-flight work uses them.
@@ -734,8 +870,8 @@ void VulkanRenderer::Impl::save_pipeline_cache() noexcept {
             std::vector<std::byte> bytes(count);
             if(vkGetPipelineCacheData(device,pipeline_cache,&count,bytes.data())==VK_SUCCESS)sonic::startup::cache_save("vulkan-driver",cache_key,std::span(bytes.data(),count));
         }
-        std::vector<std::string> keys;for(const auto& [key,_]:pipelines)keys.push_back(key);std::sort(keys.begin(),keys.end());
-        std::string recipes;for(const auto& key:keys)recipes+=key;
+        std::vector<PipelineKey> keys;for(const auto& [key,_]:pipelines)keys.push_back(key);std::sort(keys.begin(),keys.end());
+        std::string recipes;recipes.reserve(keys.size()*sizeof(PipelineKey));for(const auto& key:keys)recipes.append(key.data(),key.size());
         sonic::startup::cache_save("vulkan-recipes",cache_key,std::as_bytes(std::span(recipes.data(),recipes.size())));
     }catch(...){}
 }
@@ -816,15 +952,7 @@ void VulkanRenderer::draw(const NativePortDrawPacket& packet,std::span<const Nat
     std::span<const std::uint32_t> indices,NativePortPrimitiveTopology topology,std::uint64_t mesh,std::uint64_t texture,
     NativePortPixelRect rect,std::span<const std::byte> constants,bool type_two) {
     auto& p=*impl_; p.start();
-    auto set=p.descriptor(type_two?p.capture_layout:p.draw_layout);
-    p.uniform(set,0,constants); p.uniform(set,1,bytes(packet.fog.lookup_table));
-    p.image_descriptor(set,4,texture?p.textures.at(texture):p.white); p.sampler_descriptor(set,packet.sampler);
-    if(type_two) {
-        p.image_descriptor(set,9,p.type_depth);
-        p.image_descriptor(set,17,p.type_heads,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        p.image_descriptor(set,19,p.type_counts,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        p.buffer_descriptor(set,18,p.type_fragments); p.buffer_descriptor(set,20,p.type_status);
-    }
+    auto [set,offsets]=p.draw_descriptor(packet,texture?p.textures.at(texture):p.white,constants,type_two);
     VkBuffer vb{},ib{}; VkDeviceSize vo=0,io=0; unsigned vertex_count,index_count;
     if(mesh) { const auto& source=p.meshes.at(mesh); vb=source.vertices.buffer; ib=source.indices.buffer;
         vertex_count=source.vertex_count; index_count=source.index_count; }
@@ -832,8 +960,8 @@ void VulkanRenderer::draw(const NativePortDrawPacket& packet,std::span<const Nat
         if(index_count) std::tie(ib,io)=p.upload(std::as_bytes(indices),4); }
     if(!p.rendering) p.begin_render(type_two?nullptr:&p.working,&p.depth);
     p.viewport(rect);
-    vkCmdBindPipeline(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline(packet,topology,type_two?1:0,p.working.format));
-    vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,type_two?p.capture_pipeline_layout:p.draw_pipeline_layout,0,1,&set,0,nullptr);
+    p.bind_pipeline(p.pipeline(packet,topology,type_two?1:0,p.working.format));
+    vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,type_two?p.capture_pipeline_layout:p.draw_pipeline_layout,0,1,&set,unsigned(offsets.size()),offsets.data());
     vkCmdBindVertexBuffers(p.command,0,1,&vb,&vo);
     if(index_count) { vkCmdBindIndexBuffer(p.command,ib,io,VK_INDEX_TYPE_UINT32); vkCmdDrawIndexed(p.command,index_count,1,0,0,0); }
     else vkCmdDraw(p.command,vertex_count,1,0,0);
@@ -857,12 +985,14 @@ void VulkanRenderer::resolve_type_two() {
     auto& p=*impl_; p.memory_barrier();
     p.barrier(p.type_heads,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); p.barrier(p.type_counts,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     auto set=p.descriptor(p.resolve_layout);
+    DescriptorWrites writes(set);
     const std::array<unsigned,4> constants{p.config.maximum_type2_fragments_per_pixel,0,0,p.config.maximum_type2_fragment_nodes};
-    p.uniform(set,2,bytes(constants)); p.image_descriptor(set,5,p.type_base); p.image_descriptor(set,6,p.type_heads);
-    p.buffer_descriptor(set,7,p.type_fragments); p.image_descriptor(set,8,p.type_counts); p.buffer_descriptor(set,9,p.type_status);
+    p.uniform(writes,2,bytes(constants)); p.image_descriptor(writes,5,p.type_base); p.image_descriptor(writes,6,p.type_heads);
+    p.buffer_descriptor(writes,7,p.type_fragments); p.image_descriptor(writes,8,p.type_counts); p.buffer_descriptor(writes,9,p.type_status);
+    writes.commit(p.device);
     p.begin_render(&p.working,nullptr); p.viewport({0,0,p.working.extent.width,p.working.extent.height});
     NativePortDrawPacket packet; packet.depth.test_enabled=packet.depth.write_enabled=false; packet.rasterizer.cull=NativePortCullMode::None;
-    vkCmdBindPipeline(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,2,p.working.format));
+    p.bind_pipeline(p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,2,p.working.format));
     vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.resolve_pipeline_layout,0,1,&set,0,nullptr); vkCmdDraw(p.command,3,1,0,0);
     p.end_render();
 }
@@ -882,6 +1012,7 @@ void VulkanRenderer::abort_frame() {
 void VulkanRenderer::resize(NativePortExtent extent) { impl_->config.output_extent=extent; impl_->swap_dirty=true; }
 bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span<const std::byte> overlay) {
     auto& p=*impl_; if(!p.completed_ready) return false;
+    if(p.offscreen_test){p.submit();return true;}
     if(p.wants_exclusive()!=p.exclusive_requested) p.swap_dirty=true;
     if(!presentation_policy::swapchain(p.swap_dirty,nonblocking,[&]{p.create_swapchain();}))return false;
     if(!p.swapchain || p.swap_dirty) return false;
@@ -921,18 +1052,19 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     if(acquired==VK_ERROR_OUT_OF_DATE_KHR) {p.swap_dirty=true; return false;}
     if(acquired==VK_SUBOPTIMAL_KHR) p.swap_dirty=true; else check(acquired,"vulkan-acquire");
     auto& completed=p.completed_host_image?p.textures.at(p.completed_host_image):p.completed;
-    auto set=p.descriptor(p.composite_layout); p.image_descriptor(set,4,completed); p.sampler_descriptor(set,NativePortSamplerState{});
+    auto set=p.descriptor(p.composite_layout);DescriptorWrites writes(set);
+    p.image_descriptor(writes,4,completed); p.sampler_descriptor(writes,NativePortSamplerState{});writes.commit(p.device);
     const float black[]={0,0,0,1}; auto& image=p.swap_images[index];
     p.begin_render(&image,nullptr,true,black); p.viewport(rect);
     NativePortDrawPacket packet; packet.depth.test_enabled=packet.depth.write_enabled=false; packet.rasterizer.cull=NativePortCullMode::None;
-    vkCmdBindPipeline(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,3,p.swap_format));
+    p.bind_pipeline(p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,3,p.swap_format));
     vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.composite_pipeline_layout,0,1,&set,0,nullptr); vkCmdDraw(p.command,3,1,0,0);
     if(!overlay.empty() && p.swap_extent.width>12 && p.swap_extent.height>12) {
-        auto os=p.descriptor(p.overlay_layout); p.uniform(os,2,overlay);
+        auto os=p.descriptor(p.overlay_layout);DescriptorWrites overlay_writes(os);p.uniform(overlay_writes,2,overlay);overlay_writes.commit(p.device);
         p.viewport({12,12,std::min(128u,p.swap_extent.width-12),std::min(32u,p.swap_extent.height-12)});
         packet.blend.enabled=true; packet.blend.source_color=NativePortBlendFactor::SourceAlpha;
         packet.blend.destination_color=packet.blend.destination_alpha=NativePortBlendFactor::InverseSourceAlpha;
-        vkCmdBindPipeline(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,4,p.swap_format));
+        p.bind_pipeline(p.pipeline(packet,NativePortPrimitiveTopology::TriangleList,4,p.swap_format));
         vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,p.overlay_pipeline_layout,0,1,&os,0,nullptr); vkCmdDraw(p.command,3,1,0,0);
     }
     p.barrier(image,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);

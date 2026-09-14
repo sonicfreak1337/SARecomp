@@ -18086,6 +18086,14 @@ void service_sonic_native_gameplay_probe_completed_frame(
         if (!probe.active) {
             if (sonic_native_title_state.private_stage_tuple_override.pending)
                 return;
+            // On very slow hosts a whole timed probe could otherwise cover
+            // just the stage-introduction camera, before Recompiled gameplay
+            // and its native math owners become active. Diagnostic only.
+            static const bool wait_for_gameplay = sonic_native_diagnostic_enabled(
+                "SARECOMP_PROBE_WAIT_FOR_GAMEPLAY");
+            if (wait_for_gameplay && sonic_standard_sixty_enabled() &&
+                !sonic_native_title_state.standard_sixty_active)
+                return;
             SonicGuestReader reader(*context.cpu);
             std::uint16_t stage_major = 0u;
             std::uint16_t stage_minor = 0u;

@@ -27,3 +27,9 @@ target_include_directories(sonic-linux-menu-input-tests PRIVATE "${SONIC_ROOT}/s
 target_compile_options(sonic-linux-menu-input-tests PRIVATE -O2 -g0)
 target_link_libraries(sonic-linux-menu-input-tests PRIVATE sonic_linux_graphics)
 set_target_properties(sonic-linux-menu-input-tests PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")
+add_executable(sonic-linux-submission-benchmark EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/benchmark_vulkan_submission.cpp"
+    "${SONIC_ROOT}/src/sonic_input.cpp" "${SONIC_ROOT}/src/sonic_presentation.cpp")
+target_include_directories(sonic-linux-submission-benchmark PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic-linux-submission-benchmark PRIVATE -O2 -g0)
+target_link_libraries(sonic-linux-submission-benchmark PRIVATE sonic_linux_graphics)
+set_target_properties(sonic-linux-submission-benchmark PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")

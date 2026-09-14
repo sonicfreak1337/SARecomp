@@ -19,3 +19,7 @@ target_include_directories(sonic_linux_movie PRIVATE "${SONIC_ROOT}/src/linux"
 target_compile_options(sonic_linux_movie PRIVATE -O2 -g0 -ffunction-sections -fdata-sections)
 target_link_libraries(sonic_linux_movie PUBLIC sonic_linux_audio sonic_linux_platform
     sonic_linux_avformat sonic_linux_avcodec sonic_linux_avutil sonic_linux_swresample sonic_linux_swscale)
+add_executable(sonic-linux-media-check EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/check_media_decoding.cpp")
+target_compile_options(sonic-linux-media-check PRIVATE -O2 -g0)
+target_link_libraries(sonic-linux-media-check PRIVATE sonic_linux_movie sonic_linux_sdk_headers)
+set_target_properties(sonic-linux-media-check PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")

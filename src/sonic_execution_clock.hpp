@@ -8,6 +8,11 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#elif defined(__linux__)
+#include <cerrno>
+#include <sys/syscall.h>
+#include <time.h>
+#include <unistd.h>
 #endif
 namespace sonic::performance {
 struct ExecutionClock {
@@ -34,6 +39,21 @@ inline ExecutionClock execution_clock() noexcept {
         result.cycles_valid=true;result.thread_cycles=cycles;
     }
     SetLastError(saved_error);
+#elif defined(__linux__)
+    const int saved_errno=errno;
+    const auto tid=syscall(SYS_gettid);
+    if(tid>0)result.thread_id=static_cast<std::uint32_t>(tid);
+    const auto count=[](const timespec& value){return std::uint64_t(value.tv_sec)*10'000'000+std::uint64_t(value.tv_nsec)/100;};
+    timespec value{};
+    if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0){
+        result.thread_valid=true;result.thread_cpu_100ns=count(value);
+    }
+    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&value)==0){
+        result.process_valid=true;result.process_cpu_100ns=count(value);
+    }
+    // No synthetic TSC-derived cycle count: VM scheduling and CPU frequency
+    // are separate from the actual CPU-time clocks above.
+    errno=saved_errno;
 #endif
     return result;
 }

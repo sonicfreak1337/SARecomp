@@ -24,6 +24,22 @@ def owned(path):
     return path
 
 
+def media_runtime(windows):
+    platform='windows' if windows else 'linux'
+    root=ROOT/'.local/lean-ffmpeg'/('runtime-'+platform)
+    info=json.loads((root/'sonic-build.json').read_text(encoding='utf-8'))
+    names=(('avcodec-62.dll','avformat-62.dll','avutil-60.dll','swresample-6.dll','swscale-9.dll')
+           if windows else
+           ('libavcodec.so.62','libavformat.so.62','libavutil.so.60','libswresample.so.6','libswscale.so.9'))
+    if info['platform']!=platform or info['revision']!='5a03dfa0f607ee6156a59bdad3987cd3b858ee5d' or set(info['files'])!=set(names):
+        raise RuntimeError('Build the pinned lean FFmpeg runtime with tools/build-lean-ffmpeg.py')
+    for name in names:
+        file=root/name;record=info['files'][name]
+        if file.stat().st_size!=record['bytes'] or digest(file)!=record['sha256']:
+            raise RuntimeError('Lean media runtime changed: '+name)
+    return root,names
+
+
 def stage(edition, destination):
     destination = owned(destination)
     if destination.exists():
@@ -34,11 +50,15 @@ def stage(edition, destination):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     windows = edition == 'windows'
+    media,media_names=media_runtime(windows)
+    for name in media_names:
+        copy(media/name, name if windows else 'lib/'+name)
+    for name in ('LICENSE.txt','sonic-build.json','sonic-configure.patch'):
+        copy(media/name, 'resources/FFmpeg-'+name)
+    copy(ROOT/'tools/build-lean-ffmpeg.py','resources/FFmpeg-build-recipe.py')
     if windows:
         build = ROOT / 'out/windows-installer-build'
-        for name in ('game.exe', 'sonic-config.exe', 'SDL3.dll', 'avcodec-62.dll', 'avformat-62.dll',
-                     'avutil-60.dll', 'swresample-6.dll', 'swscale-9.dll',
-                     'FFmpeg-BUILD-CONFIGURATION.txt', 'FFmpeg-LGPL.txt', 'FFmpeg-NOTICE.txt'):
+        for name in ('game.exe', 'sonic-config.exe', 'SDL3.dll'):
             copy(build / name, name)
         copy(ROOT / 'build-windows-setup/sonic-setup.exe', 'sonic-setup.exe')
         redist = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC'
@@ -59,10 +79,6 @@ def stage(edition, destination):
         with (destination / 'game').open('rb') as stream:
             if stream.read(4) != b'\x7fELF':
                 raise RuntimeError('Linux requires a native ELF game')
-        ffmpeg = ROOT / '.local/linux-deps/ffmpeg/ffmpeg-n8.1.2-52-g5a03dfa0f6-linux64-lgpl-shared-8.1'
-        for name in ('libavformat.so.62', 'libavcodec.so.62', 'libavutil.so.60', 'libswresample.so.6', 'libswscale.so.9'):
-            copy(ffmpeg / 'lib' / name, 'lib/' + name)
-        copy(ffmpeg / 'LICENSE.txt', 'resources/FFmpeg-LICENSE.txt')
     for name in ('install-files.tsv', 'bootstrap.xor.z', 'install-identity.json'):
         copy(ROOT / 'out/setup-resources' / name, 'resources/' + name)
     fonts = ['NotoSans-Regular.ttf', 'NotoSans-Bold.ttf']
@@ -97,10 +113,11 @@ def stage(edition, destination):
         })
     for title, source in licenses.items():
         notice += '\n' + title + '\n' + '=' * len(title) + '\n' + source.read_text(encoding='utf-8') + '\n'
-    ffmpeg_revision = '9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b' if windows else '5a03dfa0f6'
-    notice += ('\nFFmpeg: dynamically linked LGPL build from https://github.com/BtbN/FFmpeg-Builds\n'
-               'Sources, build scripts and configuration: https://github.com/BtbN/FFmpeg-Builds/tree/master\n'
+    ffmpeg_revision = '5a03dfa0f607ee6156a59bdad3987cd3b858ee5d'
+    notice += ('\nFFmpeg: dynamically linked LGPL 2.1-or-later build containing SA1 media readers.\n'
                f'Corresponding upstream source: https://github.com/FFmpeg/FFmpeg/tree/{ffmpeg_revision}\n'
+               'Exact source archive URL and SHA-256, configuration and toolchain are in FFmpeg-sonic-build.json.\n'
+               'The build recipe and the small configure compatibility patch are included beside this notice.\n'
                'Libraries can be replaced with ABI-compatible LGPL builds. See the included FFmpeg license.\n')
     (destination / 'resources/THIRD-PARTY-NOTICES.txt').write_text(notice, encoding='utf-8', newline='\n')
     (destination / 'README.txt').write_text(

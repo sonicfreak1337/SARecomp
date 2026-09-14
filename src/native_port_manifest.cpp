@@ -174,7 +174,11 @@ inline constexpr std::string_view
         // Native Linux host integration retains the shared game/UI contracts.
         // Release crash records remain in memory until the user exports them.
         // Windows API branches and the retained guest AOT remain unchanged.
-        "sha256:d3688ecf2aaaeec34d13f3a10adf7655a5de611093133b21ad673f3feb4e550a"};
+        // Linux gameplay probes now report thread/process CPU time at their
+        // existing one-second boundary, preserving errno and the Windows path.
+        // Private slow-host probes wait for active gameplay; normal cadence,
+        // drawing, instruction coverage and all title hooks are unchanged.
+        "sha256:0d7f9bab33e3b4d0244879a45c9e98c16c54474f593e792f19f2b9fc68f1c61b"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

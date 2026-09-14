@@ -382,6 +382,9 @@ add_executable(sonic_audio_bus_tests EXCLUDE_FROM_ALL tools/test_audio_buses.cpp
 target_include_directories(sonic_audio_bus_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_audio_bus_tests PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_audio_bus_tests PRIVATE KatanaRecomp::native_port_runtime ole32 winmm)
+add_executable(sonic_media_check EXCLUDE_FROM_ALL tools/check_media_decoding.cpp)
+target_compile_options(sonic_media_check PRIVATE /EHsc /utf-8)
+target_link_libraries(sonic_media_check PRIVATE KatanaRecomp::native_port_runtime)
 
 add_executable(sonic_input_poll_tests EXCLUDE_FROM_ALL tools/test_input_poll.cpp
     src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_camera_platform>)

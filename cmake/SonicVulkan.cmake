@@ -23,6 +23,11 @@ add_executable(sonic_renderer_tests EXCLUDE_FROM_ALL tools/test_renderers.cpp sr
 target_include_directories(sonic_renderer_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_renderer_tests PRIVATE /EHsc /fp:strict)
 target_link_libraries(sonic_renderer_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
+add_executable(sonic_vulkan_submission_benchmark EXCLUDE_FROM_ALL tools/benchmark_vulkan_submission.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_vulkan_submission_benchmark PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_vulkan_submission_benchmark PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_vulkan_submission_benchmark PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
 
 add_executable(sonic_host_ui_tests EXCLUDE_FROM_ALL tools/test_host_ui.cpp
     src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)

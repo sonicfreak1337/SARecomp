@@ -20,6 +20,9 @@ int main(int argc,char** argv) {
         sonic::rendering::selected_renderer=std::string_view(argv[1])=="vulkan"?sonic::rendering::Renderer::Vulkan:sonic::rendering::Renderer::D3D11;
         std::filesystem::create_directories(argv[2]);
         _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
+#ifdef _WIN32
+        _putenv_s("SARECOMP_VULKAN_OFFSCREEN_TEST","1");
+#endif
         _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_DIRECTORY",argv[2]);
         _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME","1");
         _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME","13");

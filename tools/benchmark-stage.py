@@ -48,11 +48,15 @@ parser.add_argument('--hardware-input', choices=('fallback','isolated'), default
     help='Isolated skips physical devices but retains the same forward probe and normal remapping')
 parser.add_argument('--exe', default='out/experimental/game.exe')
 parser.add_argument('--renderer', choices=('d3d11','vulkan'), default='d3d11')
+parser.add_argument('--vulkan-offscreen', action='store_true', help='Explicit hidden GPU test without monitor presentation; not display FPS')
+parser.add_argument('--vulkan-descriptor-cache', choices=('on','off'), default='on')
+parser.add_argument('--vulkan-state-cache', choices=('on','off'), default='on')
 parser.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 # Render interpolation was withdrawn; benchmark the original frame stream.
 parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
 parser.add_argument('--anisotropy', type=int, choices=(1,), default=1, help='Retired product control; original filtering only')
 args = parser.parse_args()
+if args.vulkan_offscreen and args.renderer!='vulkan': parser.error('Offscreen mode requires Vulkan')
 if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
 if args.profile_ms and not 1000 <= args.profile_ms <= 30000: parser.error('Profile duration must be 1000..30000 ms')
@@ -97,6 +101,9 @@ env.update({
     'KATANA_SONIC_GAMEPLAY_INPUT_PROFILE':'3', 'KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE':'1',
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'100000', 'SARECOMP_DISPLAY_CONFIG':str(display),
 })
+env['SARECOMP_VULKAN_DESCRIPTOR_CACHE']='1' if args.vulkan_descriptor_cache=='on' else '0'
+env['SARECOMP_VULKAN_STATE_CACHE']='1' if args.vulkan_state_cache=='on' else '0'
+if args.vulkan_offscreen: env['SARECOMP_VULKAN_OFFSCREEN_TEST']='1'
 if args.timing: env['KATANA_SONIC_DIAGNOSTIC_TIMING']='1'
 if args.update_timing: env['SARECOMP_UPDATE_TIMING_TRACE']='1'
 if args.render_completion: env['SARECOMP_RENDER_COMPLETION_EXPERIMENT']='1'
@@ -182,6 +189,7 @@ stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
 steady=[r for r in gameplay if int(r['elapsed_ms'])>=10000]
 result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(args),
+    'monitor_presentation':'offscreen-test' if args.vulkan_offscreen else 'window-surface',
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
     'hidden':True,'muted':True,'captures':False,'input_profile':3,'cpu_samples':samples,
     'profile_instrumented':bool(args.profile_ms),'profiler_exit_code':profiler.returncode if profiler else None,
@@ -368,6 +376,9 @@ if args.sixty_frame_fixture:
         and (args.vsync==1 or 59.5 <= result.get('presentation_fps',0) <= 60.5) \
         and result.get('frame_samples',0)>0 and not result.get('frame_samples_truncated',True) \
         and 0 < result.get('p95_frame_ms',0) <= 17.5
+if args.vulkan_offscreen:
+    result['offscreen_mode_active']='SONIC_VULKAN_OFFSCREEN_TEST active=1' in stderr
+    result['passed'] &= result['offscreen_mode_active']
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))
 raise SystemExit(0 if result['passed'] else 1)

@@ -43,6 +43,7 @@ ui::Image render(const Resources& resources,const View& state,unsigned width,uns
 #else
         text(state.steam_deck?L"STEAM DECK DEFAULTS":L"LINUX VERSION",{720,448,450,25},16,cyan,true);
         text(state.steam_deck?L"Native 1280 × 800  ·  Fullscreen  ·  Vulkan":L"Native Linux  ·  Widescreen  ·  Controller ready",{720,481,450,24},19,white);
+        if(state.steam_deck)text(L"Original game timing",{720,516,450,24},18,muted);
 #endif
         text(L"You will need your original Dreamcast GDI and its track files.",{699,570,490,50},18,muted,false,true);
     }else if(state.page==Page::Files){
