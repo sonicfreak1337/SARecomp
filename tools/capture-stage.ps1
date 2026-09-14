@@ -3,6 +3,7 @@
 param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [ValidateSet('original','widescreen')][string] $Aspect = 'widescreen',
       [int] $Width=1280,[int] $Height=720,
+      [ValidateRange(25,100)][int] $RenderPercent=100,
       [ValidateRange(10,60)][int] $Seconds=20,
       [ValidatePattern('^[a-zA-Z0-9_-]+$')][string] $Tag='wide-16x9',
       [string] $Executable='',
@@ -18,6 +19,7 @@ param([ValidatePattern('^[a-z0-9-]+$')][string] $Scenario = 'emerald-coast',
       [switch] $DisableCodePrefetch,
       [switch] $DisableStartupCache,
       [switch] $CheckOptions,
+      [switch] $IsolatedForward,
       # Motion interpolation was withdrawn; no capture switch may enable it.
       [switch] $TraceFade)
 $ErrorActionPreference='Stop'
@@ -46,7 +48,7 @@ foreach ($directory in Get-ChildItem -LiteralPath (Join-Path $root '.local/basel
 }
 Get-ChildItem -LiteralPath $saves -File -Recurse | ForEach-Object {$_.IsReadOnly=$false}
 $display=Join-Path $run 'sonic-display.ini'
-"setup_complete=1`nmode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=100`nrenderer=$Renderer`ngameplay_timing=$([int]($GameplayTiming -eq 'recompiled'))`ncamera_style=$CameraStyle" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
+"setup_complete=1`nmode=$Aspect`nwidth=$Width`nheight=$Height`nrender_percent=$RenderPercent`nrenderer=$Renderer`ngameplay_timing=$([int]($GameplayTiming -eq 'recompiled'))`ncamera_style=$CameraStyle" | Set-Content -LiteralPath $display -Encoding utf8NoBOM
 if ($null -ne $VSync) { "vsync=$VSync" | Add-Content -LiteralPath $display -Encoding utf8NoBOM }
 $envs=@{
     KATANA_PORT_BACKGROUND_TEST='1'; KATANA_PORT_IGNORE_FOCUS='1'
@@ -64,6 +66,11 @@ $envs=@{
     SARECOMP_DISABLE_CODE_PREFETCH=$(if ($DisableCodePrefetch) {'1'} else {'0'})
     SARECOMP_DISABLE_STARTUP_CACHE=$(if ($DisableStartupCache) {'1'} else {'0'})
     SARECOMP_CACHE_ROOT=$(if ($CacheRoot) {[IO.Path]::GetFullPath($CacheRoot)} else {Join-Path $saves 'cache'})
+}
+if ($IsolatedForward) {
+    $envs.SARECOMP_BENCHMARK_ISOLATED_INPUT='1'
+    $envs.KATANA_SONIC_GAMEPLAY_PROBE='1'
+    $envs.KATANA_SONIC_GAMEPLAY_INPUT_PROFILE='3'
 }
 if ($CameraTest -or $CameraTrace) {
     $envs.KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME='950'
@@ -92,3 +99,4 @@ $process.PriorityClass='BelowNormal'
 [ordered]@{pid=$process.Id;executable=$game;hidden=$true;muted=$true;scenario=$Scenario;aspect=$Aspect;width=$Width;height=$Height;renderer=$Renderer;gameplay_timing=$GameplayTiming;vsync=$VSync;camera_style=$CameraStyle;camera_test=[bool]$CameraTest;camera_collision_test=[bool]$CameraCollisionTest;camera_trace=[bool]$CameraTrace;startup_trace=[bool]$StartupTrace;code_prefetch=(-not $DisableCodePrefetch);startup_cache=(-not $DisableStartupCache);cache_root=$envs.SARECOMP_CACHE_ROOT} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'run.json')
 Write-Host "SONIC_CAPTURE_STARTED pid=$($process.Id) run=$run hidden=1 muted=1"
+Write-Host "SONIC_CAPTURE_SCALE render_percent=$RenderPercent isolated_forward=$([int][bool]$IsolatedForward)"

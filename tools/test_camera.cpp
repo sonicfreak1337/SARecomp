@@ -34,6 +34,7 @@ int main(int argc,char** argv) {
         require(argc==2,"provide an isolated test configuration directory");
         const auto folder=std::filesystem::absolute(argv[1]);
         std::filesystem::create_directories(folder);
+        _putenv_s("SARECOMP_DISPLAY_CONFIG",(folder/"sonic-display.ini").string().c_str());
         require(right_stick(3000,0,true).x==0 && right_stick(32767,0,false).x==0,"deadzone/disconnect");
         require(right_stick(8000,0,true).x>0.1f,"small deliberate stick movement is sluggish");
         require(right_stick(32767,3000,true).y==0 && right_stick(-32768,-3000,true).y==0,"horizontal turning admits vertical center noise");

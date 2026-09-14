@@ -35,9 +35,19 @@ void recover(const std::filesystem::path& executable){
     const auto saved=presentation::read_settings(rollback);presentation::save_settings(path,saved);std::filesystem::remove(rollback);
     std::cerr<<"SONIC_DISPLAY recovered_interrupted_trial\n";
 }
-int launch(const std::filesystem::path& executable,const presentation::Settings& next,int language){
+int launch(const std::filesystem::path& executable,const presentation::Settings& requested,int language,
+           const presentation::Settings* edited_from){
     const auto path=presentation::configuration_path(executable);presentation::ConfigurationLock guard(path);
-    const auto previous=presentation::settings();const bool trial=display_changed(previous,next);
+    const auto running=presentation::settings();
+    const auto disk=presentation::read_settings(path);
+    const auto next=presentation::merge_settings(edited_from?*edited_from:running,requested,disk);
+    auto previous=disk;
+    // Roll back to the display that actually worked, retaining unrelated edits
+    // from the config tool and the already persisted profile/audio/input state.
+    previous.width=running.width;previous.height=running.height;previous.render_percent=running.render_percent;
+    previous.widescreen=running.widescreen;previous.renderer=running.renderer;
+    previous.window_mode=running.window_mode;previous.vsync=running.vsync;
+    const bool trial=display_changed(running,next);
     if(!trial){presentation::save_settings(path,next);PROCESS_INFORMATION process{};start(executable,process);CloseHandle(process.hThread);CloseHandle(process.hProcess);return 0;}
     const auto rollback=rollback_path(path);presentation::save_settings(rollback,previous);
     const auto id=std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());

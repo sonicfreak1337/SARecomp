@@ -1,12 +1,12 @@
 #include "sonic_presentation.hpp"
 #include "sonic_configuration_lock.hpp"
+#include "sonic_user_paths.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -138,9 +138,18 @@ void apply_live(const Settings& value) {
     settings_revision.fetch_add(1,std::memory_order_release);
 }
 std::filesystem::path configuration_path(const std::filesystem::path& executable) {
-    auto path = executable.parent_path() / "sonic-display.ini";
-    if (const char* override_path = std::getenv("SARECOMP_DISPLAY_CONFIG");
-        override_path && *override_path) path = override_path;
+    if(const auto override_path=paths::environment(L"SARECOMP_DISPLAY_CONFIG");!override_path.empty())
+        return std::filesystem::absolute(override_path).lexically_normal();
+    const auto path=paths::data_root(executable)/"sonic-display.ini";
+    const auto legacy=executable.parent_path()/"sonic-display.ini";
+    // One-time, validated migration. Never overwrite an existing user config
+    // or change/delete the old file; explicit test/config overrides skip it.
+    // A display-trial parent owns the write mutex until the child confirms.
+    // Reading an already published INI must not wait on that parent.
+    if(!std::filesystem::exists(path) && std::filesystem::is_regular_file(legacy)) {
+        ConfigurationLock guard(path);
+        if(!std::filesystem::exists(path))save_settings(path,read_settings(legacy));
+    }
     return path;
 }
 Settings read_settings(const std::filesystem::path& path) {
@@ -219,6 +228,7 @@ Settings read_settings(const std::filesystem::path& path) {
 void save_settings(const std::filesystem::path& path,const Settings& value) {
     validate(value);
     ConfigurationLock configuration_guard(path);
+    if(!path.parent_path().empty())std::filesystem::create_directories(path.parent_path());
     auto temporary=path; temporary+=L".pending";
     {
         std::ofstream output(temporary,std::ios::binary|std::ios::trunc);
@@ -244,6 +254,30 @@ void save_settings(const std::filesystem::path& path,const Settings& value) {
     if (!MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
         throw std::runtime_error("Sonic configuration could not be published");
 }
+Settings merge_settings(const Settings& before,const Settings& edited,Settings latest) {
+    validate(edited);
+#define MERGE_FIELD(name) if(before.name!=edited.name)latest.name=edited.name;
+    MERGE_FIELD(renderer) MERGE_FIELD(widescreen) MERGE_FIELD(width) MERGE_FIELD(height)
+    MERGE_FIELD(render_percent) MERGE_FIELD(window_mode) MERGE_FIELD(camera_style)
+    MERGE_FIELD(text_language) MERGE_FIELD(voice_language) MERGE_FIELD(subtitles)
+    MERGE_FIELD(setup_complete) MERGE_FIELD(active_profile)
+#define SONIC_SETTING(name,initial,minimum,maximum) MERGE_FIELD(name)
+#include "sonic_settings_fields.inc"
+#undef SONIC_SETTING
+#undef MERGE_FIELD
+    for(unsigned i=0;i<input::action_count;++i) {
+        if(before.bindings[i].key!=edited.bindings[i].key)latest.bindings[i].key=edited.bindings[i].key;
+        if(before.bindings[i].alternate!=edited.bindings[i].alternate)latest.bindings[i].alternate=edited.bindings[i].alternate;
+        if(before.bindings[i].mouse!=edited.bindings[i].mouse)latest.bindings[i].mouse=edited.bindings[i].mouse;
+        if(before.bindings[i].pad!=edited.bindings[i].pad)latest.bindings[i].pad=edited.bindings[i].pad;
+    }
+    validate(latest);return latest;
+}
+Settings save_settings_changes(const std::filesystem::path& path,const Settings& before,const Settings& edited) {
+    ConfigurationLock guard(path);
+    auto merged=merge_settings(before,edited,read_settings(path));
+    save_settings(path,merged);return merged;
+}
 void initialize(const std::filesystem::path& executable) {
     {std::lock_guard guard(settings_mutex);current=read_settings(configuration_path(executable));settings_revision.fetch_add(1,std::memory_order_release);}
     rendering::selected_renderer = current.renderer;
@@ -261,11 +295,11 @@ void configure(katana::runtime::NativePortGraphicsConfig& config) {
     config.title = "Sonic Adventure: Recompiled [EXPERIMENTAL]";
     config.output_extent = {current.width,current.height};
     if(current.vsync)config.synchronize_present=current.vsync==1;
-    // Use an integer multiple of the reduced ratio. Even odd requested sizes
-    // cannot silently give render/camera/output three different aspects.
-    const auto divisor = std::gcd(current.width,current.height);
-    const auto multiple = std::max(1u,(divisor*current.render_percent+50u)/100u);
-    config.render_extent = {current.width/divisor*multiple,current.height/divisor*multiple};
+    // Round the raster independently to the nearest pixel. Projection and HUD
+    // still use the output aspect; the final composite absorbs subpixel rounding.
+    // Requiring exact integer ratios made coprime output sizes ignore scaling.
+    config.render_extent = {(current.width*current.render_percent+50u)/100u,
+                            (current.height*current.render_percent+50u)/100u};
     if (current.widescreen) {
         config.ui_viewport.policy = katana::runtime::NativePortViewportPolicy::FullRender;
         // All UI owners compensate projection and anchor groups separately.

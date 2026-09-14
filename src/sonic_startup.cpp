@@ -13,6 +13,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include "sonic_user_paths.hpp"
 
 namespace sonic::startup {
 namespace {
@@ -52,11 +53,8 @@ LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM wp,LPARAM lp) {
 std::filesystem::path cache_path(std::string_view domain,std::string_view key) {
     if(key.size()!=64 || !std::all_of(key.begin(),key.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');}) ||
        domain.empty() || !std::all_of(domain.begin(),domain.end(),[](char c){return (c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-';}))return {};
-    std::filesystem::path root;
-    if(const auto* test=std::getenv("SARECOMP_CACHE_ROOT");test&&*test)root=test;
-    else if(const auto* data=std::getenv("KATANA_USER_DATA_ROOT");data&&*data)root=std::filesystem::path(data)/"cache";
-    else if(const auto* local=std::getenv("LOCALAPPDATA");local&&*local)root=std::filesystem::path(local)/"SARecomp"/"experimental"/"cache";
-    if(root.empty() || enabled("SARECOMP_DISABLE_STARTUP_CACHE"))return {};
+    if(enabled("SARECOMP_DISABLE_STARTUP_CACHE"))return {};
+    const auto root=paths::cache_root(paths::executable());
     return root/"startup-v1"/domain/(std::string(key)+".bin");
 }
 constexpr std::array<char,8> cache_magic{'S','A','R','C','C','0','0','1'};

@@ -6,6 +6,15 @@ opens it only when `setup_complete` is absent/false; cancellation exits before
 game initialization. `KATANA_PORT_BACKGROUND_TEST=1` bypasses the popup.
 No controller setting is disabled by configuration.
 
+Since the 2026-09-14 review, settings use the shared writable user root; see
+`README.md` for overrides and portable mode. The old adjacent INI migrates only
+when the new user INI is absent. Both editors merge only changed fields while
+holding the same configuration mutex, including independent keyboard/pad
+binding changes. Restart also merges against the latest disk configuration;
+display rollback restores the working display and retains unrelated persisted
+audio, input and profile choices. Rendering percentages round raster dimensions
+to the nearest pixel, keeping the output aspect for projection and HUD.
+
 Display mode, resolution, renderer, aspect, render scale and VSync are host
 settings. Numeric output FPS selection was retired on 2026-09-13. Game timing
 selects Original (scene-owned update/output cadence) or Recompiled (60-FPS

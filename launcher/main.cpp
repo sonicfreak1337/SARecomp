@@ -3,6 +3,7 @@
 #include "katana/runtime/native_port_content.hpp"
 #include "katana/runtime/native_port_graphics.hpp"
 #include "sonic_presentation.hpp"
+#include "sonic_user_paths.hpp"
 #include "sonic_startup.hpp"
 #include "sonic_input.hpp"
 #include "sonic_menu_runtime.hpp"
@@ -60,26 +61,7 @@
 
 namespace {
 std::filesystem::path native_product_user_data_root() {
-    if (const auto* configured = std::getenv("KATANA_USER_DATA_ROOT");
-        configured != nullptr && *configured != '\0')
-        return std::filesystem::absolute(configured).lexically_normal();
-#if defined(_WIN32)
-    if (const auto* local = std::getenv("LOCALAPPDATA");
-        local != nullptr && *local != '\0')
-        return (std::filesystem::absolute(local) / "SARecomp" / "experimental")
-            .lexically_normal();
-#else
-    if (const auto* data = std::getenv("XDG_DATA_HOME");
-        data != nullptr && *data != '\0')
-        return (std::filesystem::absolute(data) / "sarecomp" / "experimental")
-            .lexically_normal();
-    if (const auto* home = std::getenv("HOME");
-        home != nullptr && *home != '\0')
-        return (std::filesystem::absolute(home) / ".local" / "share" /
-                "sarecomp" / "experimental")
-            .lexically_normal();
-#endif
-    throw std::runtime_error("native-product-user-data-root");
+    return sonic::paths::data_root(sonic::paths::executable());
 }
 std::atomic<std::uint32_t> native_product_crash_latch{0u};
 std::atomic<katana::runtime::CpuState*> native_product_cpu{nullptr};
@@ -147,8 +129,9 @@ void native_product_write_fault_u64(
         std::uint64_t value) noexcept;
 class NativeProductCrashSession final {
   public:
-    void arm(const std::filesystem::path& executable_path) {
-        const auto root = executable_path.parent_path() / "user-data";
+    void arm(const std::filesystem::path& executable_path) noexcept {
+      try {
+        const auto root = sonic::paths::data_root(executable_path) / "logs";
         std::error_code directory_error;
         std::filesystem::create_directories(root, directory_error);
         if (directory_error)
@@ -196,6 +179,9 @@ class NativeProductCrashSession final {
         native_product_flush_fault_file();
         std::cerr << "KATANA_CRASH_CAPSULE_PATH path="
                   << path_.string() << '\n';
+      } catch(...) {
+        std::fputs("KATANA_CRASH_CAPSULE_FILE_UNAVAILABLE stderr_only=1\n",stderr);
+      }
     }
     ~NativeProductCrashSession() noexcept {
         native_product_flush_fault_file();
@@ -526,7 +512,7 @@ int run_game(int argc, char** argv) {
     const bool input_replay_launch = (argc == 3 || argc == 5) &&
         std::string_view(argv[1]) == "--replay-input" &&
         std::string_view(argv[2]).size() != 0u;
-    const bool automatic_input_record_launch = argc == 1;
+    bool automatic_input_record_launch = argc == 1;
     const bool direct_launch = argc == 1 || input_record_launch ||
         input_replay_launch;
     try {
@@ -671,6 +657,7 @@ int run_game(int argc, char** argv) {
                 input_trace_path = executable_path.parent_path() /
                                    input_trace_path;
         } else if (automatic_input_record_launch) {
+          try {
             const auto epoch_milliseconds = static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
@@ -682,10 +669,15 @@ int run_game(int argc, char** argv) {
             const auto process_id = static_cast<std::uint64_t>(
                 ::getpid());
 #endif
-            input_trace_path = executable_path.parent_path() /
-                "user-data" / ("katana-input-" +
+            const auto directory=sonic::paths::data_root(executable_path)/"recordings";
+            std::filesystem::create_directories(directory);
+            input_trace_path = directory / ("katana-input-" +
                 std::to_string(epoch_milliseconds) + "-" +
                 std::to_string(process_id) + ".kat1");
+          } catch(...) {
+            automatic_input_record_launch=false;input_trace_path.clear();
+            std::fputs("KATANA_AUTOMATIC_INPUT_RECORD_UNAVAILABLE recording_disabled=1\n",stderr);
+          }
         }
         std::error_code content_root_error;
         if (!std::filesystem::is_directory(content_root,
@@ -1127,7 +1119,7 @@ int main(int argc,char** argv){
         try {
             // run_game has released its CPU, host, audio and save provider.
             sonic::profiles::apply_pending_restore();
-            return sonic::restart::launch(std::filesystem::absolute(argv[0]),*next,sonic::menu::restart_language());
+            return sonic::restart::launch(std::filesystem::absolute(argv[0]),*next,sonic::menu::restart_language(),&sonic::menu::restart_baseline());
         }catch(const std::exception& e){std::cerr<<"SONIC_RESTART failure="<<e.what()<<'\n';sonic::diagnostics::record(sonic::diagnostics::Failure::Restart);sonic::errors::show();return 1;}
     }
     return 0;

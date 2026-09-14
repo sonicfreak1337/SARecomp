@@ -22,7 +22,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp
     sonic_qsound_reverb_medium_program.inc sonic_native_sdk_texture_release_plan.hpp sonic_texture_sentinel.hpp
     sonic_native_texture_catalog.hpp sonic_native_texture_catalog.cpp
-    sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp
+    sonic_native_save_contract.hpp sonic_presentation.hpp sonic_presentation.cpp sonic_user_paths.hpp
     sonic_render_culling.hpp sonic_render_culling.cpp sonic_sdk_color.hpp sonic_model_uv.hpp sonic_fpu_scratch.hpp renderer/sonic_motion.hpp renderer/sonic_motion_view.hpp
     sonic_language.hpp sonic_language.cpp renderer/renderer_selection.hpp
     sonic_motion_owner.hpp sonic_dispatch_memo.hpp sonic_execution_clock.hpp sonic_render_completion.hpp ../tools/prepare-motion-dispatch.py

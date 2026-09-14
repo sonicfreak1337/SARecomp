@@ -61,6 +61,7 @@ int main(int argc,char** argv) {
         require(argc==3,"content root and empty test directory required");
         const auto content=std::filesystem::absolute(argv[1]),folder=std::filesystem::absolute(argv[2]);
         std::filesystem::create_directories(folder);
+        _putenv_s("SARECOMP_DISPLAY_CONFIG",(folder/"sonic-display.ini").string().c_str());
         const auto boot=read(content/"boot.bin");
         const auto advertise=decompress_native_port_prs(read(content/"SONICAD/ADVERTISE.PRS"));
         require(boot.size()==6735296u && advertise.size()<0x600000u,"unexpected retail sources");

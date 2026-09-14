@@ -159,9 +159,10 @@ The first interactive launch opens the English **`sonic-config.exe`** beside
 the game. Run `sonic-config.exe` again whenever settings should change.
 
 Choose Direct3D 11 or Vulkan; windowed, borderless or exclusive fullscreen;
-resolution; original 4:3 or widescreen; render scale; 30–144 output FPS; camera style;
-text language, voice language and subtitles. The original game cadence is
-independent of output FPS. Exclusive fullscreen falls back to borderless when
+resolution; original 4:3 or widescreen; render scale; VSync; Original/Recompiled
+game timing; camera style; text language, voice language and subtitles.
+Recompiled targets 60 updates and 60 output FPS without VSync; VSync follows
+the display. Original retains its scene-owned cadence. Exclusive fullscreen falls back to borderless when
 the driver cannot acquire it. Alt+Enter returns to the saved window rectangle.
 Settings apply on the next launch and builds preserve an existing INI.
 
@@ -172,8 +173,15 @@ options on the next normal game save, using the original checksum and existing
 VMU persistence. Loading does not undo the configuration. The config program
 does not edit save files or force a story-progress save during loading.
 
-Direct launches use `out/experimental/sonic-display.ini`; `tools/start.ps1`
-retains separate settings per run profile. `SARECOMP_DISPLAY_CONFIG` selects
+Direct launches store `sonic-display.ini` under
+`%LOCALAPPDATA%/SARecomp/experimental`, alongside the existing save namespace.
+The old INI beside the EXE is copied once if no user INI exists; it is never
+overwritten or deleted by migration. Crash logs and automatic input recordings
+use `logs/` and `recordings/` in the same user root. Cache and development-state
+paths also honor `KATANA_USER_DATA_ROOT`. An explicit `SARECOMP_PORTABLE=1` or
+`sarecomp-portable.txt` beside the EXE selects its `user-data/` directory.
+The user-root override takes precedence over portable mode.
+`tools/start.ps1` retains separate settings per run profile. `SARECOMP_DISPLAY_CONFIG` selects
 an explicit config file (also understood by `sonic-config.exe`). Background
 tests skip the popup and use their own settings and copied saves.
 

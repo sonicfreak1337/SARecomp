@@ -80,6 +80,7 @@ int main(int argc,char** argv){try{
     check(argc==9,"content root, fresh data root, logical id, file, SHA, size, bank, program required");
     const auto root=fs::absolute(argv[2]);check(!fs::exists(root),"test directory must be new");fs::create_directories(root);
     _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
+    _putenv_s("SARECOMP_DISPLAY_CONFIG",(root/"sonic-display.ini").string().c_str());
     sonic::audio_device::Api api;api.open=open;api.close=close;api.reset=reset;api.prepare=prepare;api.unprepare=unprepare;
     api.write=write;api.position=position;api.pause=pause;api.restart=restart;api.now=now;api.observe_pcm=observe;
     sonic::audio_device::set_test_api(&api);

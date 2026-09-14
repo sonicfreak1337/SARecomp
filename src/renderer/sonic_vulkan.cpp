@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "volk.h"
 #include "sonic_vulkan.hpp"
+#include "sonic_vulkan_present.hpp"
 #include "renderer_selection.hpp"
 #include "sonic_vulkan_shaders.hpp"
 #include "../sonic_startup.hpp"
@@ -95,6 +96,10 @@ struct VulkanRenderer::Impl {
     void cleanup() noexcept;
     void initialize(void* window);
     void create_swapchain();
+    void service_swapchain() {
+        if(wants_exclusive()!=exclusive_requested)swap_dirty=true;
+        if(swap_dirty)create_swapchain();
+    }
     void destroy_swapchain();
     bool wants_exclusive() const {
         return selected_window_mode==WindowMode::Fullscreen && IsWindowVisible(window) &&
@@ -150,7 +155,7 @@ struct VulkanRenderer::Impl {
         if(value.memory) vkFreeMemory(device,value.memory,nullptr);
         value={};
     }
-    void start();
+    bool start(bool nonblocking=false);
     void end_render() { if(rendering) { vkCmdEndRendering(command); rendering=false; } }
     void submit(VkSemaphore wait={},VkSemaphore signal={});
     void finish() { submit(); check(vkQueueWaitIdle(queue),"vulkan-wait-idle"); }
@@ -443,10 +448,14 @@ void VulkanRenderer::Impl::create_swapchain() {
     swap_dirty=false;
 }
 
-void VulkanRenderer::Impl::start() {
-    if(current) return;
+bool VulkanRenderer::Impl::start(bool nonblocking) {
+    if(current) return true;
     auto& s=submissions[submission_index];
-    if(s.pending) { check(vkWaitForFences(device,1,&s.fence,true,UINT64_MAX),"vulkan-frame-fence"); s.pending=false; }
+    if(s.pending) {
+        const auto status=vkWaitForFences(device,1,&s.fence,true,nonblocking?0:UINT64_MAX);
+        if(nonblocking && status==VK_TIMEOUT)return false;
+        check(status,"vulkan-frame-fence");s.pending=false;
+    }
     for(auto& retire:s.retired) retire(); s.retired.clear();
     check(vkResetCommandPool(device,s.pool,0),"vulkan-reset-command-pool");
     for(auto pool:s.descriptors) check(vkResetDescriptorPool(device,pool,0),"vulkan-reset-descriptors");
@@ -455,6 +464,7 @@ void VulkanRenderer::Impl::start() {
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     check(vkBeginCommandBuffer(s.command,&begin),"vulkan-begin-commands");
     current=&s; command=s.command;
+    return true;
 }
 void VulkanRenderer::Impl::submit(VkSemaphore wait,VkSemaphore signal) {
     if(!current) return;
@@ -739,6 +749,8 @@ void VulkanRenderer::destroy_mesh(std::uint64_t id) {
     p.current->retired.emplace_back([&p,resource]() mutable {p.destroy(resource.vertices); p.destroy(resource.indices);}); p.meshes.erase(it);
 }
 void VulkanRenderer::begin_frame(const NativePortFrameConfig& config) {
+    // Lifecycle work belongs to a real frame, never an optional output repeat.
+    impl_->service_swapchain();
     impl_->begin_render(&impl_->working,&impl_->depth,true,config.clear_color.data(),config.clear_depth);
 }
 void VulkanRenderer::draw(const NativePortDrawPacket& packet,std::span<const NativePortVertex> vertices,
@@ -800,6 +812,7 @@ void VulkanRenderer::complete_host_image(std::uint64_t texture) {
     auto& p=*impl_;p.end_render();
     p.barrier(p.textures.at(texture),VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);p.submit();
     p.completed_host_image=texture;p.completed_ready=true;
+    p.service_swapchain();
 }
 void VulkanRenderer::abort_frame() {
     auto& p=*impl_; p.end_render(); p.submit(); p.completed_ready=false;p.completed_host_image=0;
@@ -808,7 +821,7 @@ void VulkanRenderer::resize(NativePortExtent extent) { impl_->config.output_exte
 bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span<const std::byte> overlay) {
     auto& p=*impl_; if(!p.completed_ready) return false;
     if(p.wants_exclusive()!=p.exclusive_requested) p.swap_dirty=true;
-    if(p.swap_dirty) p.create_swapchain();
+    if(!presentation_policy::swapchain(p.swap_dirty,nonblocking,[&]{p.create_swapchain();}))return false;
     if(!p.swapchain || p.swap_dirty) return false;
     if(p.exclusive_controlled) {
         if(GetForegroundWindow()!=p.window) {
@@ -825,16 +838,16 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     // A repeated image must not wait for a fenced submission slot that the
     // GPU/present queue still owns. Keep the live prefix intact and retry at
     // the next output deadline; normal simulation commands retain their fences.
-    if(nonblocking) {
-        const auto next=(p.submission_index+(p.current?1u:0u))%p.submissions.size();
+    if(!presentation_policy::prepare(nonblocking,p.submission_index,p.current!=nullptr,p.submissions.size(),
+      [&](std::size_t next) {
         const auto& slot=p.submissions[next];
         if(slot.pending) {
             const auto status=vkGetFenceStatus(p.device,slot.fence);
             if(status==VK_NOT_READY) return false;
             check(status,"vulkan-present-fence-status");
         }
-    }
-    p.submit(); p.start();
+        return true;
+      },[&]{p.submit();},[&](bool optional){return p.start(optional);}))return false;
     unsigned index=0;
     auto acquired=vkAcquireNextImageKHR(p.device,p.swapchain,nonblocking?0:UINT64_MAX,p.current->acquire,{},&index);
     if(acquired==VK_NOT_READY || acquired==VK_TIMEOUT) return false;
@@ -861,9 +874,15 @@ bool VulkanRenderer::present(NativePortPixelRect rect,bool nonblocking,std::span
     VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; present.waitSemaphoreCount=1; present.pWaitSemaphores=&sem;
     present.swapchainCount=1; present.pSwapchains=&p.swapchain; present.pImageIndices=&index;
     const auto result=vkQueuePresentKHR(p.queue,&present);
-    if(result==VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {p.exclusive_acquired=p.exclusive_attempted=false;return false;}
-    if(result==VK_ERROR_OUT_OF_DATE_KHR || result==VK_SUBOPTIMAL_KHR) p.swap_dirty=true; else check(result,"vulkan-present");
-    return true;
+    using presentation_policy::Outcome;
+    switch(presentation_policy::outcome(result)) {
+    case Outcome::Presented:return true;
+    case Outcome::PresentedSuboptimal:p.swap_dirty=true;return true;
+    case Outcome::OutOfDate:p.swap_dirty=true;return false;
+    case Outcome::ExclusiveLost:p.exclusive_acquired=p.exclusive_attempted=false;return false;
+    case Outcome::Error:check(result,"vulkan-present");return false;
+    }
+    return false;
 }
 std::vector<std::uint8_t> VulkanRenderer::capture_bgra_bottom_up() {
     auto& p=*impl_;auto& completed=p.completed_host_image?p.textures.at(p.completed_host_image):p.completed;

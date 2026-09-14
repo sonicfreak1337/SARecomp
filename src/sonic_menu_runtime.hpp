@@ -21,4 +21,5 @@ bool pending(katana::runtime::NativePortContext&) noexcept;
 bool run(katana::runtime::NativePortContext&,const Services&);
 std::optional<presentation::Settings> take_restart();
 int restart_language() noexcept;
+const presentation::Settings& restart_baseline() noexcept;
 }

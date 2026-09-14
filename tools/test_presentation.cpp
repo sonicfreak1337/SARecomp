@@ -1,5 +1,6 @@
 #include "sonic_presentation.hpp"
 #include "sonic_big_hud.hpp"
+#include "sonic_user_paths.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -28,8 +29,9 @@ int main(int argc,char** argv) {
     require(!big(0x8C0E6E88u,0x8CFFE004u,0x8C54CA8Cu,0x8C565F84u),"Fishing overlay must remain centered");
     require(!big(0x8C0E6FA0u,0x8CFFE004u,0x8C54CA8Cu,0x8C565F84u),"Mismatched fishing carrier");
         require(argc==2,"test directory argument");
-        const std::filesystem::path folder(argv[1]);
+        const auto folder=std::filesystem::absolute(argv[1]);
         std::filesystem::create_directories(folder);
+        SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",(folder/"sonic-display.ini").c_str());
         for (auto extent : {NativePortExtent{1280,720},NativePortExtent{2560,1080},NativePortExtent{3440,1440}}) {
             { std::ofstream f(folder/"sonic-display.ini");
               f<<"mode=widescreen\nwidth="<<extent.width<<"\nheight="<<extent.height<<"\nrender_percent=50\n"; }
@@ -74,6 +76,16 @@ int main(int argc,char** argv) {
             for(unsigned row=0;row<4;++row) for(unsigned col=1;col<4;++col)
                 require(packet.transform.values[row*4+col]==original.transform.values[row*4+col],"Y/Z/W changed");
         }
+        for(auto extent:{NativePortExtent{1366,768},NativePortExtent{1919,1079},NativePortExtent{3440,1440},NativePortExtent{640,480}})
+          for(unsigned scale:{25u,50u,75u,100u}) {
+            Settings selected;selected.width=extent.width;selected.height=extent.height;selected.widescreen=true;selected.render_percent=scale;
+            save_settings(folder/"sonic-display.ini",selected);initialize(folder/"game.exe");
+            NativePortGraphicsConfig config;configure(config);
+            require(std::abs(config.render_extent.width-extent.width*double(scale)/100)<=.5,"render width ignores selected scale");
+            require(std::abs(config.render_extent.height-extent.height*double(scale)/100)<=.5,"render height ignores selected scale");
+            require(config.output_extent.width==extent.width && config.output_extent.height==extent.height,"scaling changed output");
+            require(config.explicit_camera_aspect.numerator==extent.width && config.explicit_camera_aspect.denominator==extent.height,"raster rounding changed projection");
+          }
         { std::ofstream f(folder/"sonic-display.ini"); f<<"mode=original\n"; }
         initialize(folder/"game.exe");
         require(settings().camera_style==sonic::camera::Style::Original,"missing camera setting must preserve original");
@@ -95,7 +107,42 @@ int main(int argc,char** argv) {
         bool rejected=false;
         try { (void)read_settings(folder/"sonic-display.ini"); } catch(const std::exception&) {rejected=true;}
         require(rejected,"invalid camera setting accepted");
-        std::cout<<"SONIC_PRESENTATION_TESTS_OK 16:9 64:27 43:18 original camera-config\n";
+        Settings before,external,edited;
+        external=before;external.width=3440;external.height=1440;external.render_percent=50;external.music_volume=30;
+        save_settings(folder/"sonic-display.ini",external);edited=before;edited.renderer=sonic::rendering::Renderer::Vulkan;
+        auto merged=save_settings_changes(folder/"sonic-display.ini",before,edited);
+        require(merged.width==3440 && merged.height==1440 && merged.render_percent==50 && merged.music_volume==30 && merged.renderer==edited.renderer,"renderer edit overwrote external display/audio");
+        edited=before;edited.widescreen=true;edited.camera_style=sonic::camera::Style::Recompiled;
+        merged=save_settings_changes(folder/"sonic-display.ini",before,edited);
+        require(merged.renderer==sonic::rendering::Renderer::Vulkan && merged.width==3440 && merged.widescreen && merged.camera_style==edited.camera_style,"aspect/camera edit reverted renderer");
+        external=merged;external.bindings[0].key=65;edited=before;edited.bindings[0].pad=0x2000;
+        merged=merge_settings(before,edited,external);
+        require(merged.bindings[0].key==65 && merged.bindings[0].pad==0x2000,"independent key/pad mapping edit lost");
+        require(merge_settings(before,before,external)==external,"no-op save reverted settings");
+        // Isolated installed/portable contracts. No real AppData or save is touched.
+        const auto install=folder/"install",appdata=folder/"appdata",data=folder/"data";
+        std::filesystem::create_directories(install);
+        SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",nullptr);
+        SetEnvironmentVariableW(L"KATANA_USER_DATA_ROOT",nullptr);
+        SetEnvironmentVariableW(L"SARECOMP_PORTABLE",nullptr);
+        SetEnvironmentVariableW(L"SARECOMP_CACHE_ROOT",nullptr);
+        SetEnvironmentVariableW(L"LOCALAPPDATA",appdata.c_str());
+        save_settings(install/"sonic-display.ini",external);
+        const auto user_config=configuration_path(install/"game.exe");
+        require(user_config==appdata/"SARecomp/experimental/sonic-display.ini" && read_settings(user_config)==external,"legacy config migration");
+        const auto installed=read_settings(install/"sonic-display.ini");
+        save_settings(user_config,before);
+        require(configuration_path(install/"game.exe")==user_config && read_settings(user_config)==before,"migration overwrote current user config");
+        require(read_settings(install/"sonic-display.ini")==installed && !std::filesystem::exists(install/"user-data"),"installed files changed");
+        SetEnvironmentVariableW(L"SARECOMP_PORTABLE",L"1");
+        require(sonic::paths::data_root(install/"game.exe")==install/"user-data","explicit portable root");
+        SetEnvironmentVariableW(L"KATANA_USER_DATA_ROOT",data.c_str());
+        require(sonic::paths::data_root(install/"game.exe")==data && sonic::paths::cache_root(install/"game.exe")==data/"cache","override did not cover user/cache roots");
+        const auto explicit_config=folder/"isolated/settings.ini";
+        SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",explicit_config.c_str());
+        require(configuration_path(install/"game.exe")==explicit_config && !std::filesystem::exists(explicit_config),"explicit config triggered migration");
+        save_settings(explicit_config,before);require(read_settings(explicit_config)==before,"new settings parent missing");
+        std::cout<<"SONIC_PRESENTATION_TESTS_OK aspects scaling(16) config-merge user-paths migration\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }

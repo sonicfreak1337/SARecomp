@@ -37,6 +37,9 @@ struct Settings {
 std::filesystem::path configuration_path(const std::filesystem::path& executable);
 Settings read_settings(const std::filesystem::path& path);
 void save_settings(const std::filesystem::path& path,const Settings& value);
+// Apply only fields the editor changed, preserving concurrent edits elsewhere.
+Settings merge_settings(const Settings& before,const Settings& edited,Settings latest);
+Settings save_settings_changes(const std::filesystem::path& path,const Settings& before,const Settings& edited);
 // Initialized once before the host/worker is created. Never guest state.
 void initialize(const std::filesystem::path& executable);
 const Settings& settings() noexcept;

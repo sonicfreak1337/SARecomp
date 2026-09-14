@@ -31,6 +31,7 @@ InputReleaseGate release_input;
 std::string pause_reason;
 std::filesystem::path config_path;
 std::optional<presentation::Settings> restart;
+presentation::Settings restart_before;
 int restart_lang=1;
 std::uint32_t word(CpuState& c,std::uint32_t p){return c.memory.read_u32(canonical_physical_address(p));}
 bool pointer(std::uint32_t p){const auto n=canonical_physical_address(p);return !(p&3)&&n>=0x0C010000&&n<=0x0CFFFF80;}
@@ -104,6 +105,7 @@ bool available() noexcept {return open_available.load()&&!modal_open.load();}
 int effective_text_language() noexcept {const auto preference=presentation::settings().text_language;return preference<0?observed_language.load():preference;}
 std::optional<presentation::Settings> take_restart(){return std::exchange(restart,std::nullopt);}
 int restart_language() noexcept {return restart_lang;}
+const presentation::Settings& restart_baseline() noexcept {return restart_before;}
 bool original_options_ready(NativePortContext& c) noexcept {
     try {
         if(!c.cpu || !c.loaded_aot || word(*c.cpu,0x8C7608B0)!=11)return false;
@@ -178,7 +180,10 @@ bool run(NativePortContext& c,const Services& services){
             switch(result.command){
             case Command::None:break;
             case Command::Close:leave=true;break;
-            case Command::Save:presentation::save_settings(config_path,model.value());model.saved();model.message(std::wstring(text("saved",model.language())));break;
+            case Command::Save:
+                model.saved(presentation::save_settings_changes(config_path,model.initial(),model.value()));
+                presentation::apply_live(model.value());
+                model.message(std::wstring(text("saved",model.language())));break;
             case Command::SoundTest:
                 if(model.dirty())model.message(std::wstring(text("save_before_sound",model.language())));
                 else {sound_test=true;leave=true;}break;
@@ -230,7 +235,7 @@ bool run(NativePortContext& c,const Services& services){
     }
     music.reset();
     std::cerr<<"SONIC_OPTIONS closed guest_instructions_delta="<<(c.cpu->retired_guest_instructions-instructions)<<" guest_frame_delta="<<(c.frame_index-frame)<<'\n';
-    if(restart){restart_lang=model.language();(void)request_native_port_host_stop(c,NativePortStopReason::HostRequested);}
+    if(restart){restart_before=model.initial();restart_lang=model.language();(void)request_native_port_host_stop(c,NativePortStopReason::HostRequested);}
     else if(title && c.stop_reason==NativePortStopReason::None && services.original_transition){
         if(!services.original_transition(sound_test?5:7))throw std::runtime_error("sonic-options-original-transition");
         std::cerr<<"SONIC_OPTIONS original_destination="<<(sound_test?5:7)<<'\n';

@@ -110,9 +110,8 @@ struct Dialog {
         return result;
     }
     void save() {
-        const auto next=read_controls();
-        sonic::presentation::save_settings(path,next);
-        settings=next; saved=true;
+        settings=sonic::presentation::save_settings_changes(path,settings,read_controls());
+        saved=true;
     }
     static LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM word,LPARAM data) {
         auto* self=reinterpret_cast<Dialog*>(GetWindowLongPtrW(window,GWLP_USERDATA));
@@ -227,7 +226,6 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
     try {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
-        dialog.path=sonic::presentation::configuration_path(executable);
         int argc=0;auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);
         if(!argv) throw std::runtime_error("Could not read configuration arguments");
         for(int i=1;i<argc;++i) {
@@ -238,6 +236,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             else {LocalFree(argv);throw std::runtime_error("Unknown configuration argument");}
         }
         LocalFree(argv);
+        if(dialog.path.empty())dialog.path=sonic::presentation::configuration_path(executable);
         dialog.settings=sonic::presentation::read_settings(dialog.path);
         return dialog.run();
     } catch(const std::exception& error) {

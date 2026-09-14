@@ -14,16 +14,20 @@ void wait_marker(const fs::path& path){for(unsigned i=0;i<100&&!fs::exists(path)
 int wmain(int argc,wchar_t** argv){
     try{
         require(argc==3,"fresh test directory and case required");
-        const auto root=fs::absolute(argv[1]);const std::wstring which=argv[2];
+        const auto root=fs::absolute(argv[1]);std::wstring which=argv[2];
+        const bool default_root=which.ends_with(L"-default-root");
+        if(default_root)which.resize(which.size()-13);
         const auto path=root/"sonic-display.ini",marker=root/"parent-started";
         _wputenv_s(L"KATANA_PORT_BACKGROUND_TEST",L"1");
-        _wputenv_s(L"SARECOMP_DISPLAY_CONFIG",path.c_str());
+        _wputenv_s(L"KATANA_USER_DATA_ROOT",root.c_str());
+        _wputenv_s(L"SARECOMP_DISPLAY_CONFIG",default_root?L"":path.c_str());
         wchar_t module[32768]{};require(GetModuleFileNameW(nullptr,module,32768)>0,"module path");
         wchar_t token[100]{};const auto trial=GetEnvironmentVariableW(L"SARECOMP_DISPLAY_TRIAL",token,100);
         if(trial){
             // Stand in only for the pre-game process. The real watchdog, INI
             // transaction, child launch, event protocol and timeout are used.
             sonic::restart::recover(module);
+            sonic::presentation::initialize(module);
             require(sonic::presentation::read_settings(path).width==800,"trial settings not installed");
             if(which==L"crash")return 27;
             const auto signal=[&](const wchar_t* suffix){
@@ -44,9 +48,13 @@ int wmain(int argc,wchar_t** argv){
         sonic::presentation::Settings original;original.width=640;original.height=480;original.setup_complete=true;
         sonic::presentation::save_settings(path,original);sonic::presentation::initialize(module);mark(marker);
         auto candidate=original;candidate.width=800;candidate.height=600;
+        // A config-tool edit made while the game is running must survive both
+        // acceptance and rollback of an unrelated in-game display change.
+        auto persisted=original;persisted.music_volume=37;
+        sonic::presentation::save_settings(path,persisted);
         const auto rollback=fs::path(path.wstring()+L".display-rollback.ini");
         if(which==L"orphan"){
-            sonic::presentation::save_settings(rollback,original);sonic::presentation::save_settings(path,candidate);sonic::restart::recover(module);
+            sonic::presentation::save_settings(rollback,persisted);sonic::presentation::save_settings(path,candidate);sonic::restart::recover(module);
         }else if(which==L"start-failure"){
             bool failed=false;try{sonic::restart::launch(fs::path(module).parent_path()/"missing-test-child.exe",candidate,4);}catch(...){failed=true;}
             require(failed,"missing child succeeded");
@@ -55,7 +63,8 @@ int wmain(int argc,wchar_t** argv){
             require(sonic::restart::launch(module,candidate,4)==0,"watchdog failed");
             if(which!=L"accept")wait_marker(root/"recovered");
         }
-        require(sonic::presentation::read_settings(path)==(which==L"accept"?candidate:original),"settings outcome");
+        if(which==L"accept"){candidate.music_volume=37;persisted=candidate;}
+        require(sonic::presentation::read_settings(path)==persisted,"settings outcome or concurrent audio edit lost");
         require(!fs::exists(rollback),"rollback transaction left behind");
         std::wcout<<L"SONIC_DISPLAY_RESTART_TEST_OK "<<which<<L"\n";return 0;
     }catch(const std::exception& e){std::cerr<<"SONIC_DISPLAY_RESTART_TEST_FAIL "<<e.what()<<'\n';return 1;}

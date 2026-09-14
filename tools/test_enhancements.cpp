@@ -33,7 +33,7 @@ struct Driver {
 int main(int argc,char** argv){
     try{
         check(argc==3,"test root and authentic read-only save required");const auto root=fs::absolute(argv[1]);check(!fs::exists(root),"test root must be fresh");fs::create_directories(root);
-        SetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",L"1");SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",nullptr);
+        SetEnvironmentVariableW(L"KATANA_PORT_BACKGROUND_TEST",L"1");SetEnvironmentVariableW(L"SARECOMP_DISPLAY_CONFIG",(root/"sonic-display.ini").c_str());
         presentation::Settings settings;settings.setup_complete=true;settings.text_language=4;settings.renderer=rendering::Renderer::Vulkan;
         presentation::save_settings(root/"sonic-display.ini",settings);check(presentation::read_settings(root/"sonic-display.ini")==settings,"settings roundtrip");
         check(settings.gameplay_timing==1,"Recompiled timing must remain the default");

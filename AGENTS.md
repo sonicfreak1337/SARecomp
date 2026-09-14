@@ -33,7 +33,8 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 
 ## Work and verification
 
-- Camera style is opt-in on `enhancements/camera-style`; Original is the
+- Development continues on `main`; the integrated enhancement branches were
+  removed at the user's request. Camera style remains opt-in; Original is the
   unchanged default. Preserve scripted/event camera ownership inside levels
   as well as cutscenes. PAL camera-control +6 and +7 are separate bytes, not
   a 16-bit type. See `docs/camera-style.md` for the reviewed type policy and

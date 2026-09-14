@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <utility>
 namespace sonic::menu {
 enum class Command {None,Close,Save,Restart,SoundTest,Backup,Restore,Import,Export,NewProfile,SwitchProfile,Diagnostics,PreviewExport,BrowseImport};
 struct Row {std::string id;std::wstring label,value;bool restart=false,enabled=true,read_only=false;};
@@ -37,7 +38,9 @@ public:
     unsigned visible_count()const noexcept{return page_=="title"?11:visible_rows;}
     unsigned first()const noexcept{return (selected_/visible_count())*visible_count();}
     const presentation::Settings& value()const noexcept{return draft_;}
+    const presentation::Settings& initial()const noexcept{return initial_;}
     void saved(){initial_=draft_;}
+    void saved(presentation::Settings value){initial_=draft_=std::move(value);}
     bool dirty()const noexcept{return draft_!=initial_;}
     static constexpr unsigned visible_rows=10;
     Rect list_bounds(unsigned width,unsigned height) const noexcept;

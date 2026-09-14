@@ -8,5 +8,6 @@ namespace sonic::restart {
 void recover(const std::filesystem::path& executable);
 bool confirm_display(katana::runtime::NativePortDesktopHost&,katana::runtime::NativePortPlatformServices&);
 // Called only after the entire old host and save provider have been destroyed.
-int launch(const std::filesystem::path& executable,const presentation::Settings& next,int language);
+int launch(const std::filesystem::path& executable,const presentation::Settings& next,int language,
+           const presentation::Settings* edited_from=nullptr);
 }
