@@ -171,7 +171,7 @@ inline constexpr std::string_view
         // Fixed product output: 60 without VSync, monitor-paced with VSync;
         // Original timing is authoritative for both update and output cadence.
         // Authenticated MINICART results AOT supplement and Big's bound HUD owners.
-        "sha256:1a8a9350bba29679f26308d071e2da0bbafca8b6ff2b4f0791c7e292749a2f2d"};
+        "sha256:3111430648cee10205e93e343da9c40387ed9448b1d7148412422a686a2e2228"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

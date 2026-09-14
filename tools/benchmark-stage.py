@@ -32,6 +32,7 @@ parser.add_argument('--native-matrix-inverse', action='store_true', help='Privat
 parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
 parser.add_argument('--collision-candidates', choices=('native','retained'), default='native', help='Matched complete TOUCH-POLY owner comparison')
 parser.add_argument('--motion-sampling', choices=('native','retained'), default='native', help='Matched complete motion/keyframe and SRT owner comparison')
+parser.add_argument('--mesh-plan', choices=('cached','retained','verify'), default='cached', help='Matched authored topology/UV source-plan cache')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
 parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
 parser.add_argument('--indexed-corners', choices=('on','off'), default='off', help='Transient authored-corner reuse experiment')
@@ -81,6 +82,8 @@ env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECO
 env['SARECOMP_NATIVE_MATRIX_VECTORS']='1' if args.matrix_vectors=='native' else '0'
 env['SARECOMP_NATIVE_COLLISION_CANDIDATES']='1' if args.collision_candidates=='native' else '0'
 env['SARECOMP_NATIVE_MOTION_SAMPLING']='1' if args.motion_sampling=='native' else '0'
+env['SARECOMP_MESH_SOURCE_PLAN']='0' if args.mesh_plan=='retained' else '1'
+env['SARECOMP_MESH_SOURCE_PLAN_VERIFY']='1' if args.mesh_plan=='verify' else '0'
 env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
 env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '0'
 env.update({

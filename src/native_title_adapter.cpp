@@ -63,6 +63,7 @@
 #include "sonic_triangle_contacts.hpp"
 #include "sonic_collision_candidates.hpp"
 #include "sonic_motion_sampling.hpp"
+#include "sonic_mesh_plan.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
 #include "sonic_atan_math.hpp"
@@ -2032,6 +2033,7 @@ struct SonicNativeTitleState final {
     std::uint32_t font_format = 0u;
     std::vector<katana::runtime::NativePortVertex> transient_vertices;
     sonic::geometry::CornerIndices model_corner_indices;
+    sonic::geometry::MeshPlanCache model_source_plans;
     // Optional slots keep indices stable for the digest multimap.  Cache
     // entries retain the exact expanded vertex/index stream so a digest
     // collision or mutable guest source can never produce a false hit.
@@ -3207,6 +3209,13 @@ void report_native_graphics_contract_telemetry(
         << " indexed_logical_corners=" << sonic_native_title_state.model_corner_indices.logical_corners
         << " indexed_stored_vertices=" << sonic_native_title_state.model_corner_indices.stored_vertices
         << " indexed_verified_reuses=" << sonic_native_title_state.model_corner_indices.verified_reuses
+        << " source_plan_hits=" << sonic_native_title_state.model_source_plans.stats.hits
+        << " source_plan_misses=" << sonic_native_title_state.model_source_plans.stats.misses
+        << " source_plan_changes=" << sonic_native_title_state.model_source_plans.stats.changes
+        << " source_plan_declines=" << sonic_native_title_state.model_source_plans.stats.declines
+        << " source_plan_evictions=" << sonic_native_title_state.model_source_plans.stats.evictions
+        << " source_plan_verified_triangles=" << sonic_native_title_state.model_source_plans.stats.verified_triangles
+        << " source_plan_verified_uvs=" << sonic_native_title_state.model_source_plans.stats.verified_uvs
         << " mesh_cache_eligible=" << cache.eligible
         << " mesh_cache_hits=" << cache.hits
         << " mesh_cache_misses=" << cache.misses
@@ -3597,6 +3606,13 @@ class SonicGuestReader final {
         return static_cast<bool>(guard_) || scalar_mode_available();
     }
     [[nodiscard]] bool direct_ram() const noexcept { return static_cast<bool>(guard_); }
+    // Borrowed for this synchronous read only, never retained across callbacks.
+    [[nodiscard]] std::span<const std::uint8_t> direct_bytes(
+        std::uint32_t address,std::size_t bytes)const noexcept {
+        std::uint32_t offset=0u;
+        if(!guard_ || !bytes || !offset_of(address,bytes,offset))return {};
+        return {guard_.read_bytes+offset,bytes};
+    }
 
     [[nodiscard]] bool range(const std::uint32_t address,
                              const std::size_t bytes) const noexcept {
@@ -36911,6 +36927,37 @@ sonic_native_ninja_model_draw_impl(
                 !sdk_exceptional_vertex_color;
             auto& corner_indices = sonic_native_title_state.model_corner_indices;
             corner_indices.begin_mesh();
+            static const bool source_plan_requested=[] {
+                const auto* flag=std::getenv("SARECOMP_MESH_SOURCE_PLAN");
+                return !flag || std::string_view(flag)!="0";
+            }();
+            static const bool source_plan_verify=sonic_native_diagnostic_enabled("SARECOMP_MESH_SOURCE_PLAN_VERIFY");
+            const sonic::geometry::MeshPlan* source_plan=nullptr;
+            auto& source_plan_cache=sonic_native_title_state.model_source_plans;
+            if(source_plan_requested && sonic_native_gameplay_math_active() && model_transform &&
+               !environment_mapping && !flat_shading && !observe_normal_draw && corner_direct_reads &&
+               !native_mesh_cache_diagnostics_active() && material_owner==SonicNativeBasicMaterialOwner::TitleBasic &&
+               !sdk_exceptional_header_color && !sdk_constant_colors && !sdk_float_colors && !sdk_exceptional_vertex_color){
+                const auto descriptor=reader.direct_bytes(mesh_address,24u);
+                if(descriptor.size()==24u){
+                    sonic::geometry::MeshPlanRequest request{model,mesh_address,point_count,std::uint32_t(max_native_draw_vertices)};
+                    std::memcpy(request.descriptor.data(),descriptor.data(),24u);
+                    // Earlier material/texture resolution must not turn a
+                    // refreshed descriptor into different parse arguments.
+                    const auto matches_word=[&](std::size_t offset,std::uint32_t word){
+                        for(unsigned i=0;i<4u;++i)if(request.descriptor[offset+i]!=std::uint8_t(word>>(8u*i)))return false;
+                        return true;
+                    };
+                    const sonic::geometry::MeshPlanReader plan_reader{&reader,
+                        [](const void* p,std::uint32_t a,std::size_t n) noexcept {
+                            return static_cast<const SonicGuestReader*>(p)->direct_bytes(a,n);
+                        }};
+                    if(matches_word(0u,std::uint32_t(type_material)|(std::uint32_t(polygon_count)<<16u)) &&
+                       matches_word(4u,polygon_stream) && matches_word(20u,vertex_uvs))
+                        source_plan=source_plan_cache.get(request,plan_reader,cpu);
+                }
+            }
+            std::size_t verified_plan_triangle=0u;
             struct PendingModelCorner final {
                 std::vector<katana::runtime::NativePortVertex>* output;
                 ~PendingModelCorner() {
@@ -36994,6 +37041,10 @@ sonic_native_ninja_model_draw_impl(
                         vertex.position = sonic_native_title_state.model_env_screen_scratch[point_index];
                         vertex.depth_coordinate = vertex.position[2];
                     } else if (vertex_uvs != 0u) {
+                        if(source_plan && !source_plan_verify){
+                            if(corner_index>=source_plan->uvs.size())return false;
+                            vertex.texture_coordinate=source_plan->uvs[std::size_t(corner_index)];
+                        }else{
                         std::uint32_t uv_address = 0u;
                         std::int16_t u = 0;
                         std::int16_t v = 0;
@@ -37006,6 +37057,12 @@ sonic_native_ninja_model_draw_impl(
                             u, v,
                             material_owner == SonicNativeBasicMaterialOwner::TitleBasic,
                             cpu);
+                        if(source_plan){
+                            if(corner_index>=source_plan->uvs.size() ||
+                               std::memcmp(vertex.texture_coordinate.data(),source_plan->uvs[std::size_t(corner_index)].data(),sizeof(vertex.texture_coordinate)))return false;
+                            ++source_plan_cache.stats.verified_uvs;
+                        }
+                        }
                     }
                     if (observe_normal_draw && !bad_source_valid &&
                         ((!model_normal_scratch.empty() && sonic_native_bad_draw_normal(
@@ -37337,6 +37394,13 @@ sonic_native_ninja_model_draw_impl(
             const auto append_triangle =
                 [&](const std::array<std::uint16_t, 3u>& indices,
                     const std::array<std::uint64_t, 3u>& corners) -> bool {
+                    if(source_plan && source_plan_verify){
+                        if(verified_plan_triangle>=source_plan->triangles.size())return false;
+                        const auto& expected=source_plan->triangles[verified_plan_triangle++];
+                        if(indices!=expected.points)return false;
+                        for(unsigned i=0;i<3u;++i)if(corners[i]!=expected.corners[i])return false;
+                        ++source_plan_cache.stats.verified_triangles;
+                    }
                     if (!model_transform) {
                         // Flycast rejects triangles containing an invalid
                         // published raster position. Check the actual NINJA
@@ -37501,6 +37565,19 @@ sonic_native_ninja_model_draw_impl(
                     return DerivedPolygonNormalResult::Success;
                 };
 
+            if(source_plan && !source_plan_verify){
+                for(const auto& polygon:source_plan->polygons){
+                    corner_cursor=polygon.first_corner;
+                    if(indexed_corners)corner_indices.begin_polygon(polygon.corner_count);
+                    for(std::uint32_t i=0;i<polygon.triangle_count;++i){
+                        const auto& t=source_plan->triangles[polygon.first_triangle+i];
+                        if(!append_triangle(t.points,{t.corners[0],t.corners[1],t.corners[2]}))
+                            return graphics_abort(context,sonic_native_graphics_error_layout);
+                    }
+                }
+                corner_cursor=source_plan->corner_count;
+                stream_offset=source_plan->stream_bytes.size();
+            }else{
             for (std::uint32_t polygon_index = 0u;
                  polygon_index < polygon_count; ++polygon_index) {
                 current_polygon_normal_valid = false;
@@ -37662,6 +37739,9 @@ sonic_native_ninja_model_draw_impl(
                     }
                 }
                 corner_cursor += vertices_in_polygon;
+            }
+            if(source_plan && (verified_plan_triangle!=source_plan->triangles.size() || corner_cursor!=source_plan->corner_count || stream_offset!=source_plan->stream_bytes.size()))
+                return graphics_abort(context,sonic_native_graphics_error_layout);
             }
 
             if (vertices.empty()) {

@@ -524,6 +524,13 @@ target_link_libraries(sonic_motion_sampling_tests PRIVATE bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
 
 add_executable(sonic_corner_indices_tests EXCLUDE_FROM_ALL tools/test_corner_indices.cpp)
+target_sources(katana_native_title_adapter PRIVATE src/sonic_mesh_plan.cpp)
+add_executable(sonic_mesh_plan_tests EXCLUDE_FROM_ALL tools/test_mesh_plan.cpp src/sonic_mesh_plan.cpp)
+target_include_directories(sonic_mesh_plan_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_mesh_plan_tests PRIVATE /EHsc /utf-8 /fp:strict)
+target_link_libraries(sonic_mesh_plan_tests PRIVATE
+    "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
+    "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
 target_include_directories(sonic_corner_indices_tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic_corner_indices_tests PRIVATE /EHsc /utf-8)
 target_include_directories(sonic_presentation_tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_BASE}/sdk/include" "${SONIC_BASE}/sdk/generated/include")
