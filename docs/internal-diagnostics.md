@@ -83,3 +83,8 @@ port-local substitutions. No guest AOT unit is regenerated or recompiled.
 
 Evidence: `runs/internal-diagnostics-linux/` and the Linux build logs under
 `runs/build-internal-diagnostics-linux*.log`.
+
+A subsequent [selected-AOT statistics experiment](linux-aot-statistics-experiment-20260916.md)
+also completed Linux gameplay checks. Its runtime and compile-time variants
+remain disabled because neither established a useful overall gain. It does
+not change these patches or make their OFF mode omit every instruction counter.
