@@ -1,0 +1,36 @@
+option(SARECOMP_LINUX_READ_GROUPS "Batch authenticated, callback-free AOT RAM read groups" OFF)
+if(SARECOMP_LINUX_READ_GROUPS AND SARECOMP_LINUX_PRELOADED_READS)
+    message(FATAL_ERROR "Read-group and per-load experiments require separate comparisons")
+endif()
+if(SARECOMP_LINUX_READ_GROUPS)
+    include("${SONIC_ROOT}/cmake/LinuxPreloadedReadUnits.cmake")
+    set(read_group_dir "${CMAKE_BINARY_DIR}/generated/read-groups")
+    set(read_group_sources)
+    set(read_group_inputs)
+    set(read_group_arguments)
+    get_target_property(guest_sources sonic_linux_guest SOURCES)
+    foreach(unit IN LISTS linux_preloaded_units)
+        list(APPEND read_group_sources "${read_group_dir}/${unit}")
+        list(APPEND read_group_inputs "${SONIC_WORKING}/generated/code/${unit}")
+        list(APPEND read_group_arguments --unit "${unit}")
+        list(FIND guest_sources "${SONIC_WORKING}/generated/code/${unit}" unit_index)
+        if(unit_index LESS 0)
+            message(FATAL_ERROR "Selected read-group member is missing: ${unit}")
+        endif()
+        list(REMOVE_AT guest_sources ${unit_index})
+        list(INSERT guest_sources ${unit_index} "${read_group_dir}/${unit}")
+        set_source_files_properties("${read_group_dir}/${unit}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
+    endforeach()
+    add_custom_command(OUTPUT ${read_group_sources} "${read_group_dir}/preparation.json"
+        COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-ram-read-groups.py"
+            --source-root "${SONIC_WORKING}/generated" --destination "${read_group_dir}"
+            --helper "${SONIC_ROOT}/src/sonic_read_group.hpp" ${read_group_arguments}
+        DEPENDS "${SONIC_ROOT}/tools/prepare-ram-read-groups.py" "${SONIC_ROOT}/tools/prepare-ram-read-aot.py"
+            "${SONIC_ROOT}/src/sonic_read_group.hpp"
+            "${SONIC_WORKING}/generated/.katana-generated-artifacts" ${read_group_inputs} VERBATIM)
+    set_property(TARGET sonic_linux_guest PROPERTY SOURCES ${guest_sources})
+endif()
+add_executable(sonic-linux-read-group-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_read_group.cpp")
+target_include_directories(sonic-linux-read-group-tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic-linux-read-group-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+target_link_libraries(sonic-linux-read-group-tests PRIVATE sonic_linux_aot_runtime)
