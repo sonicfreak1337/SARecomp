@@ -15,6 +15,7 @@ set_source_files_properties("${linux_inverse_unit}" PROPERTIES INCLUDE_DIRECTORI
 get_target_property(linux_runtime_sources sonic_linux_aot_runtime SOURCES)
 list(REMOVE_ITEM linux_runtime_sources "${SONIC_LINUX_SDK}/src/runtime/fpu.cpp")
 set_property(TARGET sonic_linux_aot_runtime PROPERTY SOURCES ${linux_runtime_sources} "${CMAKE_BINARY_DIR}/generated/fpu-runtime/fpu.cpp")
+include("${SONIC_ROOT}/cmake/LinuxHardwareFpu.cmake")
 
 set(linux_title_sources native_title_adapter native_latent_texture_dispatch_provider native_spg_status_provider
     sonic_native_sound_catalog sonic_native_texture_catalog sonic_native_transform_stream sonic_private_scenario_launcher
