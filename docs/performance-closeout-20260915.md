@@ -1,5 +1,10 @@
 # Performance round closeout, 2026-09-15
 
+The subsequent v5 installers were withdrawn after the user exposed an
+Original-timing performance regression. See
+[the correction and replacement packages](original-timing-performance-fix-20260915.md)
+for current status; the measurements below describe the earlier round.
+
 The user requested stopping after this round. The profiling work ended without
 a remaining performance experiment or a newly produced installer. The user then
 explicitly requested updated installers before stopping; that packaging and

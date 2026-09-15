@@ -81,6 +81,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 - Until Deck performance is resolved, new Deck installations default to
   Original game timing at the user's request. Recompiled stays selectable;
   reinstalling must preserve explicit existing settings and all saves.
+- Original/Recompiled must select timing only. Both use the authenticated
+  native gameplay math and mesh paths. A release/defaults change must check
+  Original as well as Recompiled, including native-call evidence and the
+  original release/delta/video-clock values. Never infer Deck performance
+  from VM throughput. The withdrawn v5 installers must not be distributed.
+- Latest Deck feedback after the policy patch: Emerald Coast about 17 SIM FPS,
+  Windy Valley 10–15, Egg Hornet 23–26, subsequent cutscene about 20. Continue
+  performance work autonomously; no further patch/installer until a large
+  measured frame-rate improvement. Preserve original game speed and saves.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

@@ -1,5 +1,11 @@
 # Installer rebuild v5, 2026-09-15
 
+**WITHDRAWN — DO NOT DISTRIBUTE.** Original timing incorrectly disabled native
+gameplay math in these builds. The packages below have been moved out of the
+delivery folder. Their tested replacements and the existing-installation
+patch are recorded in [the regression fix](original-timing-performance-fix-20260915.md).
+The remainder of this document is historical evidence, not a release approval.
+
 The user explicitly requested updated installers before work stops. This
 supersedes the earlier instruction to wait for a large performance gain before
 packaging. It is not a claim that Recompiled mode now sustains 60 FPS on Deck.

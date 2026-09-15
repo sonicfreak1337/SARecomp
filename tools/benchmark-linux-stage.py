@@ -34,6 +34,8 @@ p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast')
+p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
+p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
 p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
 p.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 p.add_argument('--aspect', choices=('original','deck'), default='original',
@@ -64,7 +66,7 @@ viewport = ('mode=widescreen\nwidth=800\nheight=500\n' if a.aspect=='deck'
             else 'mode=original\nwidth=640\nheight=480\n')
 display.write_text('setup_complete=1\n'+viewport+
                    'render_percent=50\nrenderer=vulkan\nwindow_mode=windowed\n'
-                   'vsync=2\ngameplay_timing=1\n')
+                   'vsync=2\ngameplay_timing='+str(int(a.gameplay_timing=='recompiled'))+'\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
@@ -75,6 +77,7 @@ env.update({
     'SARECOMP_VULKAN_STATE_CACHE':'1' if a.state_cache=='on' else '0',
     'SARECOMP_MESH_SHARED_CORNERS':'1' if a.shared_corners=='on' else '0',
     'SARECOMP_INDEXED_CORNERS_VERIFY':'1' if a.verify_corners else '0',
+    'SARECOMP_GAMEPLAY_MATH_RETAINED':'1' if a.gameplay_math=='retained' else '0',
     'KATANA_PORT_FINAL_PROGRESS':'1', 'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1',
     'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
     'KATANA_SONIC_PRIVATE_SCENARIO':a.scenario, 'KATANA_SONIC_GAMEPLAY_PROBE':'1',
@@ -180,6 +183,7 @@ if a.end_frame:
                 and int(s.get('frame_window_end','0'))==a.end_frame for s in measured_samples))
 result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
+          'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
           'shared_corners':a.shared_corners, 'verify_corners':a.verify_corners,

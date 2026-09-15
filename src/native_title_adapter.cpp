@@ -1971,6 +1971,8 @@ struct SonicNativeTitleState final {
     bool sixty_restore_cadence_pending = false;
     bool standard_sixty_active = false;
     bool standard_sixty_configuring = false;
+    // Derived at frame boundaries, never serialized as cadence ownership.
+    bool original_gameplay_math_active = false;
     std::uint32_t sixty_original_release = 2u;
     std::uint32_t sixty_original_delta = 2u;
     SonicNativePrivateStageTupleOverride private_stage_tuple_override;
@@ -2339,10 +2341,19 @@ thread_local SonicNativeTitleState sonic_native_title_state;
 }
 
 [[nodiscard]] bool sonic_native_gameplay_math_active() noexcept {
+    static const bool retained = sonic_native_diagnostic_enabled("SARECOMP_GAMEPLAY_MATH_RETAINED");
+    if (retained) return false;
     const auto& state=sonic_native_title_state;
-    return (sonic_standard_sixty_enabled() && state.standard_sixty_active) ||
+    return state.original_gameplay_math_active ||
+        (sonic_standard_sixty_enabled() && state.standard_sixty_active) ||
         (sonic_sixty_frame_fixture_enabled() && state.gameplay_probe.active &&
          state.gameplay_probe.sixty_frame_configured);
+}
+
+[[nodiscard]] bool sonic_native_gameplay_math_defaults_enabled() noexcept {
+    // Original selects the title clock, not the slow translated math owners.
+    // Preserve explicit leaf selection in the older private 60-Hz fixture.
+    return !sonic_sixty_frame_fixture_enabled();
 }
 
 // These tests publish synthetic gamepad snapshots inside the hidden process;
@@ -18007,6 +18018,7 @@ void emit_sonic_native_gameplay_probe_sample(
               << " tv_mode_readable=" << int(tv_mode_readable) << " tv_mode_word=" << tv_mode
               << " release_slots=" << release << " logical_delta=" << delta
               << " sixty_frame_fixture=" << int(probe.sixty_frame_configured)
+              << " native_gameplay_math=" << int(sonic_native_gameplay_math_active())
               << " palette_native_calls=" << probe.palette_native_calls
               << " palette_original_calls=" << probe.palette_original_calls
               << " vertex_normals_native_calls=" << probe.vertex_normals_native_calls
@@ -18130,6 +18142,10 @@ void service_sonic_native_gameplay_probe_completed_frame(
                 "SARECOMP_PROBE_WAIT_FOR_GAMEPLAY");
             if (wait_for_gameplay && sonic_standard_sixty_enabled() &&
                 !sonic_native_title_state.standard_sixty_active)
+                return;
+            if (wait_for_gameplay && !sonic_standard_sixty_enabled() &&
+                !sonic_sixty_frame_fixture_enabled() &&
+                !sonic_native_title_state.original_gameplay_math_active)
                 return;
             SonicGuestReader reader(*context.cpu);
             std::uint16_t stage_major = 0u;
@@ -19715,8 +19731,25 @@ apply_sonic_native_private_stage_tuple_override(
 // still installs its callbacks and clears its iteration/ready state.
 [[nodiscard]] bool configure_sonic_standard_gameplay_cadence(
     katana::runtime::NativePortContext& context) {
-    if (!sonic_standard_sixty_enabled()) return true;
     auto& state=sonic_native_title_state;
+    state.original_gameplay_math_active=false;
+    if (!sonic_standard_sixty_enabled()) {
+        if (sonic_sixty_frame_fixture_enabled() || !context.cpu) return true;
+        SonicGuestReader original(*context.cpu);
+        std::uint32_t main=0,release=0,delta=0;
+        std::uint16_t scene=0,request=0;
+        // Same gameplay owners eligible for the existing 2/2 -> 1/1 mode,
+        // without writing any cadence, video-mode or gameplay state.
+        state.original_gameplay_math_active=original.valid() &&
+            original.u32(sonic_private_main_state,main) &&
+            original.u16(0x8C7492F4u,scene) && original.u16(0x8C19DD64u,request) &&
+            original.u32(sonic_frame_producer_release,release) &&
+            original.u32(0x8C754E04u,delta) &&
+            (main==4u || main==5u || main==9u) && (scene==15u || scene==16u) &&
+            request==0u && release==2u && delta==2u &&
+            (state.active_video_refresh_hz==50u || state.active_video_refresh_hz==60u);
+        return true;
+    }
     SonicGuestReader reader(*context.cpu);
     std::uint32_t main=0,release=0,delta=0,tv=0;
     std::uint16_t scene=0,request=0;
@@ -21703,6 +21736,9 @@ maintain_native_operand_cache_range(
 extern "C" katana::runtime::NativePortHookResult
 sonic_native_sixty_frame_cadence(katana::runtime::NativePortContext& context) noexcept {
     auto& state=sonic_native_title_state;
+    if (state.original_gameplay_math_active &&
+        (!context.cpu || context.cpu->r[4]!=2u || context.cpu->r[5]!=2u))
+        state.original_gameplay_math_active=false;
     if (sonic_standard_sixty_enabled()) {
         if (!valid_sonic_native_context(context))
             return graphics_abort(context,sonic_native_frame_error_context);
@@ -29047,6 +29083,7 @@ void restore_sonic_native_development_state(
     state.active_video_refresh_hz = saved.active_video_refresh_hz;
     state.standard_sixty_active = saved.standard_sixty_active;
     state.standard_sixty_configuring = false;
+    state.original_gameplay_math_active = false;
     state.sixty_original_release = saved.sixty_original_release;
     state.sixty_original_delta = saved.sixty_original_delta;
     state.active_video_refresh_owner = "development-state-restore";
@@ -34280,7 +34317,7 @@ sonic_native_palette_lighting(
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_PALETTE_LIGHTING");
-        return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+        return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
     }();
     try {
         auto* const services = katana_port_generated::runtime_dispatch_detail::active_services;
@@ -34308,7 +34345,7 @@ sonic_native_vertex_normals(
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_VERTEX_NORMALS");
-        return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+        return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
     }();
     try {
         auto* const services = katana_port_generated::runtime_dispatch_detail::active_services;
@@ -34580,7 +34617,7 @@ sonic_native_matrix_inverse_impl(katana::runtime::NativePortContext& context, st
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_MATRIX_INVERSE");
-        return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+        return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
     }();
     try {
         auto* const services = katana_port_generated::runtime_dispatch_detail::active_services;
@@ -34613,7 +34650,7 @@ sonic_native_matrix_vectors_impl(katana::runtime::NativePortContext& context,std
         return {katana::runtime::NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_MATRIX_VECTORS");
-        return flag?std::string_view(flag)=="1":sonic_standard_sixty_enabled();
+        return flag?std::string_view(flag)=="1":sonic_native_gameplay_math_defaults_enabled();
     }();
     auto& probe=sonic_native_title_state.gameplay_probe;
     try {
@@ -34650,7 +34687,7 @@ sonic_native_collision_math_impl(katana::runtime::NativePortContext& context, st
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_COLLISION_MATH");
-        return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+        return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
     }();
     try {
         auto* const services = katana_port_generated::runtime_dispatch_detail::active_services;
@@ -34689,7 +34726,7 @@ sonic_native_matrix_stack_impl(
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_MATRIX_STACK");
-        return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+        return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
     }();
     static const bool batch_stores = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_MATRIX_WRITE_BATCH");
@@ -36962,7 +36999,7 @@ sonic_native_ninja_model_draw_impl(
             const auto corner_direct_reads = cpu.memory.direct_linear_memory_guard(false);
             static const bool indexed_corners_requested = [] {
                 const auto* flag = std::getenv("SARECOMP_INDEXED_CORNERS");
-                return flag ? std::string_view(flag) == "1" : sonic_standard_sixty_enabled();
+                return flag ? std::string_view(flag) == "1" : sonic_native_gameplay_math_defaults_enabled();
             }();
             static const bool indexed_corners_verify =
                 sonic_native_diagnostic_enabled("SARECOMP_INDEXED_CORNERS_VERIFY");

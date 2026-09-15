@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Updates authenticated application binaries; never enters the save/content roots.
+set -Eeuo pipefail
+umask 077
+bundle=$(realpath -- "${1:?Missing patch payload}")
+shift
+app_root="${XDG_DATA_HOME:-${HOME:?}/.local/share}/SARecomp-app"
+headless=0
+while (($#)); do
+    case "$1" in
+        --app-root) app_root=${2:?Missing application folder}; shift 2 ;;
+        --headless) headless=1; shift ;;
+        *) printf 'Unknown argument: %s\n' "$1" >&2; exit 1 ;;
+    esac
+done
+title='Sonic Adventure Recompiled - Performance Patch'
+notice() {
+    printf '%s\n' "$1"
+    if (( !headless )) && command -v kdialog >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+        kdialog --title "$title" --msgbox "$1" || true
+    fi
+}
+error_shown=0
+popup_pid=
+fail() {
+    printf 'Patch failed: %s\n' "$1" >&2
+    error_shown=1
+    if (( !headless )) && command -v kdialog >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+        kdialog --title "$title" --error "$1" || true
+    fi
+    exit 1
+}
+[[ $EUID != 0 ]] || fail 'Run this patch as your normal user, without sudo.'
+[[ -d $app_root && ! -L $app_root ]] || fail 'The installed game application folder was not found.'
+app_root=$(realpath -- "$app_root")
+[[ -O $app_root ]] || fail 'This installation belongs to another user.'
+[[ ! -L $app_root/installation.lock ]] || fail 'The installation lock is invalid.'
+exec 9>"$app_root/installation.lock"
+flock -n 9 || fail 'Another installation or patch is running.'
+sha() { sha256sum -- "$1" | cut -d ' ' -f 1; }
+regular() { [[ -f $1 && ! -L $1 && -O $1 ]]; }
+declare -A supported=()
+target_hash= target_size= base_hash= delta_hash= tool_hash=
+while IFS=$'\t' read -r kind first second; do
+    case "$kind" in
+        target) target_size=$first; target_hash=$second ;;
+        base) base_hash=$first ;;
+        delta) delta_hash=$first ;;
+        tool) tool_hash=$first ;;
+        supported) supported[$first]=1 ;;
+        SARECOMP-RUNTIME-PATCH-1|'') ;;
+        *) fail 'Unsupported patch metadata.' ;;
+    esac
+done < "$bundle/patch.tsv"
+[[ $target_hash =~ ^[0-9a-f]{64}$ && $target_size =~ ^[0-9]+$ && $base_hash =~ ^[0-9a-f]{64}$ ]] || fail 'Invalid patch identity.'
+[[ $(sha "$bundle/game.delta.zst") == "$delta_hash" && $(sha "$bundle/zstd") == "$tool_hash" ]] || fail 'The downloaded patch is damaged.'
+dirs=() hashes=() actions=() committed=()
+reference= ready_source= stage=
+success=0
+cleanup() {
+    local result=$?
+    trap - EXIT HUP INT TERM
+    if [[ -n $popup_pid ]]; then kill "$popup_pid" 2>/dev/null || true; fi
+    if (( !success )); then
+        for index in "${committed[@]}"; do
+            local dir=${dirs[$index]}
+            if [[ ${actions[$index]} == update ]]; then
+                ln -- "$dir/game.pre-native-math-v1" "$stage/restore-game-$index" &&
+                    mv -f -- "$stage/restore-game-$index" "$dir/game" || true
+            fi
+            ln -- "$dir/resources/payload-files.tsv.pre-native-math-v1" "$stage/restore-manifest-$index" &&
+                mv -f -- "$stage/restore-manifest-$index" "$dir/resources/payload-files.tsv" || true
+        done
+        printf 'Update did not complete. Original program backups have been retained.\n' >&2
+        if (( !headless && !error_shown )) && command -v kdialog >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+            kdialog --title "$title" --error 'The patch did not complete. Existing program backups, saves and settings were retained. Run from a terminal to see the error details.' || true
+        fi
+    fi
+    if [[ -n $stage && $stage == "$app_root"/.native-math-patch.* ]]; then rm -rf -- "$stage"; fi
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
+if (( !headless )) && command -v kdialog >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+    kdialog --title "$title" --passivepopup 'Checking and updating the installed program. Please wait...' 120 &
+    popup_pid=$!
+fi
+printf 'Checking installed launch paths...\n'
+for dir in "$app_root"/1.0-candidate-*; do
+    [[ -d $dir && ! -L $dir && -O $dir ]] || continue
+    [[ ${dir##*/} =~ ^1\.0-candidate-[0-9a-f]{16}$ ]] || continue
+    regular "$dir/game" && regular "$dir/resources/payload-files.tsv" || continue
+    [[ ! -L $dir/resources && $(stat -c %d "$dir") == $(stat -c %d "$app_root") ]] || fail 'The application folder layout is unsupported.'
+    record=$(awk -F '\t' '$1=="game" {print $3}' "$dir/resources/payload-files.tsv")
+    [[ $record =~ ^[0-9a-f]{64}$ ]] || fail 'An installed game manifest is invalid.'
+    [[ $record == "$target_hash" || -n ${supported[$record]:-} ]] || continue
+    current=$(sha "$dir/game")
+    if [[ $current == "$target_hash" ]]; then
+        ready_source="$dir/game"
+        [[ $record != "$target_hash" ]] || continue
+        action=repair
+    else
+        [[ $current == "$record" && -n ${supported[$current]:-} ]] || fail 'An installed program was modified or damaged; it has not been overwritten.'
+        action=update
+        [[ $current != "$base_hash" ]] || reference="$dir/game"
+    fi
+    dirs+=("$dir"); hashes+=("$current"); actions+=("$action")
+done
+if (( ${#dirs[@]} == 0 )); then
+    [[ -n $ready_source ]] || fail 'No supported v5 installation was found. No game data was changed.'
+    success=1; notice 'This performance patch is already installed.'; exit 0
+fi
+[[ -n $reference || -n $ready_source ]] || fail 'The v5 program required for this patch was not found. No reinstallation has been started.'
+# Steam shortcuts may still name an older version directory. Update every
+# authenticated installed launch path, so the existing Steam entry keeps working.
+for process in /proc/[0-9]*/exe; do
+    running=$(readlink -- "$process" 2>/dev/null || true)
+    for dir in "${dirs[@]}"; do [[ $running != "$dir/game" ]] || fail 'Close Sonic Adventure Recompiled before applying the patch.'; done
+done
+available=$(df -PB1 -- "$app_root" | awk 'NR==2 {print $4}')
+[[ $available =~ ^[0-9]+$ ]] && (( available > target_size + 67108864 )) || fail 'The patch needs about 1.7 GB of free space.'
+stage=$(mktemp -d "$app_root/.native-math-patch.XXXXXXXX")
+if [[ -n $ready_source ]]; then
+    ln -- "$ready_source" "$stage/game"
+else
+    printf 'Applying binary delta (the original game files are not needed)...\n'
+    "$bundle/zstd" -d -q -M2048MB --patch-from="$reference" "$bundle/game.delta.zst" -o "$stage/game"
+fi
+[[ $(stat -c %s "$stage/game") == "$target_size" && $(sha "$stage/game") == "$target_hash" ]] || fail 'The reconstructed program failed verification.'
+chmod 755 "$stage/game"
+sync -f "$stage/game"
+# Prepare all files and reversible backups before changing any launch path.
+for index in "${!dirs[@]}"; do
+    dir=${dirs[$index]}
+    [[ $(sha "$dir/game") == "${hashes[$index]}" ]] || fail 'The installed program changed while the patch was running.'
+    backup="$dir/game.pre-native-math-v1"
+    if [[ ${actions[$index]} == update ]]; then
+        if [[ -e $backup || -L $backup ]]; then
+            regular "$backup" && [[ $(sha "$backup") == "${hashes[$index]}" ]] || fail 'A different program backup already exists.'
+        else ln -- "$dir/game" "$backup"; fi
+    fi
+    backup="$dir/resources/payload-files.tsv.pre-native-math-v1"
+    if [[ -e $backup || -L $backup ]]; then
+        regular "$backup" && cmp -s -- "$backup" "$dir/resources/payload-files.tsv" || fail 'A different manifest backup already exists.'
+    else ln -- "$dir/resources/payload-files.tsv" "$backup"; fi
+    awk -F '\t' -v size="$target_size" -v hash="$target_hash" 'BEGIN {OFS="\t"} $1=="game" {print "game",size,hash;next} {print}' "$dir/resources/payload-files.tsv" > "$stage/manifest-$index"
+    ln -- "$stage/game" "$stage/game-$index"
+done
+printf 'Publishing verified programs...\n'
+for index in "${!dirs[@]}"; do
+    dir=${dirs[$index]}; committed+=("$index")
+    if [[ ${actions[$index]} == update ]]; then
+        mv -f -- "$stage/game-$index" "$dir/game"
+    fi
+    mv -f -- "$stage/manifest-$index" "$dir/resources/payload-files.tsv"
+    sync -f "$dir/game"
+done
+success=1
+if [[ -n $popup_pid ]]; then kill "$popup_pid" 2>/dev/null || true; popup_pid=; fi
+notice "Performance patch installed successfully (${#dirs[@]} launch paths).
+
+Start the game using your existing Steam or desktop shortcut.
+Saves, Chao data and settings have been preserved.
+Original timing now uses the same optimized calculations as Recompiled."

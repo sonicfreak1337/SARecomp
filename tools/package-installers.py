@@ -11,6 +11,15 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Never repackage withdrawn programs through an old --reuse-stage directory.
+# These shipped binaries tie native gameplay math to Recompiled timing.
+WITHDRAWN_GAME_SHA256 = frozenset({
+    '0e6fdeca6de6eee7cbfff73b7792515776860a188dab7e5cdab0b43f89a4ab8f',
+    '5230777fad5de2a68ef17985b5c53276873a8d51b1b2d64d9eedb67040224f01',
+    '8cac5cca4c6ca6e2f341228b98ed3410aa213440d996c0da5f9d7b39f444392d',
+    '3ad1aa3a85904e36eee7907a610b14d39142dda8d26a2b692f12130f53361576',
+})
+
 
 def linux_compression_filters():
     # Verified on the complete stripped game, not just a sample: ~6.5 MB less
@@ -185,6 +194,8 @@ def package(edition, staging, output):
     names = {'resources/payload-files.tsv'}
     for row in lines[1:]:
         name, size, sha = row.split('\t')
+        if name in ('game', 'game.exe') and sha in WITHDRAWN_GAME_SHA256:
+            raise RuntimeError('Withdrawn game: Original timing disables native math. Rebuild the corrected runtime before packaging.')
         path = staging / name
         if not path.resolve().is_relative_to(staging) or path.is_symlink() or path.stat().st_size != int(size) or digest(path) != sha:
             raise RuntimeError('Staged payload changed: ' + name)

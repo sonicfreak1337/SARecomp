@@ -55,6 +55,8 @@ parser.add_argument('--vulkan-offscreen', action='store_true', help='Explicit hi
 parser.add_argument('--vulkan-descriptor-cache', choices=('on','off'), default='on')
 parser.add_argument('--vulkan-state-cache', choices=('on','off'), default='on')
 parser.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
+parser.add_argument('--gameplay-math', choices=('native','retained'), default='native')
+parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
 # Render interpolation was withdrawn; benchmark the original frame stream.
 parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
 parser.add_argument('--anisotropy', type=int, choices=(1,), default=1, help='Retired product control; original filtering only')
@@ -131,6 +133,8 @@ if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
 if args.hardware_input=='isolated': env['SARECOMP_BENCHMARK_ISOLATED_INPUT']='1'
+env['SARECOMP_GAMEPLAY_MATH_RETAINED']='1' if args.gameplay_math=='retained' else '0'
+if args.wait_for_gameplay: env['SARECOMP_PROBE_WAIT_FOR_GAMEPLAY']='1'
 if args.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(args.begin_frame), SARECOMP_PROBE_END_FRAME=str(args.end_frame))
 exe = (root/args.exe).resolve(strict=True)
 # Reference executables use the exact same frozen DLLs and installed assets.

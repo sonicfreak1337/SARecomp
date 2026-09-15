@@ -2,6 +2,11 @@
 
 Private development project for the native Sonic Adventure PC port.
 
+Current installers are in `out/installers`; the separate existing-installation
+Deck/Linux patch is in `out/patches`. The v5 installers were **withdrawn** due
+to disabled native math under Original timing. See
+[the correction, verification and exact artifact identities](docs/original-timing-performance-fix-20260915.md).
+
 The accepted baseline is **r354 / 0.49.9** (2026-09-11). All seven stories
 were completed by the user, who also accepted the current bug-fix batch.
 The executable and its dependencies are preserved independently from the
