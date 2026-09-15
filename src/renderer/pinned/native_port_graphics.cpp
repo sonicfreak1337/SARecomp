@@ -9,6 +9,7 @@
 #include "../../sonic_input.hpp"
 #include "../../sonic_presentation.hpp"
 #include "../../sonic_render_completion.hpp"
+#include "../../sonic_internal_diagnostics.hpp"
 #include "../sonic_motion.hpp"
 
 #include <algorithm>
@@ -4892,7 +4893,9 @@ if (!vulkan_) {
         }
 
         GeometryCapabilities capabilities;
-        for (const auto& vertex : vertices) {
+        // Authored vertex semantics are a developer audit. Bounds, indices,
+        // topology and GPU resource ownership remain checked in both modes.
+        if (sonic::diagnostics::runtime_checks_enabled()) for (const auto& vertex : vertices) {
             if (!finite_array(vertex.position) ||
                 !finite_array(vertex.texture_coordinate) ||
                 !finite_array(vertex.color) || !finite_array(vertex.normal) ||
@@ -4948,6 +4951,7 @@ if (!vulkan_) {
     void require_geometry_capabilities(
         const NativePortDrawPacket& packet,
         const GeometryCapabilities& capabilities) {
+        if (!sonic::diagnostics::runtime_checks_enabled()) return;
         if ((packet.fog.mode != NativePortFogMode::Disabled &&
              packet.depth_mapping.mode !=
                  NativePortDepthCoordinateMode::

@@ -122,6 +122,25 @@ def main():
     apply(data, True)
     assert sha(data[4]) in (directory/'resources/payload-files.tsv').read_text()
     records.append('interrupted-manifest-repaired')
+    data = fixture('diagnostic-roundtrip')
+    bundle=data[1]
+    metadata=(bundle/'patch.tsv').read_text()
+    (bundle/'patch.tsv').write_text(metadata+'diagnostics\ton\n')
+    apply(data,True)
+    expected=b'SARECOMP-DIAGNOSTICS-1\non\n'
+    assert all((d/'.sarecomp-diagnostics').read_bytes()==expected for d in data[3])
+    binaries=[(sha(d/'game'),(d/'game').stat().st_ino) for d in data[3]]
+    for mode in ('off','on','on','off'):
+        (bundle/'patch.tsv').write_text(metadata+'diagnostics\t'+mode+'\n')
+        apply(data,True)
+        assert all((d/'.sarecomp-diagnostics').read_bytes()==b'SARECOMP-DIAGNOSTICS-1\n'+mode.encode()+b'\n' for d in data[3])
+        assert [(sha(d/'game'),(d/'game').stat().st_ino) for d in data[3]]==binaries
+    records.append('diagnostics-on-off-roundtrip-retains-executable-inodes-and-saves')
+    # Reject a policy redirected outside the owned installation.
+    policy=data[3][0]/'.sarecomp-diagnostics'
+    policy.unlink(); policy.symlink_to(data[0]/'SARecomp/story.vmu')
+    apply(data,False)
+    records.append('diagnostics-policy-symlink-rejected')
     (root/'result.json').write_text(json.dumps({'passed':True,'checks':records},indent=2)+'\n')
     print('SONIC_RUNTIME_PATCH_TESTS_OK '+json.dumps(records))
 

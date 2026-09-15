@@ -1,5 +1,6 @@
 #include "katana/runtime/native_port_graphics.hpp"
 #include "renderer/renderer_selection.hpp"
+#include "sonic_internal_diagnostics.hpp"
 #include <array>
 #include <cstdlib>
 #include <filesystem>
@@ -16,6 +17,7 @@ using namespace katana::runtime;
 
 int main(int argc,char** argv) {
     try {
+        sonic::diagnostics::initialize_internal_policy(std::filesystem::absolute(argv[0]));
         if(argc!=3) return 2;
         sonic::rendering::selected_renderer=std::string_view(argv[1])=="vulkan"?sonic::rendering::Renderer::Vulkan:sonic::rendering::Renderer::D3D11;
         std::filesystem::create_directories(argv[2]);

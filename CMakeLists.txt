@@ -402,6 +402,7 @@ include(cmake/SonicPreparedReads.cmake)
 include(cmake/SonicFpuCalls.cmake)
 include(cmake/SonicCompactAot.cmake)
 include(cmake/SonicFpuRuntime.cmake)
+include(cmake/SonicInternalDiagnostics.cmake)
 target_link_libraries(game PRIVATE sonic_dispatch katana_generated katana_native_title_adapter)
 target_link_libraries(game PRIVATE sonic_minicart_aot)
 set(SARECOMP_PRODUCT_OUTPUT "${SONIC_ROOT}/out/experimental" CACHE PATH "Isolated product output; never the baseline")
@@ -430,6 +431,7 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/sonic-link-audit.cpp"
         ${sonic_fpu_call_audit_argument}
         ${sonic_compact_aot_audit_argument}
         ${sonic_fpu_runtime_audit_argument}
+        --internal-diagnostics
     DEPENDS "${SONIC_ROOT}/tools/prepare-renderer-link-audit.py"
         "${SONIC_WORKING}/generated/tools/native-port-link-audit.cpp" VERBATIM)
 add_executable(katana_native_port_link_audit EXCLUDE_FROM_ALL

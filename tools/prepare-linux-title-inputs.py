@@ -10,6 +10,12 @@ import sys
 
 root, output = map(Path, sys.argv[1:])
 source=root/'build-performance/generated'
+# Refresh the small bridge from its authenticated input when Linux is built
+# first. Never wait for a Windows compile or silently reuse an older policy.
+import subprocess
+subprocess.run([sys.executable,str(root/'tools/prepare-motion-dispatch.py'),
+    str(root/'.local/working-product/generated/code/native-port-dispatch.cpp'),
+    str(source/'motion-dispatch/native-port-dispatch.cpp')],check=True)
 groups=('audio-buses','collision-candidates','motion-sampling','fpu-body',
         'fpu-calls-inverse','inverse-arithmetic','fpu-runtime','minicart','motion-dispatch')
 files=[]

@@ -36,6 +36,7 @@ p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast')
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
+p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')
 p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
 p.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 p.add_argument('--aspect', choices=('original','deck'), default='original',
@@ -69,6 +70,7 @@ display.write_text('setup_complete=1\n'+viewport+
                    'vsync=2\ngameplay_timing='+str(int(a.gameplay_timing=='recompiled'))+'\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
+    'SARECOMP_INTERNAL_DIAGNOSTICS':'1' if a.diagnostics=='on' else '0',
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
     'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':'1',
     'KATANA_PORT_IGNORE_FOCUS':'1', 'KATANA_USER_DATA_ROOT':str(run/'user-data'),
@@ -87,6 +89,7 @@ env.update({
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'1200000',
 })
 log_path = run/'game.log'
+if a.diagnostics=='installed':env.pop('SARECOMP_INTERNAL_DIAGNOSTICS',None)
 perf = None
 perf_log = None
 if a.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(a.begin_frame), SARECOMP_PROBE_END_FRAME=str(a.end_frame))
@@ -184,6 +187,7 @@ if a.end_frame:
 result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
+          'diagnostics':a.diagnostics,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
           'shared_corners':a.shared_corners, 'verify_corners':a.verify_corners,

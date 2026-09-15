@@ -142,6 +142,9 @@ callback = callback.replace('    } catch (...) {\n'+needle, '''    } catch (cons
 '''+needle, 1)
 source = source[:callback_start]+callback+source[callback_end:]
 source = '#include "katana/runtime/crash_capsule.hpp"\n#include <exception>\n'+source
+source = '#include "sonic_internal_diagnostics.hpp"\n'+source
+source = source.replace('native_bringup_coverage_recording_requested());',
+    'sonic::diagnostics::runtime_checks_enabled());')
 
 destination.parent.mkdir(parents=True, exist_ok=True)
 encoded = source.encode()

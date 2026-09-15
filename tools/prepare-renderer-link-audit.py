@@ -21,7 +21,8 @@ options=sys.argv[3:]
 allowed={'--ram-read-experiment':'sonic_ram_reads', '--fpu-call-experiment':'sonic_fpu_calls',
     '--compact-aot-control':'sonic_compact_aot_control',
     '--compact-aot-compact':'sonic_compact_aot_compact',
-    '--fpu-runtime-fast':'sonic_fpu_runtime'}
+    '--fpu-runtime-fast':'sonic_fpu_runtime',
+    '--internal-diagnostics':'sonic_internal_diagnostics'}
 if len(options)!=len(set(options)) or any(option not in allowed for option in options):
     raise RuntimeError("Unknown or duplicate native link audit option")
 if ('--ram-read-experiment' in options and len(options)>1) or (

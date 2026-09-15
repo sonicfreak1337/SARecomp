@@ -54,6 +54,7 @@
 #include "sonic_tutorial_art.hpp"
 #include "sonic_execution_clock.hpp"
 #include "sonic_update_timing_probe.hpp"
+#include "sonic_internal_diagnostics.hpp"
 #include "sonic_render_completion.hpp"
 #include "sonic_palette_lighting.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -3216,6 +3217,8 @@ void report_native_work_timing() {
 
 void report_native_graphics_contract_telemetry(
     const katana::runtime::NativePortContext& context) noexcept {
+    // This periodic snapshot synchronizes the render queue solely for a log.
+    if (!sonic::diagnostics::runtime_checks_enabled()) return;
     constexpr std::uint64_t report_frame_interval = 300u;
     if (context.graphics == nullptr ||
         context.frame_index % report_frame_interval !=

@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--stage', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--diagnostics', choices=('on','off'))
     args = parser.parse_args()
     stage, output = args.stage.resolve(), args.output.resolve()
     for path in (stage, output):
@@ -26,12 +27,19 @@ def main():
     stage.mkdir(parents=True)
     base = ROOT/'out/package-staging-v5-steam-deck/game'
     target = ROOT/'out/patch-timing-math-v1/linux/game'
-    if digest(base) != '5230777fad5de2a68ef17985b5c53276873a8d51b1b2d64d9eedb67040224f01':
+    delta = ROOT/'out/patch-timing-math-v1/linux/from-v5.zst'
+    expected_base = '5230777fad5de2a68ef17985b5c53276873a8d51b1b2d64d9eedb67040224f01'
+    if args.diagnostics:
+        base = target
+        target = ROOT/'out/internal-diagnostics-v1/linux/game'
+        delta = ROOT/'out/internal-diagnostics-v1/linux/from-native-math-v1.zst'
+        expected_base = '7d4fb2b71694dead0ae7f76f105bb975429978a7dce3ce6cad44aace220c6921'
+    if digest(base) != expected_base:
         raise RuntimeError('The installed v5 base identity changed')
     target_hash = digest(target)
     files = {
         'apply-patch.sh': ROOT/'tools/apply-linux-runtime-patch.sh',
-        'game.delta.zst': ROOT/'out/patch-timing-math-v1/linux/from-v5.zst',
+        'game.delta.zst': delta,
         'zstd': ROOT/'build-patch-zstd/programs/zstd-frugal',
         'ZSTD-LICENSE.txt': ROOT/'.local/patch-deps/zstd-1.5.7/LICENSE',
     }
@@ -45,10 +53,12 @@ def main():
         '8cac5cca4c6ca6e2f341228b98ed3410aa213440d996c0da5f9d7b39f444392d',
         digest(base),
     ]
+    if args.diagnostics: supported = [expected_base]
     metadata = ['SARECOMP-RUNTIME-PATCH-1', f'target\t{target.stat().st_size}\t{target_hash}',
                 'base\t'+supported[-1], 'delta\t'+digest(stage/'game.delta.zst'),
                 'tool\t'+digest(stage/'zstd')]
     metadata += ['supported\t'+value for value in supported]
+    if args.diagnostics: metadata.append('diagnostics\t'+args.diagnostics)
     (stage/'patch.tsv').write_text('\n'.join(metadata)+'\n', encoding='ascii', newline='\n')
     (stage/'README.txt').write_text(
         'Sonic Adventure Recompiled - v5 Performance Patch\n\n'
@@ -62,6 +72,20 @@ def main():
         'Source: https://github.com/facebook/zstd/tree/v1.5.7\n'
         'Decoder: zstd-frugal, glibc 2.31, static Zstandard library, no optional codecs.\n',
         encoding='utf-8', newline='\n')
+    if args.diagnostics:
+        (stage/'README.txt').write_text(
+            'Sonic Adventure Recompiled - Internal Diagnostics '+args.diagnostics.upper()+'\n\n'
+            'Close the game. Run this patch in Desktop Mode, without sudo.\n'
+            'Requires the previously installed native-math performance patch.\n'
+            'The first use updates the program once; later ON/OFF switches change only an internal policy file.\n'
+            'No GDI, reinstallation or game settings changes. Saves and Chao data are preserved.\n'
+            'Use your existing Steam/desktop shortcut. The policy applies on the next launch.\n'
+            'ON: full runtime diagnostic journals and additional invariant/vertex audits.\n'
+            'OFF: no automatic journals, extra vertex audit or periodic diagnostic readback.\n'
+            'Memory bounds, module lifetime, executable invalidation and original game timing stay functional.\n'
+            'This switch is internal and is not exposed in the Options menu.\n\n'
+            'Zstandard 1.5.7, BSD license; https://github.com/facebook/zstd/tree/v1.5.7\n',
+            encoding='utf-8',newline='\n')
     archive = stage.parent/(stage.name+'.tar')
     if archive.exists():
         raise RuntimeError('Patch archive already exists')

@@ -40,7 +40,8 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_menu.hpp sonic_menu.cpp sonic_menu_image.cpp sonic_menu_text.hpp sonic_menu_text.cpp
     sonic_menu_runtime.hpp sonic_menu_runtime.cpp sonic_menu_test_input.hpp sonic_menu_policy.hpp sonic_options_display.cpp
     sonic_profiles.hpp sonic_profiles.cpp sonic_restart.hpp sonic_restart.cpp
-    sonic_diagnostics.hpp sonic_crash_consent.hpp ../launcher/sonic_errors.hpp
+    sonic_diagnostics.hpp sonic_internal_diagnostics.hpp sonic_crash_consent.hpp ../launcher/sonic_errors.hpp
+    ../tools/prepare-internal-diagnostics.py
     ../tools/prepare-camera-platform.py)
 set(hashes)
 foreach(component IN LISTS components)

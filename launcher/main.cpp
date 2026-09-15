@@ -10,6 +10,7 @@
 #include "sonic_profiles.hpp"
 #include "sonic_restart.hpp"
 #include "sonic_diagnostics.hpp"
+#include "sonic_internal_diagnostics.hpp"
 #include "native_provider_identity.hpp"
 #include "sonic_configuration.hpp"
 #include "sonic_errors.hpp"
@@ -532,7 +533,7 @@ int run_game(int argc, char** argv) {
         std::string_view(argv[1]) == "--replay-input" &&
         std::string_view(argv[2]).size() != 0u;
 #ifdef _WIN32
-    bool automatic_input_record_launch = argc == 1;
+    bool automatic_input_record_launch = argc == 1 && sonic::diagnostics::runtime_checks_enabled();
 #else
     bool automatic_input_record_launch = false;
 #endif
@@ -750,8 +751,8 @@ int run_game(int argc, char** argv) {
             definition.images);
         auto& cpu = memory.cpu();
         diagnostic_cpu_binding.bind(cpu);
-        cpu.memory.attach_crash_capsule(
-            native_product_crash_capsule);
+        if (sonic::diagnostics::runtime_checks_enabled())
+            cpu.memory.attach_crash_capsule(native_product_crash_capsule);
         katana::runtime::reset_cpu(
             cpu, {definition.bootstrap.entry_point,
                   definition.bootstrap.stack_pointer,
@@ -873,7 +874,8 @@ int run_game(int argc, char** argv) {
         context.platform = &platform;
         context.textures = &textures;
         context.cpu_control = &memory.cpu_control();
-        context.crash_capsule = &native_product_crash_capsule;
+        context.crash_capsule = sonic::diagnostics::runtime_checks_enabled()
+            ? &native_product_crash_capsule : nullptr;
         if (const auto* timeout = std::getenv(
                 "KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS");
             timeout != nullptr) {
@@ -1135,6 +1137,9 @@ int run_game(int argc, char** argv) {
 }
 
 int main(int argc,char** argv){
+    try { sonic::diagnostics::initialize_internal_policy(sonic::paths::executable()); } catch (...) {}
+    std::cerr << "SONIC_INTERNAL_DIAGNOSTICS version=1 enabled="
+              << sonic::diagnostics::runtime_checks_enabled() << '\n';
     sonic::diagnostics::source_identity=sonic_native_title_adapter_source_identity;
     sonic::diagnostics::build_profile=KATANA_PORT_BUILD_PROFILE_NAME;
     const auto result=run_game(argc,argv);

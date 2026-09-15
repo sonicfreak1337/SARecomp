@@ -40,7 +40,7 @@ flock -n 9 || fail 'Another installation or patch is running.'
 sha() { sha256sum -- "$1" | cut -d ' ' -f 1; }
 regular() { [[ -f $1 && ! -L $1 && -O $1 ]]; }
 declare -A supported=()
-target_hash= target_size= base_hash= delta_hash= tool_hash=
+target_hash= target_size= base_hash= delta_hash= tool_hash= diagnostics=
 while IFS=$'\t' read -r kind first second; do
     case "$kind" in
         target) target_size=$first; target_hash=$second ;;
@@ -48,10 +48,17 @@ while IFS=$'\t' read -r kind first second; do
         delta) delta_hash=$first ;;
         tool) tool_hash=$first ;;
         supported) supported[$first]=1 ;;
+        diagnostics) diagnostics=$first ;;
         SARECOMP-RUNTIME-PATCH-1|'') ;;
         *) fail 'Unsupported patch metadata.' ;;
     esac
 done < "$bundle/patch.tsv"
+backup_suffix=pre-native-math-v1
+if [[ -n $diagnostics ]]; then
+    [[ $diagnostics == on || $diagnostics == off ]] || fail 'Invalid diagnostics policy.'
+    backup_suffix=pre-diagnostics-v1
+    title="Sonic Adventure Recompiled - Diagnostics ${diagnostics^^}"
+fi
 [[ $target_hash =~ ^[0-9a-f]{64}$ && $target_size =~ ^[0-9]+$ && $base_hash =~ ^[0-9a-f]{64}$ ]] || fail 'Invalid patch identity.'
 [[ $(sha "$bundle/game.delta.zst") == "$delta_hash" && $(sha "$bundle/zstd") == "$tool_hash" ]] || fail 'The downloaded patch is damaged.'
 dirs=() hashes=() actions=() committed=()
@@ -65,11 +72,18 @@ cleanup() {
         for index in "${committed[@]}"; do
             local dir=${dirs[$index]}
             if [[ ${actions[$index]} == update ]]; then
-                ln -- "$dir/game.pre-native-math-v1" "$stage/restore-game-$index" &&
+                ln -- "$dir/game.$backup_suffix" "$stage/restore-game-$index" &&
                     mv -f -- "$stage/restore-game-$index" "$dir/game" || true
             fi
-            ln -- "$dir/resources/payload-files.tsv.pre-native-math-v1" "$stage/restore-manifest-$index" &&
-                mv -f -- "$stage/restore-manifest-$index" "$dir/resources/payload-files.tsv" || true
+            if [[ ${actions[$index]} != mode ]]; then
+                ln -- "$dir/resources/payload-files.tsv.$backup_suffix" "$stage/restore-manifest-$index" &&
+                    mv -f -- "$stage/restore-manifest-$index" "$dir/resources/payload-files.tsv" || true
+            fi
+            if [[ -n $diagnostics ]]; then
+                if [[ -f $stage/previous-policy-$index ]]; then
+                    mv -f -- "$stage/previous-policy-$index" "$dir/.sarecomp-diagnostics" || true
+                else rm -f -- "$dir/.sarecomp-diagnostics"; fi
+            fi
         done
         printf 'Update did not complete. Original program backups have been retained.\n' >&2
         if (( !headless && !error_shown )) && command -v kdialog >/dev/null && [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
@@ -97,12 +111,17 @@ for dir in "$app_root"/1.0-candidate-*; do
     current=$(sha "$dir/game")
     if [[ $current == "$target_hash" ]]; then
         ready_source="$dir/game"
-        [[ $record != "$target_hash" ]] || continue
-        action=repair
+        if [[ $record == "$target_hash" ]]; then
+            [[ -n $diagnostics ]] || continue
+            action=mode
+        else action=repair; fi
     else
         [[ $current == "$record" && -n ${supported[$current]:-} ]] || fail 'An installed program was modified or damaged; it has not been overwritten.'
         action=update
         [[ $current != "$base_hash" ]] || reference="$dir/game"
+    fi
+    if [[ -n $diagnostics && ( -e $dir/.sarecomp-diagnostics || -L $dir/.sarecomp-diagnostics ) ]]; then
+        regular "$dir/.sarecomp-diagnostics" || fail 'The internal diagnostics policy is not a regular user-owned file.'
     fi
     dirs+=("$dir"); hashes+=("$current"); actions+=("$action")
 done
@@ -118,7 +137,9 @@ for process in /proc/[0-9]*/exe; do
     for dir in "${dirs[@]}"; do [[ $running != "$dir/game" ]] || fail 'Close Sonic Adventure Recompiled before applying the patch.'; done
 done
 available=$(df -PB1 -- "$app_root" | awk 'NR==2 {print $4}')
-[[ $available =~ ^[0-9]+$ ]] && (( available > target_size + 67108864 )) || fail 'The patch needs about 1.7 GB of free space.'
+required_space=67108864
+[[ -n $ready_source ]] || required_space=$((required_space + target_size))
+[[ $available =~ ^[0-9]+$ ]] && (( available > required_space )) || fail 'The initial program update needs about 1.7 GB of free space.'
 stage=$(mktemp -d "$app_root/.native-math-patch.XXXXXXXX")
 if [[ -n $ready_source ]]; then
     ln -- "$ready_source" "$stage/game"
@@ -133,13 +154,18 @@ sync -f "$stage/game"
 for index in "${!dirs[@]}"; do
     dir=${dirs[$index]}
     [[ $(sha "$dir/game") == "${hashes[$index]}" ]] || fail 'The installed program changed while the patch was running.'
-    backup="$dir/game.pre-native-math-v1"
+    if [[ -n $diagnostics ]]; then
+        [[ ! -f $dir/.sarecomp-diagnostics ]] || cp -- "$dir/.sarecomp-diagnostics" "$stage/previous-policy-$index"
+        printf 'SARECOMP-DIAGNOSTICS-1\n%s\n' "$diagnostics" > "$stage/policy-$index"
+    fi
+    [[ ${actions[$index]} != mode ]] || continue
+    backup="$dir/game.$backup_suffix"
     if [[ ${actions[$index]} == update ]]; then
         if [[ -e $backup || -L $backup ]]; then
             regular "$backup" && [[ $(sha "$backup") == "${hashes[$index]}" ]] || fail 'A different program backup already exists.'
         else ln -- "$dir/game" "$backup"; fi
     fi
-    backup="$dir/resources/payload-files.tsv.pre-native-math-v1"
+    backup="$dir/resources/payload-files.tsv.$backup_suffix"
     if [[ -e $backup || -L $backup ]]; then
         regular "$backup" && cmp -s -- "$backup" "$dir/resources/payload-files.tsv" || fail 'A different manifest backup already exists.'
     else ln -- "$dir/resources/payload-files.tsv" "$backup"; fi
@@ -152,13 +178,26 @@ for index in "${!dirs[@]}"; do
     if [[ ${actions[$index]} == update ]]; then
         mv -f -- "$stage/game-$index" "$dir/game"
     fi
-    mv -f -- "$stage/manifest-$index" "$dir/resources/payload-files.tsv"
+    if [[ ${actions[$index]} != mode ]]; then
+        mv -f -- "$stage/manifest-$index" "$dir/resources/payload-files.tsv"
+    fi
+    if [[ -n $diagnostics ]]; then
+        mv -f -- "$stage/policy-$index" "$dir/.sarecomp-diagnostics"
+        sync -f "$dir/.sarecomp-diagnostics"
+    fi
     sync -f "$dir/game"
 done
 success=1
 if [[ -n $popup_pid ]]; then kill "$popup_pid" 2>/dev/null || true; popup_pid=; fi
-notice "Performance patch installed successfully (${#dirs[@]} launch paths).
+if [[ -n $diagnostics ]]; then
+    notice "Internal diagnostics ${diagnostics^^} (${#dirs[@]} launch paths).
+
+Start the game using your existing Steam or desktop shortcut.
+The selected policy takes effect on the next launch.
+Saves, Chao data and game settings have been preserved."
+else notice "Performance patch installed successfully (${#dirs[@]} launch paths).
 
 Start the game using your existing Steam or desktop shortcut.
 Saves, Chao data and settings have been preserved.
 Original timing now uses the same optimized calculations as Recompiled."
+fi

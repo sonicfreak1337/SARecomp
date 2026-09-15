@@ -90,6 +90,11 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Windy Valley 10–15, Egg Hornet 23–26, subsequent cutscene about 20. Continue
   performance work autonomously; no further patch/installer until a large
   measured frame-rate improvement. Preserve original game speed and saves.
+- Runtime diagnostics now default off. The user explicitly requested separate
+  internal ON/OFF patches and Linux testing; see `docs/internal-diagnostics.md`.
+  Never conflate the diagnostic switch with disabling functional memory,
+  module-lifetime, executable-invalidation or timing behavior. The first Gamma
+  VM comparison shows no useful gain; the 20–25 ms performance target stays open.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
