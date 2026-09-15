@@ -1,5 +1,6 @@
 """Hidden native Linux gameplay probe; no physical input or installed saves."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,26 +8,55 @@ import re
 import subprocess
 import time
 
+
+def measurement(samples):
+    """Exclude startup and the first sample; never equate presents with new draws."""
+    if len(samples) < 2:
+        return None
+    first, last = samples[0], samples[-1]
+    frames = int(last['drawn_frames']) - int(first['drawn_frames'])
+    elapsed = int(last['elapsed_ms']) - int(first['elapsed_ms'])
+    if frames <= 0 or elapsed <= 0:
+        return None
+    result = {'new_frames': frames, 'elapsed_ms': elapsed,
+              'new_frames_per_second': frames * 1000 / elapsed}
+    for name in ('execution', 'process'):
+        if all(s.get(name + '_cpu_valid') == '1' for s in (first, last)):
+            ticks = int(last[name + '_cpu_100ns']) - int(first[name + '_cpu_100ns'])
+            if ticks >= 0:
+                result[name + '_cpu_ms_per_frame'] = ticks / 10000 / frames
+    return result
+
+
 p = argparse.ArgumentParser()
 p.add_argument('--exe', type=Path, required=True)
 p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast')
+p.add_argument('--aspect', choices=('original','deck'), default='original',
+               help='Deck uses 16:10 culling at a reduced VM test resolution')
 p.add_argument('--descriptor-cache', choices=('on','off'), default='on')
 p.add_argument('--state-cache', choices=('on','off'), default='on')
 p.add_argument('--profile', action='store_true', help='Read-only perf sampling; diagnostic, not a throughput comparison')
+p.add_argument('--callgraph', action='store_true', help='With --profile, sample caller chains at 99 Hz')
 a = p.parse_args()
+if a.callgraph and not a.profile:
+    p.error('--callgraph requires --profile')
 if not re.fullmatch('[a-z0-9-]+', a.scenario):
     p.error('Invalid scenario')
 exe = a.exe.resolve(strict=True)
+with exe.open('rb') as stream:
+    exe_sha256 = hashlib.file_digest(stream, 'sha256').hexdigest()
 content = a.content.resolve(strict=True)
 library = a.lib.resolve(strict=True)
 run = a.run.resolve()
 run.mkdir(parents=True, exist_ok=False)
 (run/'user-data').mkdir()
 display = run/'sonic-display.ini'
-display.write_text('setup_complete=1\nmode=original\nwidth=640\nheight=480\n'
+viewport = ('mode=widescreen\nwidth=800\nheight=500\n' if a.aspect=='deck'
+            else 'mode=original\nwidth=640\nheight=480\n')
+display.write_text('setup_complete=1\n'+viewport+
                    'render_percent=50\nrenderer=vulkan\nwindow_mode=windowed\n'
                    'vsync=2\ngameplay_timing=1\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
@@ -75,9 +105,13 @@ with log_path.open('w') as log:
                 # Verify that the sampled thread belongs to this owned game.
                 if tid and Path(f'/proc/{game.pid}/task/{tid}').is_dir():
                     perf_log = (run/'perf-command.log').open('w')
-                    perf = subprocess.Popen(['sudo', '-n', 'perf', 'record', '-e', 'cpu-clock:u',
-                                             '-F', '199', '-t', str(tid), '-o', str(run/'perf.data'),
-                                             '--', 'sleep', '30'], stdout=perf_log, stderr=perf_log)
+                    perf_command=['sudo', '-n', 'perf', 'record', '-e', 'cpu-clock:u',
+                                  '-F', '99' if a.callgraph else '199', '-t', str(tid),
+                                  '-o', str(run/'perf.data')]
+                    if a.callgraph:
+                        perf_command+=['--call-graph','fp']
+                    perf = subprocess.Popen(perf_command+['--','sleep','30'],
+                                            stdout=perf_log, stderr=perf_log)
             if time.monotonic() - start > 1230:
                 forced = True
                 game.terminate()
@@ -94,20 +128,41 @@ with log_path.open('w') as log:
             perf.wait(timeout=40)
         if perf_log:
             perf_log.close()
+with exe.open('rb') as stream:
+    if hashlib.file_digest(stream, 'sha256').hexdigest() != exe_sha256:
+        raise RuntimeError('The profiled executable changed during the run')
+# These ELFs have no build ID. Check identity before resolving sampled PCs,
+# not just after writing a potentially misidentified report.
 if perf and perf.returncode == 0:
     with (run/'perf-report.txt').open('w') as report:
         subprocess.run(['sudo', '-n', 'perf', 'report', '--stdio', '--no-children',
                         '--percent-limit', '0.5', '--sort', 'symbol', '-i', str(run/'perf.data')],
                        stdout=report, stderr=subprocess.STDOUT, check=False)
+    with (run/'perf-symbols.txt').open('w') as report:
+        subprocess.run(['sudo', '-n', 'perf', 'report', '--stdio', '--no-children',
+                        '--call-graph','none','--show-nr-samples', '--no-demangle', '--percent-limit', '0',
+                        '--field-separator=|', '--sort', 'symbol,dso', '-i', str(run/'perf.data')],
+                       stdout=report, stderr=subprocess.STDOUT, check=True)
+    if a.callgraph:
+        with (run/'perf-families.txt').open('w') as report:
+            subprocess.run(['sudo','-n','perf','report','--stdio','--children',
+                            '--call-graph','none','--show-nr-samples','--no-demangle',
+                            '--percent-limit','0.5','--field-separator=|','--sort','symbol,dso',
+                            '-i',str(run/'perf.data')],stdout=report,stderr=subprocess.STDOUT,check=True)
+with exe.open('rb') as stream:
+    if hashlib.file_digest(stream, 'sha256').hexdigest() != exe_sha256:
+        raise RuntimeError('The profiled executable changed during the run')
 text = log_path.read_text(errors='replace')
 frontiers = re.findall(r'^KATANA_RUNTIME_STOP_FRONTIER (.+)$', text, re.MULTILINE)
 stop_reason = json.loads(frontiers[-1]).get('stop_reason') if frontiers else None
 # NativePortStopReason::HostDeadline is 2; a completed probe alone must not
 # hide a later failure during shutdown.
 expected_stop = game.returncode == 1 and stop_reason == 2 and not forced
-result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile,
+result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
+          'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
+          'measurement':measurement(samples),
           'wall_seconds':time.monotonic()-start, 'samples':samples,
           'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in text,
           'expected_stop':expected_stop, 'stop_reason':stop_reason,
