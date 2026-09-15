@@ -1,7 +1,9 @@
 # Performance round closeout, 2026-09-15
 
-The user requested stopping after this round. There is no remaining active
-performance experiment or game test, and no new installer was produced.
+The user requested stopping after this round. The profiling work ended without
+a remaining performance experiment or a newly produced installer. The user then
+explicitly requested updated installers before stopping; that packaging and
+installation validation is recorded in `installer-v5-20260915.md`.
 The larger Steam Deck performance objective remains unresolved. New Deck
 installations still default to Original timing; existing explicit settings
 and saves are preserved.
@@ -46,9 +48,9 @@ The completed size work is in `package-compression-20260915.md` and
 `performance-media-20260915.md`: about 49.5 MB less across measured compressed
 Linux package components, including 6.54 MB from the latest lossless dictionary
 change. This is component evidence, not a measurement of a newly built installer.
-Installer packaging remains deferred because the requested large performance
-gain has not been demonstrated.
+The requested large performance gain has not been demonstrated. The subsequent
+installer request superseded the earlier packaging gate, not that limitation.
 
-Work is stopped at the user's request. Resume only on a new user instruction;
-do not interpret the unfinished performance objective as permission to continue
-past this stop.
+After the separately requested installer rebuild, work stops at the user's
+request. Resume only on a new user instruction; do not interpret the unfinished
+performance objective as permission to continue past this stop.
