@@ -142,3 +142,30 @@ Runtime staging is under `.local/lean-ffmpeg/runtime-{linux,windows}`.
 `--stage-only` strips dedicated runtime copies of an existing dependency build.
 The selected package payload must later be installed and tested normally; this
 round intentionally leaves the delivered installers unchanged.
+
+## Additional executable-size check
+
+The stripped current Linux game has about 1.403 GB of machine code. Debug
+symbols have already been removed from release staging; stripping the test
+copy again is not a new installer-size saving. Runtime unwind tables, constant
+data and code cannot simply be omitted from the package.
+
+The next bounded check used LLVM's
+[safe identical-code folding](https://reviews.llvm.org/D48146), which uses
+[address-significance information](https://reviews.llvm.org/D48155) to retain
+distinct addresses where required. The pinned Zig driver rejects `--icf`, so
+the check replayed its verbose linker arguments through the already installed
+LLD 19.1.5 in a separate ignored directory. No build configuration changed.
+
+Matched LLD 19 links with the same existing inputs:
+
+| Internal unstripped ELF | Bytes |
+| --- | ---: |
+| ICF off | 1,741,105,488 |
+| Safe ICF | 1,741,080,080 |
+| Difference | 25,408 |
+
+This tiny saving does not justify a second production linker path. Neither
+experimental ELF was promoted or packaged, and no performance claim is made.
+The useful retained size saving remains the media-library reduction above.
+Artifacts: `.local/size-linker-20260915/` (explicit argument lists and link logs).

@@ -6,8 +6,8 @@
 #include <vector>
 
 namespace sonic::geometry {
-// Transient, authored-corner reuse within one polygon only. A model point can
-// have different UVs on either side of a seam, so point identity is not a key.
+// Transient reuse within the caller's group: an authored polygon or a mesh's
+// exact point/UV identities. Point identity alone must never collapse UV seams.
 struct CornerIndices {
     std::vector<std::uint32_t> indices;
     std::vector<std::uint32_t> corners;
