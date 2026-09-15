@@ -34,6 +34,8 @@ p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast')
+p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
+p.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 p.add_argument('--aspect', choices=('original','deck'), default='original',
                help='Deck uses 16:10 culling at a reduced VM test resolution')
 p.add_argument('--descriptor-cache', choices=('on','off'), default='on')
@@ -43,6 +45,8 @@ p.add_argument('--verify-corners', action='store_true', help='Rebuild every reus
 p.add_argument('--profile', action='store_true', help='Read-only perf sampling; diagnostic, not a throughput comparison')
 p.add_argument('--callgraph', action='store_true', help='With --profile, sample caller chains at 99 Hz')
 a = p.parse_args()
+if (a.begin_frame or a.end_frame) and not 0 < a.begin_frame < a.end_frame <= 10000:
+    p.error('Fixed window requires 0 < begin-frame < end-frame <= 10000')
 if a.callgraph and not a.profile:
     p.error('--callgraph requires --profile')
 if not re.fullmatch('[a-z0-9-]+', a.scenario):
@@ -82,6 +86,7 @@ env.update({
 log_path = run/'game.log'
 perf = None
 perf_log = None
+if a.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(a.begin_frame), SARECOMP_PROBE_END_FRAME=str(a.end_frame))
 perf_attempted = False
 forced = False
 start = time.monotonic()
@@ -158,16 +163,28 @@ with exe.open('rb') as stream:
         raise RuntimeError('The profiled executable changed during the run')
 text = log_path.read_text(errors='replace')
 frontiers = re.findall(r'^KATANA_RUNTIME_STOP_FRONTIER (.+)$', text, re.MULTILINE)
+samples = [dict(re.findall(r'(\w+)=([^ ]+)', line))
+           for line in text.splitlines()
+           if line.startswith('SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')]
 stop_reason = json.loads(frontiers[-1]).get('stop_reason') if frontiers else None
 # NativePortStopReason::HostDeadline is 2; a completed probe alone must not
 # hide a later failure during shutdown.
 expected_stop = game.returncode == 1 and stop_reason == 2 and not forced
+measured_samples = samples
+frame_window_valid = True
+if a.end_frame:
+    measured_samples=[s for s in samples if a.begin_frame <= int(s['relative_frame']) <= a.end_frame]
+    frame_window_valid=(len(measured_samples)>1 and int(measured_samples[0]['relative_frame'])==a.begin_frame
+        and int(measured_samples[-1]['relative_frame'])==a.end_frame
+        and all(int(s.get('frame_window_begin','0'))==a.begin_frame
+                and int(s.get('frame_window_end','0'))==a.end_frame for s in measured_samples))
 result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
           'shared_corners':a.shared_corners, 'verify_corners':a.verify_corners,
-          'measurement':measurement(samples),
+          'begin_frame':a.begin_frame, 'end_frame':a.end_frame, 'frame_window_valid':frame_window_valid,
+          'measurement':measurement(measured_samples),
           'wall_seconds':time.monotonic()-start, 'samples':samples,
           'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in text,
           'expected_stop':expected_stop, 'stop_reason':stop_reason,
@@ -176,4 +193,4 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
 (run/'summary.json').write_text(json.dumps(result, indent=2)+'\n')
 print('SONIC_LINUX_PROBE_FINISHED ' + json.dumps({k:v for k,v in result.items()
       if k not in ('samples','configuration')}), flush=True)
-raise SystemExit(0 if result['completed'] and expected_stop else 1)
+raise SystemExit(0 if result['completed'] and expected_stop and frame_window_valid else 1)

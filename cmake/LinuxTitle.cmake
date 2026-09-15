@@ -36,6 +36,20 @@ add_executable(sonic-linux-mesh-plan-tests EXCLUDE_FROM_ALL
 target_include_directories(sonic-linux-mesh-plan-tests PRIVATE "${SONIC_ROOT}/src")
 target_compile_options(sonic-linux-mesh-plan-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
 target_link_libraries(sonic-linux-mesh-plan-tests PRIVATE sonic_linux_aot_runtime)
+# Research and arithmetic oracles only; none of these sources enters game.
+add_executable(sonic-linux-model-projection-tests EXCLUDE_FROM_ALL
+    "${SONIC_ROOT}/tools/test_model_projection.cpp" "${SONIC_ROOT}/src/sonic_model_projection.cpp")
+target_include_directories(sonic-linux-model-projection-tests PRIVATE
+    "${SONIC_ROOT}/src" "${CMAKE_BINARY_DIR}/generated/fpu-body")
+target_compile_options(sonic-linux-model-projection-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+target_link_libraries(sonic-linux-model-projection-tests PRIVATE sonic_linux_aot_runtime)
+add_executable(sonic-linux-fpu-body-tests EXCLUDE_FROM_ALL
+    "${SONIC_ROOT}/tools/test_fpu_body.cpp"
+    "${SONIC_ROOT}/build-performance/generated/fpu-runtime/fpu-reference.cpp")
+target_include_directories(sonic-linux-fpu-body-tests PRIVATE
+    "${CMAKE_BINARY_DIR}/generated/fpu-body" "${SONIC_ROOT}/build-performance/generated/fpu-runtime")
+target_compile_options(sonic-linux-fpu-body-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+target_link_libraries(sonic-linux-fpu-body-tests PRIVATE sonic_linux_aot_runtime)
 
 set(linux_services_sources native_bringup_coverage native_port_audio_engine native_port_content native_port_cpu_control
     native_port_save native_port_runtime native_port_texture_asset)

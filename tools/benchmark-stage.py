@@ -15,6 +15,8 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--tag', required=True)
 parser.add_argument('--scenario', default='emerald-coast')
+parser.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
+parser.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 parser.add_argument('--width', type=int, default=3182)
 parser.add_argument('--height', type=int, default=1332)
 parser.add_argument('--render-percent', type=int, default=100)
@@ -57,7 +59,10 @@ parser.add_argument('--gameplay-timing', choices=('original','recompiled'), defa
 parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
 parser.add_argument('--anisotropy', type=int, choices=(1,), default=1, help='Retired product control; original filtering only')
 args = parser.parse_args()
+if (args.begin_frame or args.end_frame) and not 0 < args.begin_frame < args.end_frame <= 10000:
+    parser.error('Fixed window requires 0 < begin-frame < end-frame <= 10000')
 if args.vulkan_offscreen and args.renderer!='vulkan': parser.error('Offscreen mode requires Vulkan')
+if args.end_frame and args.hardware_input!='isolated': parser.error('Fixed frame window requires isolated input')
 if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
 if args.profile_ms and not 1000 <= args.profile_ms <= 30000: parser.error('Profile duration must be 1000..30000 ms')
@@ -126,6 +131,7 @@ if args.dispatch_memo=='off': env['SARECOMP_DISPATCH_MEMO_DISABLE']='1'
 if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
 if args.hardware_input=='isolated': env['SARECOMP_BENCHMARK_ISOLATED_INPUT']='1'
+if args.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(args.begin_frame), SARECOMP_PROBE_END_FRAME=str(args.end_frame))
 exe = (root/args.exe).resolve(strict=True)
 # Reference executables use the exact same frozen DLLs and installed assets.
 env['PATH'] = str(root/'out/experimental') + os.pathsep + env.get('PATH', '')
@@ -190,6 +196,13 @@ stderr=(run/'stderr.log').read_text(errors='replace')
 stdout=(run/'stdout.log').read_text(errors='replace')
 gameplay=rows(stderr,'SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')
 steady=[r for r in gameplay if int(r['elapsed_ms'])>=10000]
+frame_window_valid = True
+if args.end_frame:
+    steady=[r for r in gameplay if args.begin_frame <= int(r['relative_frame']) <= args.end_frame]
+    frame_window_valid = (len(steady)>1 and int(steady[0]['relative_frame'])==args.begin_frame
+        and int(steady[-1]['relative_frame'])==args.end_frame
+        and all(int(r.get('frame_window_begin','0'))==args.begin_frame
+                and int(r.get('frame_window_end','0'))==args.end_frame for r in steady))
 result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(args),
     'monitor_presentation':'offscreen-test' if args.vulkan_offscreen else 'window-surface',
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
@@ -304,11 +317,13 @@ if args.render_completion:
     if len(steady)>1:
         a,b=steady[0],steady[-1]
         result['render_notifications_per_second']=(int(b['guest_render_dispatched'])-int(a['guest_render_dispatched']))/((int(b['monotonic_ns'])-int(a['monotonic_ns']))/1e9)
-# This probe requests a graceful deadline at 60 seconds of gameplay. Exit 1
+# This probe requests a graceful time or exact-frame deadline. Exit 1
 # alone is also used for real runtime faults, so require the matching frontier.
 result['passed'] = (result['completed'] and process.returncode == 1
     and result['stop_reason'] == 2 and not result['failures'] and not forced
-    and len(steady) > 1 and len(cpu) > 1 and result['profile_passed'] and result['exception_trace_passed']
+    and len(steady) > 1
+    and (len(cpu) > 1 or (args.end_frame and result.get('execution_thread_continuous',False)))
+    and result['profile_passed'] and result['exception_trace_passed']
     and (not args.update_timing or result['update_timing_passed'])
     and (not args.render_completion or result['render_completion_passed'])
     and result['isolated_input_confirmed'] == (args.hardware_input=='isolated'))
@@ -381,6 +396,8 @@ if args.sixty_frame_fixture:
 if args.vulkan_offscreen:
     result['offscreen_mode_active']='SONIC_VULKAN_OFFSCREEN_TEST active=1' in stderr
     result['passed'] &= result['offscreen_mode_active']
+result['frame_window_valid']=frame_window_valid
+result['passed'] &= frame_window_valid
 (run/'result.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ('cpu_samples','gameplay_samples','telemetry')},indent=2))
 raise SystemExit(0 if result['passed'] else 1)

@@ -40,6 +40,12 @@ target_compile_features(sonic_fpu_body INTERFACE cxx_std_20)
 target_link_libraries(katana_native_title_adapter PRIVATE sonic_fpu_body)
 target_link_libraries(sonic_matrix_inverse_tests PRIVATE sonic_fpu_body)
 target_link_libraries(sonic_atan_math_tests PRIVATE sonic_fpu_body)
+# The projection experiment is not part of the game or installer.
+add_executable(sonic_model_projection_tests EXCLUDE_FROM_ALL
+    tools/test_model_projection.cpp src/sonic_model_projection.cpp)
+target_include_directories(sonic_model_projection_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_model_projection_tests PRIVATE /EHsc /utf-8 /fp:strict /clang:-fno-lto)
+target_link_libraries(sonic_model_projection_tests PRIVATE sonic_fpu_body KatanaRecomp::native_port_runtime)
 add_executable(sonic_fpu_body_tests EXCLUDE_FROM_ALL
     tools/test_fpu_body.cpp "${sonic_fpu_runtime_dir}/fpu.cpp"
     "${sonic_fpu_runtime_dir}/fpu-reference.cpp")

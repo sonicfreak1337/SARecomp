@@ -57,6 +57,13 @@ public:
                     (cpu.fpscr & katana::runtime::fpscr_dn_mask) != 0u && rounding_ <= 1u &&
                     (cpu.sr & katana::runtime::sr_fd_mask) == 0u &&
                     !cpu.trap_pending && !cpu.sleeping) {}
+    // A synchronous caller may already own the matching SDK epoch. Borrow it
+    // instead of resetting host status again at the first exceptional operand.
+    // The epoch must belong to this CPU and outlive the complete body; no
+    // callback, dispatch or guest RM/DN/PR/Enables mutation is allowed inside.
+    NontrappingSingleBody(katana::runtime::CpuState& cpu,
+                         const katana::runtime::HostFpuExecutionEpoch&) noexcept
+        : NontrappingSingleBody(cpu) { borrowed_epoch_ = true; }
     NontrappingSingleBody(const NontrappingSingleBody&) = delete;
     NontrappingSingleBody& operator=(const NontrappingSingleBody&) = delete;
     NontrappingSingleBody(NontrappingSingleBody&&) = delete;
@@ -111,11 +118,12 @@ COMPARE_FAST_BLOCK
 
 private:
     void ensure_epoch() noexcept {
-        if (!epoch_) epoch_.emplace(cpu_);
+        if (!borrowed_epoch_ && !epoch_) epoch_.emplace(cpu_);
     }
     katana::runtime::CpuState& cpu_;
     const std::uint8_t rounding_;
     const bool admitted_;
+    bool borrowed_epoch_ = false;
     // No separate TLS. The first fallback acquires the production SDK epoch;
     // its destructor restores exact incoming MXCSR and any enclosing epoch.
     // An entirely integer body never constructs it or touches host FP state.

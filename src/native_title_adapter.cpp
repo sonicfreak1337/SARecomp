@@ -1835,6 +1835,35 @@ constexpr std::uint64_t sonic_native_gameplay_probe_duration_nanoseconds =
 constexpr std::uint64_t sonic_native_gameplay_sample_interval_nanoseconds =
     1'000'000'000u;
 
+// Optional fixed-work benchmark window. Only the private, hidden, isolated
+// probe can use it; ordinary gameplay retains the existing time-based probe.
+struct SonicHiddenGameplayFrameWindow final {
+    std::uint32_t begin = 0u;
+    std::uint32_t end = 0u;
+};
+[[nodiscard]] const SonicHiddenGameplayFrameWindow& sonic_hidden_gameplay_frame_window() noexcept {
+    static const auto window = [] {
+        SonicHiddenGameplayFrameWindow result;
+        const auto* hidden = std::getenv("KATANA_PORT_BACKGROUND_TEST");
+        const auto* isolated = std::getenv("SARECOMP_BENCHMARK_ISOLATED_INPUT");
+        const auto* saves = std::getenv("KATANA_USER_DATA_ROOT");
+        if (!hidden || std::string_view(hidden) != "1" || !isolated ||
+            std::string_view(isolated) != "1" || !saves || !*saves) return result;
+        const auto read = [](const char* name, std::uint32_t& value) {
+            const auto* text = std::getenv(name);
+            if (!text || !*text) return false;
+            const std::string_view span(text);
+            const auto parsed = std::from_chars(span.data(), span.data() + span.size(), value);
+            return parsed.ec == std::errc{} && parsed.ptr == span.data() + span.size();
+        };
+        if (!read("SARECOMP_PROBE_BEGIN_FRAME", result.begin) ||
+            !read("SARECOMP_PROBE_END_FRAME", result.end) || result.begin == 0u ||
+            result.end <= result.begin || result.end > 10000u) return SonicHiddenGameplayFrameWindow{};
+        return result;
+    }();
+    return window;
+}
+
 enum class SonicNativeGameplayInputPhase : std::uint32_t {
     Forward = 0u,
     ForwardLeft = 1u,
@@ -18021,6 +18050,11 @@ void emit_sonic_native_gameplay_probe_sample(
               << " matrix_determinant_original_calls=" << probe.inverse_original_calls[1]
               << " player_state_readable=" << int(state_readable)
               << " player_x=" << player_x << " player_y=" << player_y << " player_z=" << player_z
+              << " player_x_bits=" << std::bit_cast<std::uint32_t>(player_x)
+              << " player_y_bits=" << std::bit_cast<std::uint32_t>(player_y)
+              << " player_z_bits=" << std::bit_cast<std::uint32_t>(player_z)
+              << " frame_window_begin=" << sonic_hidden_gameplay_frame_window().begin
+              << " frame_window_end=" << sonic_hidden_gameplay_frame_window().end
               << " game_ticks=" << game_ticks
               << " hud_timer_ticks=" << (unsigned(timer_minutes)*3600u+unsigned(timer_seconds)*60u+timer_fraction)
               << " update_timing=" << int(sonic_native_update_timing_enabled())
@@ -18193,12 +18227,16 @@ void service_sonic_native_gameplay_probe_completed_frame(
         const auto elapsed = now >= probe.active_nanoseconds
                                  ? now - probe.active_nanoseconds
                                  : 0u;
+        const auto& frame_window = sonic_hidden_gameplay_frame_window();
+        const auto relative_frame = context.frame_index - probe.active_frame;
         const bool complete =
-            elapsed >= sonic_native_gameplay_probe_duration_nanoseconds &&
+            (frame_window.end != 0u ? relative_frame >= frame_window.end :
+                elapsed >= sonic_native_gameplay_probe_duration_nanoseconds) &&
             !(sonic_sixty_frame_fixture_enabled() && sonic_sixty_frame_interactive_requested());
         const bool sample_due =
+            (frame_window.end != 0u && relative_frame == frame_window.begin) ||
             now - probe.last_sample_nanoseconds >=
-            sonic_native_gameplay_sample_interval_nanoseconds;
+                sonic_native_gameplay_sample_interval_nanoseconds;
         const auto current_stamp = context.loaded_aot->dispatch_stamp();
         if (complete || sample_due || current_stamp != probe.owner_stamp) {
             SonicGuestReader reader(*context.cpu);
