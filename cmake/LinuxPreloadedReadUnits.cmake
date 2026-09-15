@@ -1,0 +1,45 @@
+# Common 8C code from the Linux execution profile. The existing inverse
+# arithmetic replacement is deliberately excluded. No stage module is replaced.
+set(linux_preloaded_units
+    unit-v8C01995E-8C01AAE0-6cf3d8aa9df0e7a3.cpp
+    unit-v8C01ABDC-8C01BD3C-ae2d221aef611cc9.cpp
+    unit-v8C01BD9E-8C01CDE8-3af53bb71dfa59d4.cpp
+    unit-v8C025010-8C025D40-edfdd3cc9eb5a26a.cpp
+    unit-v8C0273A2-8C028EC2-3c3ba866ec5c4265.cpp
+    unit-v8C029400-8C029B00-9bed0201322da5d9.cpp
+    unit-v8C02CA00-8C02DE20-1e7e2fdd391d9bd8.cpp
+    unit-v8C02F0A0-8C02FF7E-7f9c84f2baee3248.cpp
+    unit-v8C030F20-8C031D00-ecbca4d22e31cdd3.cpp
+    unit-v8C031F88-8C032D98-3416a033e4e8a11a.cpp
+    unit-v8C033122-8C0342E0-7edcb8468a2b4534.cpp
+    unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp
+    unit-v8C038802-8C03FF90-0329df60636b0242.cpp
+    unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
+    unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp
+    unit-v8C0450A0-8C046120-3405e1906862d538.cpp
+    unit-v8C048624-8C0499C0-d9f0048262d265c6.cpp
+    unit-v8C04ED1A-8C050172-9f54c1e26f849f69.cpp
+    unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp
+    unit-v8C051E56-8C053338-ce4429c39e6969de.cpp
+    unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp
+    unit-v8C06C98E-8C06D194-3e9aae167c094977.cpp
+    unit-v8C073018-8C073018-457a60bdbd02a56b.cpp
+    unit-v8C074214-8C075154-1bc56e9d4bd882fb.cpp
+    unit-v8C078796-8C07921C-d193030180b5454d.cpp
+    unit-v8C09036C-8C09168E-46c0db15f975e3ef.cpp
+    unit-v8C091720-8C09276E-f12ea02f8b924edc.cpp
+    unit-v8C099160-8C09A218-65281c8f233f8abf.cpp
+    unit-v8C0CBD40-8C0CCFDC-8bb83195ded15666.cpp
+    unit-v8C0CED2E-8C0D0BB8-9d87359849e1c862.cpp
+    unit-v8C0D0BF2-8C0D209C-59e81633f89c0489.cpp
+    unit-v8C0D2150-8C0D326C-fb3ed40092450772.cpp
+    unit-v8C0FBD44-8C0FCF80-e62a472cf2c264eb.cpp
+    unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp
+    unit-v8C10CDDC-8C10DA5C-cb14c3e2f790eaff.cpp
+    unit-v8C10DB04-8C10EB80-b3bbbddd2dccf359.cpp
+    unit-v8C604642-8C606E54-2ff8d7f677b95797.cpp
+    unit-v8C639F38-8C63B05C-e3ea66f80473641e.cpp
+    unit-v8C640068-8C641B00-7e135ebcc56bc686.cpp
+    unit-v8C6542D2-8C654F30-9c8efeae2f15d96e.cpp
+    unit-v8C655042-8C656812-4328bd807c0b8708.cpp
+)

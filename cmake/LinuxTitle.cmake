@@ -73,6 +73,7 @@ target_compile_options(game PRIVATE -O2 -g0 -frounding-math -ffp-contract=off -f
 include("${SONIC_ROOT}/cmake/SonicInternalDiagnostics.cmake")
 target_link_libraries(game PRIVATE sonic_linux_guest sonic_linux_title sonic_linux_services)
 include("${SONIC_ROOT}/cmake/LinuxMemory.cmake")
+include("${SONIC_ROOT}/cmake/LinuxPreloadedReads.cmake")
 target_link_options(game PRIVATE -Wl,--gc-sections -Wl,-z,stack-size=16777216)
 set(SARECOMP_LINUX_CODE_LAYOUT "" CACHE FILEPATH "Measured ELF code section order; empty keeps original layout")
 if(SARECOMP_LINUX_CODE_LAYOUT)

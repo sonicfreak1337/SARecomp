@@ -25,6 +25,18 @@ def measurement(samples):
             ticks = int(last[name + '_cpu_100ns']) - int(first[name + '_cpu_100ns'])
             if ticks >= 0:
                 result[name + '_cpu_ms_per_frame'] = ticks / 10000 / frames
+    # Original's authored overload recovery may run different numbers of game
+    # updates in equally long image windows. Expose that work count alongside
+    # frame cost instead of attributing fewer updates to faster execution.
+    if 'game_ticks' in first and 'game_ticks' in last:
+        updates = (int(last['game_ticks']) - int(first['game_ticks'])) & 0xFFFFFFFF
+        if 0 < updates <= frames * 8:
+            result['game_updates'] = updates
+            result['game_updates_per_frame'] = updates / frames
+            for name in ('execution', 'process'):
+                value = result.get(name + '_cpu_ms_per_frame')
+                if value is not None:
+                    result[name + '_cpu_ms_per_game_update'] = value * frames / updates
     return result
 
 
@@ -33,7 +45,9 @@ p.add_argument('--exe', type=Path, required=True)
 p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
-p.add_argument('--scenario', default='emerald-coast')
+p.add_argument('--scenario', default='emerald-coast',
+    choices=('emerald-coast','gamma-emerald-coast','sonic-windy-valley','amy-hot-shelter'),
+    help='Reviewed performance scenarios; IDs match the private stage table exactly')
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
 p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')

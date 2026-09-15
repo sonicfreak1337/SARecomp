@@ -3,6 +3,31 @@
 #include <cstdint>
 #include <utility>
 namespace sonic::memory {
+struct PreloadedRead32 {
+    std::uint32_t value=0;
+    bool valid=false;
+};
+// Restricted to exact ordinary MOV.L and scalar FMOV envelopes verified by
+// the preparer. FMOV may preload only with FD clear and SZ clear; its original
+// FPU fault checks and paired-read path remain at their original positions.
+// A successful guard read has no observer/callback. Between it and assignment,
+// only ExplicitGuestInstructionAttempt's noexcept CPU bookkeeping may run.
+// This performs the one real read and its original counters at admission;
+// faults, MMIO, observer calls and miss-triggered scheduler flushes stay in
+// the original path. Never retain this value across a call or a write.
+template<class Guard,class Translate>
+inline PreloadedRead32 preload_read32(const Guard& guard,std::uint32_t address,
+                                     Translate&& translate) noexcept {
+    PreloadedRead32 result;std::uint32_t direct=0;
+    result.valid=translate(address,direct) &&
+        katana::runtime::direct_linear_guard_read_u32(guard,direct,result.value);
+    return result;
+}
+template<class Fallback>
+inline std::uint32_t consume_preloaded32(const PreloadedRead32& prepared,
+                                        Fallback&& original_read) {
+    return prepared.valid ? prepared.value : std::forward<Fallback>(original_read)();
+}
 struct PreparedRead32 {
     std::uint32_t guest_address=0,direct_address=0;
     bool valid=false;

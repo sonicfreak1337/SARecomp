@@ -41,6 +41,37 @@ for name, count in zip(recipe.UNITS, (154, 115), strict=True):
     _, accepted = recipe.transform(data.decode())
     assert len(accepted) == count
 
+# The Linux preload experiment additionally authenticates the callback-free
+# helper bodies and admits scalar FMOV only through its exact original envelope.
+recipe.validate_preloaded_helpers(source)
+for before, after in (
+    ('katana_guarded_unknown_ram_reads = true;', 'katana_guarded_unknown_ram_reads = false;'),
+    ('const auto katana_direct_ram_resolve =\n', 'const auto katana_direct_ram_resolve =\n        /* changed helper */\n'),
+):
+    assert before in source
+    try:
+        recipe.validate_preloaded_helpers(source.replace(before, after))
+        raise AssertionError('Changed preload helper admitted')
+    except RuntimeError:
+        pass
+fp_start = next(m for m in recipe.FPU_START.finditer(source) if m['pc'] == '8C02943A')
+fp_end = source.index('\n'+fp_start['indent']+'}', fp_start.end())+len(fp_start['indent'])+2
+fp_original = source[fp_start.start():fp_end]
+fp_changed, fp_sites = recipe.transform_scalar_fpu(fp_original)
+assert len(fp_sites) == 1 and 'consume_preloaded32(' in fp_changed
+for before, after in (
+    ('0x0000F3E8u);', '0x0000F3E9u);'),
+    ('cpu.fr[3] =', 'cpu.fr[4] ='),
+    ('0x0000F3E8u);', '0x0000F3E8u, 0x8C029438u);'),
+):
+    assert fp_original.count(before) == 1
+    mutant = fp_original.replace(before, after)
+    result, admitted = recipe.transform_scalar_fpu(mutant)
+    assert not admitted and result == mutant
+_, preloaded_sites = recipe.transform(source, 'preloaded', True)
+assert len(preloaded_sites) == 363
+assert sum(site.get('kind') == 'scalar-fmov' for site in preloaded_sites) == 209
+
 # Verify a modified input cannot pass the bound preparation, and a linked
 # candidate cannot masquerade as the old retained archive or duplicate entry.
 scratch = ROOT/".local/analysis/prepared-read"
@@ -55,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="qualification-", dir=scratch) as direct
     (fake/"code"/name).write_text(source+"\n// changed\n")
     try:
         recipe.prepare(SimpleNamespace(source_root=fake, destination=temp/"output",
-            helper=ROOT/"src/sonic_prepared_read.hpp", mode="prepared"))
+            helper=ROOT/"src/sonic_prepared_read.hpp", mode="prepared", scalar_fpu=False, unit=None))
         raise AssertionError("Modified retained input accepted")
     except RuntimeError as error:
         assert "identity mismatch" in str(error)
@@ -78,3 +109,4 @@ with tempfile.TemporaryDirectory(prefix="qualification-", dir=scratch) as direct
             assert "ownership mismatch" in str(error)
 
 print("SONIC_PREPARED_READ_QUALIFICATION_OK eligible=269 rejected_envelopes=9 changed_source_rejected=1 rejected_link_owners=3")
+print("SONIC_PRELOADED_READ_QUALIFICATION_OK witness_gpr=154 witness_fmov=209 rejected_helpers=2 rejected_fmov_envelopes=3")

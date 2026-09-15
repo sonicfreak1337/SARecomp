@@ -49,10 +49,44 @@ START = re.compile(r"(?m)^(?P<indent> +)\{\n(?P=indent)    // katana-guest 0x(?P
     r"(?P=indent)    const bool katana_guarded_linear_access_(?P=pc) = katana_direct_ram_can_read\((?P<address>[^\n]+), 4u\);")
 LOAD = re.compile(r"katana_registers\[(\d+)\] = katana_direct_ram_read_u32\(guest_origin, ([^\n]+), (katana_guarded_unknown_ram_reads|true)\);")
 OPCODE = re.compile(r"enter_memory_exception_with_provenance\(cpu, error, katana::runtime::relocate_code_address_inline\(0x[0-9A-F]{8}u\), 0x([0-9A-F]{8})u\);")
+FPU_START = re.compile(r"(?m)^(?P<indent> +)\{\n(?P=indent)    // katana-guest 0x(?P<pc>[0-9A-F]{8})u\n"
+    r"(?P=indent)    const bool katana_guarded_linear_access_(?P=pc) = katana_direct_ram_can_read\((?P<address>[^\n]+?), 4u\) &&")
+FPU_BODY = Template("""const std::uint32_t address = ${address};
+if ((cpu.fpscr & katana::runtime::fpscr_sz_mask) != 0u) {
+    const std::uint32_t low = katana_direct_ram_read_u32(guest_origin, address, katana_guarded_unknown_ram_reads);
+    const std::uint32_t high = katana_direct_ram_read_u32(guest_origin, address + 4u, katana_guarded_unknown_ram_reads);
+    katana::runtime::write_fpu_pair_bits(cpu, ${destination}u, (static_cast<std::uint64_t>(high) << 32u) | low);
+} else {
+    cpu.fr[${destination}] = katana_direct_ram_read_u32(guest_origin, address, katana_guarded_unknown_ram_reads);
+}""")
 
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def validate_preloaded_helpers(source):
+    # Moving the read requires more than matching its instruction envelope.
+    # Bind the known callback-free admission and successful-read helpers too;
+    # the two retained fallback shapes are deliberately left unrestricted.
+    expected = {
+        'translate':'2e7cd8070de52f7ca1f1c93352dcffe7cab9e68dc3df2ee43ae646cfebbe1d94',
+        'resolve':'a02290839f076c37200b026aabc261c54d06f82cc90cc8bc692178c03a7de59a',
+        'can_read':'584a907976aa81d0f1758dc429acb257053acc33133e9ed5a659d43b533e3050',
+        'read_u32':'99890d0423eabe27aec78dfa760a373708d97c2e60b45acba8128a6d4015bafc',
+    }
+    flags = re.findall(r'static constexpr bool katana_guarded_unknown_ram_reads = ([^;]+);', source)
+    if not flags or any(flag != 'true' for flag in flags):
+        raise RuntimeError('Preloaded reads require the retained direct-read allowance')
+    for name, digest in expected.items():
+        helpers = re.findall(r'const auto katana_direct_ram_'+name+r' =\n.*?^    };', source, re.M|re.S)
+        if not helpers:
+            raise RuntimeError('Preloaded read helper is missing: '+name)
+        for helper in helpers:
+            if name == 'read_u32':
+                helper = helper.split('        }\n', 1)[0]+'        }\n'
+            if sha(helper.encode()) != digest:
+                raise RuntimeError('Preloaded read helper changed: '+name)
 
 
 def operand_matches(opcode, destination, address):
@@ -71,7 +105,78 @@ def operand_matches(opcode, destination, address):
     return False
 
 
-def transform(source):
+def transform_scalar_fpu(source):
+    edits, sites = [], []
+    for start in FPU_START.finditer(source):
+        indent, pc, address = start.group('indent', 'pc', 'address')
+        end = re.compile(r'(?m)^'+re.escape(indent)+r'\}').search(source, start.end())
+        if end is None:
+            raise RuntimeError('Unterminated FPU instruction')
+        block = source[start.start():end.end()]
+        opcodes = list(OPCODE.finditer(block))
+        if len(opcodes) != 1:
+            continue
+        opcode = opcodes[0][1]
+        word = int(opcode, 16)
+        n, m = (word >> 8) & 15, (word >> 4) & 15
+        if word & 0xF00F not in (0xF008, 0xF006):
+            continue
+        expected_address = f'katana_registers[{m}]'
+        if word & 15 == 6:
+            expected_address = 'katana_registers[0] + '+expected_address
+        if address != expected_address:
+            continue
+        expected = ENVELOPE.substitute(pc=pc, next_pc=f'{int(pc,16)+2:08X}',
+            address=address, destination=n, allow='katana_guarded_unknown_ram_reads', opcode=opcode)
+        plain_preflight = f'katana_direct_ram_can_read({address}, 4u)'
+        pair_preflight = plain_preflight+f' && ((cpu.fpscr & katana::runtime::fpscr_sz_mask) == 0u || katana_direct_ram_can_read(({address}) + 4u, 4u))'
+        expected = expected.replace(plain_preflight+';', pair_preflight+';')
+        checks = f'''    if ((cpu.sr & katana::runtime::sr_fd_mask) != 0u) {{
+        katana_registers.flush_release();
+        raise_fpu_disabled(cpu, katana::runtime::relocate_code_address_inline(0x{pc}u));
+        return;
+    }}
+    if (((cpu.fpscr & katana::runtime::fpscr_pr_mask) != 0u && (cpu.fpscr & katana::runtime::fpscr_sz_mask) != 0u)) {{
+        katana_registers.flush_release();
+        raise_illegal_instruction(cpu, katana::runtime::relocate_code_address_inline(0x{pc}u));
+        return;
+    }}
+'''
+        expected = expected.replace('    try {', checks+'    try {')
+        expected = expected.replace('        enter_memory_exception_with_provenance',
+            '        katana_registers.flush_release();\n        enter_memory_exception_with_provenance')
+        expected = indent+expected.replace('\n', '\n'+indent)
+        assignment = f'katana_registers[{n}] = katana_direct_ram_read_u32(guest_origin, {address}, katana_guarded_unknown_ram_reads);'
+        # The pinned emitter leaves its embedded FPU instruction body unindented.
+        expected = expected.replace(assignment, '{\n'+FPU_BODY.substitute(address=address,destination=n)+'\n}')
+        if expected != block:
+            continue
+        token = f'sonic_preloaded_fpu_{pc}'
+        eligible = f'sonic_preloaded_fpu_eligible_{pc}'
+        before = f'const bool katana_guarded_linear_access_{pc} = {pair_preflight};'
+        after = (f'const bool {eligible} = (cpu.sr & katana::runtime::sr_fd_mask) == 0u && '
+            f'(cpu.fpscr & katana::runtime::fpscr_sz_mask) == 0u;\n{indent}    '
+            f'const auto {token} = {eligible} ? sonic::memory::preload_read32('
+            f'katana_direct_ram, {address}, katana_direct_ram_translate) : sonic::memory::PreloadedRead32{{}};\n{indent}    '
+            f'const bool katana_guarded_linear_access_{pc} = {eligible} ? {token}.valid : ({pair_preflight});')
+        read = 'katana_direct_ram_read_u32(guest_origin, address, katana_guarded_unknown_ram_reads)'
+        scalar = f'cpu.fr[{n}] = {read};'
+        consume = f'cpu.fr[{n}] = sonic::memory::consume_preloaded32({token}, [&] {{ return {read}; }});'
+        changed = block.replace(before, after).replace(scalar, consume)
+        if changed.replace(consume, scalar).replace(after, before) != block:
+            raise RuntimeError('Scalar FPU read escaped its source spans')
+        edits.append((start.start(), end.end(), changed))
+        sites.append({'pc':pc, 'opcode':opcode, 'kind':'scalar-fmov',
+            'source_line':source.count('\n',0,start.start())+1})
+    output = source
+    for begin, end, changed in reversed(edits):
+        output = output[:begin]+changed+output[end:]
+    return output, sites
+
+
+def transform(source, mode="prepared", scalar_fpu=False):
+    if mode == 'preloaded':
+        validate_preloaded_helpers(source)
     edits, sites = [], []
     for start in START.finditer(source):
         indent, pc, address = start.group("indent", "pc", "address")
@@ -99,6 +204,9 @@ def transform(source):
         read = f"katana_direct_ram_read_u32(guest_origin, {address}, {allow})"
         consume = (f"sonic::memory::read_prepared32(katana_direct_ram, {token}, {address}, "
             f"[&] {{ return {read}; }})")
+        if mode == 'preloaded':
+            after = after.replace('prepare_read32(', 'preload_read32(')
+            consume = f"sonic::memory::consume_preloaded32({token}, [&] {{ return {read}; }})"
         changed = block.replace(before, after).replace(read+";", consume+";")
         # Reverse just these two edits, proving the rest of the envelope intact.
         if changed.replace(consume+";", read+";").replace(after, before) != block:
@@ -108,6 +216,17 @@ def transform(source):
     output = source
     for begin, end, changed in reversed(edits):
         output = output[:begin]+changed+output[end:]
+    if scalar_fpu:
+        if mode != 'preloaded':
+            raise RuntimeError('Scalar FPU reads require preloaded mode')
+        # Match against the untouched input so report line numbers stay stable.
+        fpu_output, fpu_sites = transform_scalar_fpu(source)
+        if fpu_sites:
+            # MOV.L and FMOV envelopes cannot overlap. Reapply the GPR edit pass
+            # to the FPU copy without recursively transforming FP instructions.
+            output, _ = transform(fpu_output, mode, False)
+            output = output.removeprefix('#include "sonic_prepared_read.hpp"\n')
+            sites.extend(fpu_sites)
     return '#include "sonic_prepared_read.hpp"\n'+output, sites
 
 
@@ -124,18 +243,26 @@ def prepare(args):
     manifest = (root/".katana-generated-artifacts").read_text().splitlines()
     if manifest[0] != "katana-codegen-artifacts-v2" or manifest[1] != "generation\tsha256:"+sha(("\n".join(manifest[2:])+"\n").encode()):
         raise RuntimeError("Invalid generated artifact manifest")
-    report = {"schema":"sarecomp-prepared-read-aot-v1", "mode":args.mode,
+    report = {"schema":"sarecomp-prepared-read-aot-v1", "mode":args.mode, "scalar_fpu":args.scalar_fpu,
         "manifest_generation":manifest[1], "helper_sha256":sha(args.helper.read_bytes()), "units":[]}
-    for name, expected in UNITS.items():
+    selected = args.unit or list(UNITS)
+    if len(selected) != len(set(selected)):
+        raise RuntimeError("Duplicate selected AOT unit")
+    for name in selected:
+        if not re.fullmatch(r'unit-v[0-9A-F]+-[0-9A-F]+-[0-9a-f]+\.cpp', name):
+            raise RuntimeError("Invalid selected AOT unit")
+        expected = UNITS.get(name)
         data = (root/"code"/name).read_bytes()
         record = [line.split("\t") for line in manifest[2:] if line.split("\t")[0] == "code/"+name]
+        if expected is None and len(record) == 1:
+            expected = record[0][2].removeprefix('sha256:')
         if sha(data) != expected or len(record) != 1 or record[0][1:3] != [str(len(data)), "sha256:"+expected]:
             raise RuntimeError("Selected AOT source identity mismatch: "+name)
         source = data.decode()
-        output, sites = transform(source)
+        output, sites = transform(source, args.mode, args.scalar_fpu)
         # Both sampled witnesses must qualify; a changed layout fails closed.
         witness = "8C02947C" if name.startswith("unit-v8C029400") else "8C036BE0"
-        if not any(site["pc"] == witness for site in sites):
+        if not sites or (name in UNITS and not any(site["pc"] == witness for site in sites)):
             raise RuntimeError("Required ordinary read no longer qualifies")
         if args.mode == "control":
             output = source
@@ -146,8 +273,11 @@ def prepare(args):
         report["units"].append({"name":name, "source_sha256":expected, "output_sha256":sha(encoded),
             "eligible_instructions":len(sites), "sites":sites, "entry_symbols":entries})
         write_if_changed(destination/name, encoded)
+    if args.scalar_fpu and not any(site.get('kind') == 'scalar-fmov'
+            for unit in report['units'] for site in unit['sites']):
+        raise RuntimeError('Scalar FPU preparation found no admitted instruction')
     write_if_changed(destination/"preparation.json", (json.dumps(report, indent=2)+"\n").encode())
-    print("SONIC_PREPARED_READ_READY mode="+args.mode+" units=2 instructions="+
+    print("SONIC_PREPARED_READ_READY mode="+args.mode+" units="+str(len(selected))+" instructions="+
         str(sum(unit["eligible_instructions"] for unit in report["units"]))+" retained_aot_unchanged=1")
 
 
@@ -185,7 +315,9 @@ def main():
     p.add_argument("--source-root", type=Path, required=True)
     p.add_argument("--destination", type=Path, required=True)
     p.add_argument("--helper", type=Path, required=True)
-    p.add_argument("--mode", choices=("control", "prepared"), required=True)
+    p.add_argument("--mode", choices=("control", "prepared", "preloaded"), required=True)
+    p.add_argument("--unit", action="append", help="Manifest-authenticated selected AOT member")
+    p.add_argument("--scalar-fpu", action="store_true", help="Also preload admitted nonincrementing scalar FMOV reads")
     p.set_defaults(run=prepare)
     a = commands.add_parser("audit")
     a.add_argument("--map", type=Path, required=True)
