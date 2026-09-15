@@ -3216,6 +3216,9 @@ void report_native_graphics_contract_telemetry(
         << " source_plan_evictions=" << sonic_native_title_state.model_source_plans.stats.evictions
         << " source_plan_verified_triangles=" << sonic_native_title_state.model_source_plans.stats.verified_triangles
         << " source_plan_verified_uvs=" << sonic_native_title_state.model_source_plans.stats.verified_uvs
+        << " source_plan_shared_meshes=" << sonic_native_title_state.model_source_plans.stats.shared_meshes
+        << " source_plan_bulk_meshes=" << sonic_native_title_state.model_source_plans.stats.bulk_meshes
+        << " source_plan_verified_shared_vertices=" << sonic_native_title_state.model_source_plans.stats.verified_shared_vertices
         << " mesh_cache_eligible=" << cache.eligible
         << " mesh_cache_hits=" << cache.hits
         << " mesh_cache_misses=" << cache.misses
@@ -36925,14 +36928,15 @@ sonic_native_ninja_model_draw_impl(
             }();
             static const bool indexed_corners_verify =
                 sonic_native_diagnostic_enabled("SARECOMP_INDEXED_CORNERS_VERIFY");
-            const bool indexed_corners =
+            const bool indexed_corner_eligible =
                 indexed_corners_requested && sonic_native_gameplay_math_active() &&
-                polygon_type != 0u && model_transform.has_value() &&
+                model_transform.has_value() &&
                 !environment_mapping && !flat_shading && !observe_normal_draw &&
                 !native_mesh_cache_diagnostics_active() && corner_direct_reads &&
                 material_owner == SonicNativeBasicMaterialOwner::TitleBasic &&
                 !sdk_exceptional_header_color && !sdk_constant_colors && !sdk_float_colors &&
                 !sdk_exceptional_vertex_color;
+            bool indexed_corners = indexed_corner_eligible && polygon_type != 0u;
             auto& corner_indices = sonic_native_title_state.model_corner_indices;
             corner_indices.begin_mesh();
             static const bool source_plan_requested=[] {
@@ -36965,6 +36969,24 @@ sonic_native_ninja_model_draw_impl(
                         source_plan=source_plan_cache.get(request,plan_reader,cpu);
                 }
             }
+            static const bool shared_corners_requested=[] {
+                const auto* flag=std::getenv("SARECOMP_MESH_SHARED_CORNERS");
+                return !flag || std::string_view(flag)!="0";
+            }();
+            const bool mesh_shared_corners = shared_corners_requested && indexed_corner_eligible &&
+                source_plan && source_plan->shared_corner_count < source_plan->shared_indices.size();
+            if(mesh_shared_corners){
+                // Only reuse within this draw: positions, normals, colours
+                // and material can change before the next invocation. Flat,
+                // ENV, SDK colour effects and observed reads stay excluded.
+                indexed_corners=true;
+                corner_indices.begin_polygon(source_plan->shared_corner_count);
+            }
+            const auto corner_key=[&](std::uint64_t corner) noexcept -> std::size_t {
+                if(!mesh_shared_corners)return static_cast<std::size_t>(corner-corner_cursor);
+                if(corner>=source_plan->shared_corners.size())return corner_indices.corners.size();
+                return source_plan->shared_corners[static_cast<std::size_t>(corner)];
+            };
             std::size_t verified_plan_triangle=0u;
             struct PendingModelCorner final {
                 std::vector<katana::runtime::NativePortVertex>* output;
@@ -37444,7 +37466,7 @@ sonic_native_ninja_model_draw_impl(
                             // The direct-reader admission excludes observers.
                             if (indexed_corners_verify) {
                                 for (std::size_t i = 0; i < 3u; ++i) {
-                                    const auto key = static_cast<std::size_t>(corners[i] - corner_cursor);
+                                    const auto key = corner_key(corners[i]);
                                     if (key >= corner_indices.corners.size()) return false;
                                     const auto cached = corner_indices.corners[key];
                                     if (cached == sonic::geometry::CornerIndices::missing) continue;
@@ -37458,9 +37480,7 @@ sonic_native_ninja_model_draw_impl(
                                 }
                             }
                             return corner_indices.append_shared(vertices,
-                                {static_cast<std::size_t>(corners[0]-corner_cursor),
-                                 static_cast<std::size_t>(corners[1]-corner_cursor),
-                                 static_cast<std::size_t>(corners[2]-corner_cursor)},
+                                {corner_key(corners[0]),corner_key(corners[1]),corner_key(corners[2])},
                                 max_native_draw_vertices, [&](std::size_t i) {
                                     return append_corner(indices[i], corners[i]);
                                 });
@@ -37573,10 +37593,41 @@ sonic_native_ninja_model_draw_impl(
                     return DerivedPolygonNormalResult::Success;
                 };
 
-            if(source_plan && !source_plan_verify){
+            const bool bulk_shared_mesh = mesh_shared_corners && !source_plan_verify &&
+                source_plan->shared_indices.size() <= max_native_draw_vertices &&
+                std::ranges::all_of(source_plan->shared_vertices,[&](const auto& corner){
+                    return corner.point < sonic_native_title_state.transformed_point_clipped.size() &&
+                        sonic_native_title_state.transformed_point_clipped[corner.point] == 0u;
+                });
+            if(bulk_shared_mesh){
+                // The source plan already owns exact triangle order and UV
+                // seams. With every referenced point inside the near plane,
+                // build each current vertex once and copy its logical index
+                // stream. The expanded-stream limit above remains unchanged.
+                for(const auto& corner:source_plan->shared_vertices)
+                    if(!append_corner(static_cast<std::uint16_t>(corner.point),corner.corner))
+                        return graphics_abort(context,sonic_native_graphics_error_layout);
+                corner_indices.indices.assign(source_plan->shared_indices.begin(),source_plan->shared_indices.end());
+                if(indexed_corners_verify){
+                    std::size_t logical=0u;
+                    for(const auto& triangle:source_plan->triangles)for(unsigned i=0;i<3u;++i){
+                        if(!append_corner(triangle.points[i],triangle.corners[i]))
+                            return graphics_abort(context,sonic_native_graphics_error_layout);
+                        const auto actual=corner_indices.indices[logical++];
+                        const bool exact=actual<vertices.size()-1u &&
+                            std::memcmp(&vertices[actual],&vertices.back(),sizeof(vertices.back()))==0;
+                        vertices.pop_back();
+                        if(!exact)return graphics_abort(context,sonic_native_graphics_error_layout);
+                        ++source_plan_cache.stats.verified_shared_vertices;
+                    }
+                }
+                ++source_plan_cache.stats.bulk_meshes;
+                corner_cursor=source_plan->corner_count;
+                stream_offset=source_plan->stream_bytes.size();
+            }else if(source_plan && !source_plan_verify){
                 for(const auto& polygon:source_plan->polygons){
                     corner_cursor=polygon.first_corner;
-                    if(indexed_corners)corner_indices.begin_polygon(polygon.corner_count);
+                    if(indexed_corners && !mesh_shared_corners)corner_indices.begin_polygon(polygon.corner_count);
                     for(std::uint32_t i=0;i<polygon.triangle_count;++i){
                         const auto& t=source_plan->triangles[polygon.first_triangle+i];
                         if(!append_triangle(t.points,{t.corners[0],t.corners[1],t.corners[2]}))
@@ -37616,7 +37667,7 @@ sonic_native_ninja_model_draw_impl(
                     max_native_draw_vertices)
                     return graphics_abort(context, sonic_native_graphics_error_budget);
                 polygon_indices.clear();
-                if (indexed_corners) corner_indices.begin_polygon(vertices_in_polygon);
+                if (indexed_corners && !mesh_shared_corners) corner_indices.begin_polygon(vertices_in_polygon);
                 polygon_indices.reserve(vertices_in_polygon);
                 for (std::uint32_t corner = 0u;
                      corner < vertices_in_polygon; ++corner) {
@@ -37911,6 +37962,7 @@ sonic_native_ninja_model_draw_impl(
                 sonic_native_title_state.mesh_cache_telemetry;
             if (indexed_corners) {
                 ++corner_indices.meshes;
+                if(mesh_shared_corners)++source_plan_cache.stats.shared_meshes;
                 corner_indices.logical_corners += corner_indices.indices.size();
                 corner_indices.stored_vertices += vertices.size();
             }

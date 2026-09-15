@@ -26,6 +26,7 @@ struct MeshPlanTriangle {
 struct MeshPlanPolygon {
     std::uint32_t first_triangle{},triangle_count{},first_corner{},corner_count{};
 };
+struct MeshPlanSharedCorner { std::uint32_t point{},corner{}; };
 struct MeshPlan {
     MeshPlanRequest request;
     std::uint32_t fpscr_mode{},host_mode{},corner_count{};
@@ -33,11 +34,19 @@ struct MeshPlan {
     std::vector<MeshPlanTriangle> triangles;
     std::vector<MeshPlanPolygon> polygons;
     std::vector<std::array<float,2>> uvs;
+    // Authored identity only: equal point index AND raw UV pair. The actual
+    // vertex cache is recreated for each mesh draw, after live material,
+    // positions, normals and lighting have been read.
+    std::vector<std::uint32_t> shared_corners;
+    std::vector<MeshPlanSharedCorner> shared_vertices;
+    std::vector<std::uint32_t> shared_indices;
+    std::uint32_t shared_corner_count{};
     [[nodiscard]] std::size_t allocation_bytes()const noexcept;
 };
 struct MeshPlanStats {
     std::uint64_t lookups{},hits{},misses{},builds{},changes{},declines{},evictions{};
     std::uint64_t verified_triangles{},verified_uvs{};
+    std::uint64_t shared_meshes{},bulk_meshes{},verified_shared_vertices{};
 };
 class MeshPlanCache final {
 public:

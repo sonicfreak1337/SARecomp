@@ -36,6 +36,7 @@ parser.add_argument('--mesh-plan', choices=('cached','retained','verify'), defau
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
 parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
 parser.add_argument('--indexed-corners', choices=('on','off'), default='off', help='Transient authored-corner reuse experiment')
+parser.add_argument('--shared-corners', choices=('on','off'), default='on', help='Exact point/UV reuse across polygons in one mesh draw')
 parser.add_argument('--verify-indexed-corners', action='store_true', help='Compare every reused corner with the original game vertex builder')
 parser.add_argument('--original-math-families', action='store_true', help='Compare against retained atan/contact owners')
 parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
@@ -92,6 +93,7 @@ env['SARECOMP_NATIVE_MOTION_SAMPLING']='1' if args.motion_sampling=='native' els
 env['SARECOMP_MESH_SOURCE_PLAN']='0' if args.mesh_plan=='retained' else '1'
 env['SARECOMP_MESH_SOURCE_PLAN_VERIFY']='1' if args.mesh_plan=='verify' else '0'
 env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
+env['SARECOMP_MESH_SHARED_CORNERS']='1' if args.shared_corners=='on' else '0'
 env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '0'
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',

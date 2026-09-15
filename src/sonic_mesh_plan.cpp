@@ -81,13 +81,37 @@ std::optional<MeshPlan> build(const MeshPlanRequest& request,MeshPlanReader read
                 std::bit_cast<std::int16_t>(u16(p+2)),true,cpu));
         }
     }
+    // Match raw UV words, not approximate positions or sampled texture
+    // values. A different point or either side of a UV seam stays distinct.
+    // Every authored corner belongs to at least one generated triangle.
+    constexpr auto missing=std::numeric_limits<std::uint32_t>::max();
+    plan.shared_corners.assign(plan.corner_count,missing);
+    std::unordered_map<std::uint64_t,std::uint32_t> identities;
+    identities.reserve(plan.corner_count);
+    for(const auto& triangle:plan.triangles)for(unsigned i=0;i<3u;++i){
+        const auto corner=triangle.corners[i];
+        if(plan.shared_corners[corner]!=missing)continue;
+        const auto uv_bits=uv?u32(plan.uv_bytes.data()+std::size_t(corner)*4u):0u;
+        const auto key=(std::uint64_t(triangle.points[i])<<32u)|uv_bits;
+        const auto [found,inserted]=identities.emplace(key,plan.shared_corner_count);
+        if(inserted){
+            ++plan.shared_corner_count;
+            plan.shared_vertices.push_back({triangle.points[i],corner});
+        }
+        plan.shared_corners[corner]=found->second;
+    }
+    plan.shared_indices.reserve(plan.triangles.size()*3u);
+    for(const auto& triangle:plan.triangles)for(const auto corner:triangle.corners)
+        plan.shared_indices.push_back(plan.shared_corners[corner]);
     if(plan.allocation_bytes()>max_plan_bytes)return {};
     return plan;
 }
 }
 std::size_t MeshPlan::allocation_bytes()const noexcept {
     return sizeof(MeshPlan)+stream_bytes.capacity()+uv_bytes.capacity()+
-        triangles.capacity()*sizeof(MeshPlanTriangle)+polygons.capacity()*sizeof(MeshPlanPolygon)+uvs.capacity()*sizeof(uvs[0]);
+        triangles.capacity()*sizeof(MeshPlanTriangle)+polygons.capacity()*sizeof(MeshPlanPolygon)+uvs.capacity()*sizeof(uvs[0])+
+        shared_corners.capacity()*sizeof(shared_corners[0])+
+        shared_vertices.capacity()*sizeof(shared_vertices[0])+shared_indices.capacity()*sizeof(shared_indices[0]);
 }
 void MeshPlanCache::erase(std::unordered_map<std::uint64_t,Entry>::iterator it) noexcept {
     bytes_-=it->second.plan.allocation_bytes();ages_.erase(it->second.age);entries_.erase(it);

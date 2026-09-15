@@ -31,6 +31,12 @@ target_include_directories(sonic_linux_title PRIVATE "${SONIC_WORKING}/generated
 target_compile_options(sonic_linux_title PRIVATE -O2 -g0 -frounding-math -ffp-contract=off -ffunction-sections -fdata-sections)
 target_link_libraries(sonic_linux_title PUBLIC sonic_linux_graphics sonic_linux_movie sonic_linux_aot_runtime)
 
+add_executable(sonic-linux-mesh-plan-tests EXCLUDE_FROM_ALL
+    "${SONIC_ROOT}/tools/test_mesh_plan.cpp" "${SONIC_ROOT}/src/sonic_mesh_plan.cpp")
+target_include_directories(sonic-linux-mesh-plan-tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic-linux-mesh-plan-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+target_link_libraries(sonic-linux-mesh-plan-tests PRIVATE sonic_linux_aot_runtime)
+
 set(linux_services_sources native_bringup_coverage native_port_audio_engine native_port_content native_port_cpu_control
     native_port_save native_port_runtime native_port_texture_asset)
 list(TRANSFORM linux_services_sources PREPEND "${SONIC_LINUX_SDK}/src/runtime/")

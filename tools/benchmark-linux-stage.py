@@ -38,6 +38,8 @@ p.add_argument('--aspect', choices=('original','deck'), default='original',
                help='Deck uses 16:10 culling at a reduced VM test resolution')
 p.add_argument('--descriptor-cache', choices=('on','off'), default='on')
 p.add_argument('--state-cache', choices=('on','off'), default='on')
+p.add_argument('--shared-corners', choices=('on','off'), default='on')
+p.add_argument('--verify-corners', action='store_true', help='Rebuild every reused vertex; diagnostic, not a throughput comparison')
 p.add_argument('--profile', action='store_true', help='Read-only perf sampling; diagnostic, not a throughput comparison')
 p.add_argument('--callgraph', action='store_true', help='With --profile, sample caller chains at 99 Hz')
 a = p.parse_args()
@@ -67,6 +69,8 @@ env.update({
     'SARECOMP_DISPLAY_CONFIG':str(display), 'SARECOMP_BENCHMARK_ISOLATED_INPUT':'1',
     'SARECOMP_VULKAN_DESCRIPTOR_CACHE':'1' if a.descriptor_cache=='on' else '0',
     'SARECOMP_VULKAN_STATE_CACHE':'1' if a.state_cache=='on' else '0',
+    'SARECOMP_MESH_SHARED_CORNERS':'1' if a.shared_corners=='on' else '0',
+    'SARECOMP_INDEXED_CORNERS_VERIFY':'1' if a.verify_corners else '0',
     'KATANA_PORT_FINAL_PROGRESS':'1', 'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1',
     'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
     'KATANA_SONIC_PRIVATE_SCENARIO':a.scenario, 'KATANA_SONIC_GAMEPLAY_PROBE':'1',
@@ -162,6 +166,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
+          'shared_corners':a.shared_corners, 'verify_corners':a.verify_corners,
           'measurement':measurement(samples),
           'wall_seconds':time.monotonic()-start, 'samples':samples,
           'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in text,
