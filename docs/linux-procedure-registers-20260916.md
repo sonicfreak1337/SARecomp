@@ -1,8 +1,10 @@
 # Shared registers across private AOT procedures
 
-This is an executable architecture prototype, not a game performance patch.
-No game target includes the new carrier. The experimental game remains B04B;
-installed builds, saves, timing and r354 are unchanged.
+This started as an executable architecture prototype. A default-OFF Linux game
+integration now prepares six audited procedures and eleven connected call sites.
+Installed builds, saves, timing and r354 are unchanged. The integration still
+requires measured gameplay evidence; the component microbenchmark is not a
+game performance claim.
 
 The installed SADX investigation motivates reducing administration across
 complete native procedures. The current AOT ABI copies selected registers from
@@ -66,12 +68,75 @@ compile exposed a missing test include; that include is corrected in the final
 successful build. The original simpler component is recorded separately in
 `runs/procedure-register-component-20260916.log`.
 
-## Remaining integration work
+## Bounded game integration
 
-Before any gameplay measurement, authenticate a connected set of actual
-procedures, classify all direct and indirect CPU/register consumers, preserve
-public wrappers, and select private calls only between admitted bodies. Calls
-to original bodies and native hooks must retain explicit publication. Verify
-the transformed bodies against their originals, especially differing masks,
-early exits and exceptions. Only a successful game comparison can justify
-expansion. The large measured gain and 20–25 ms/frame goal remain open.
+`SARECOMP_LINUX_PROCEDURE_REGISTERS=ON` selects four incremental translation
+units. Preparation authenticates the retained manifest, the exact original
+body hashes and any preceding RAM-region preparation. It admits only these
+reviewed complete procedures:
+
+| Procedure | Role | Private call sites |
+| --- | --- | ---: |
+| 8C057B00 | Recursive hierarchy to matrix-buffer construction | 7 |
+| 8C040784 | Object/motion hierarchy traversal | 1 |
+| 8C040942 | Public entry into the traversal | 1 |
+| 8C041A2E | Recursive animation hierarchy | 2 |
+| 8C0417C8 | SRT mixer with live rotation callback | 0 |
+| 8C055C8E | Partial-mask angle difference leaf | 0 |
+
+The original public bodies of the two leaves remain intact, avoiding a larger
+root register import for unrelated callers. Other public roots create an
+explicit Bank. Internal calls receive the same Bank. Original depth, pending
+selection, continuation PC, exception, memory-generation and scheduler checks
+remain in place. Unknown callees and native hooks retain publication.
+
+`Frame` separates local ownership from Bank validity. A private call suspends
+local ownership without publishing. A failed admission followed by a public
+fallback still publishes the Bank, even though local ownership was suspended.
+There is no caller-local snapshot to flush over newer callee results. A root
+publishes before its public BlockExit epilogue and during host unwinding.
+
+All 121 raw GPR/scalar access expressions in the admitted bodies follow actual
+Bank validity. Released FLOAT/FTRC windows and exception PR rollbacks therefore
+continue to use CpuState directly. Two FPU comparison result imports deliberately
+retain `cpu.t`: those helpers write T without first releasing the original local
+registerfile. Rewriting these result reads to the Bank would lose the comparison.
+
+The existing stable prevalidated-write observer contract explicitly prohibits
+CPU/scheduler inspection or mutation. NativePort binds the immutable-write
+tracker under that contract. General observers, MMIO, watchpoints, exceptions
+and runtime callbacks keep their original publication/fallback paths. This is
+not permission to remove observer behavior or generalize the six-body audit.
+
+The updated Linux component passed **71,681** comparisons. Its real-body
+fixture now uses the actual game preparer, rather than an independently authored
+register rewrite. The additional 1,024 cases exercise released FPUL/GPR windows,
+FPU Compare T imports, failed-private-admission publication, and exception PR
+rollback. Evidence: `runs/private-procedures-component-20260916.log`.
+
+The first integrated stripped executable is 1,680,630,752 bytes, SHA-256
+`30746fa754b1fb5758b72573f5d840060374ae774234105bb65e0012a620abce`.
+Incremental build evidence: `runs/private-procedures-build-20260916.log`.
+
+## Scope boundary
+
+The hidden Gamma pilot completed normally. Comparing against an older B04B run
+initially suggested lower CPU cost (220.103 versus 257.737 ms/update). A fresh
+identical B04B control instead measured **208.813 ms/update**. The private-ABI
+candidate therefore costs **5.41% more CPU/update** in this pair, with 66 rather
+than 67 updates. Image rate differs by only +1.02% in the software-rendered VM.
+The much larger change between the two identical B04B binaries demonstrates
+why the old observation cannot be attributed to the new code.
+
+Both programs reach the requested 5..25 image window and expected host stop.
+Workload differences prevent an isolated small-percentage claim. There is no
+useful gain supporting expansion, so the private procedure switch is **OFF**.
+It is excluded from the subsequently requested CPU update. Evidence:
+`runs/private-procedures-comparison-20260916.json` and the two complete summaries.
+No further Windy run of this rejected candidate is needed; the final patch's
+qualified paths receive the installed Windy check instead.
+
+The six-body integration is not a qualified global compiler transformation.
+Additional owners would require their own access/helper audit or an independently
+qualified generic boundary classifier. Only a useful game comparison can
+justify expansion. The large measured gain and 20–25 ms/frame goal remain open.

@@ -141,6 +141,46 @@ def main():
     policy.unlink(); policy.symlink_to(data[0]/'SARecomp/story.vmu')
     apply(data,False)
     records.append('diagnostics-policy-symlink-rejected')
+    data=fixture('cpu-update-from-native-math')
+    metadata=(data[1]/'patch.tsv').read_text()+'patch-id\tperformance-20260916\nreference-backup\tgame.pre-diagnostics-v1\n'
+    (data[1]/'patch.tsv').write_text(metadata)
+    before={d:sha(d/'game') for d in data[3]}
+    for directory in data[3]:
+        (directory/'game.pre-native-math-v1').write_bytes(b'older existing backup')
+    apply(data,True);apply(data,True)
+    assert all(sha(d/'game.pre-performance-20260916')==old for d,old in before.items())
+    assert all((d/'game.pre-native-math-v1').read_bytes()==b'older existing backup' for d in data[3])
+    records.append('cpu-update-uses-distinct-backups-and-is-idempotent')
+
+    for mode in ('valid','missing','damaged','symlink','rollback'):
+        data=fixture('cpu-update-diagnostics-'+mode)
+        run,bundle,apps,dirs,target=data
+        shutil.rmtree(dirs[0])
+        directory=dirs[1]
+        policy=b'SARECOMP-DIAGNOSTICS-1\non\n'
+        (directory/'.sarecomp-diagnostics').write_bytes(policy)
+        reference=directory/'game.pre-diagnostics-v1'
+        if mode=='symlink':reference.symlink_to(run/'old')
+        elif mode!='missing':shutil.copyfile(run/'old',reference)
+        if mode=='damaged':reference.write_bytes(b'bad reference program')
+        (bundle/'patch.tsv').write_text((bundle/'patch.tsv').read_text()+
+            'patch-id\tperformance-20260916\nreference-backup\tgame.pre-diagnostics-v1\n')
+        before=(sha(directory/'game'),sha(directory/'resources/payload-files.tsv'))
+        env=None
+        if mode=='rollback':
+            shim=run/'commands';shim.mkdir()
+            (shim/'mv').write_text('#!/bin/sh\ncount=0\n[ ! -f "$SARECOMP_PATCH_TEST_COUNT" ] || count=$(cat "$SARECOMP_PATCH_TEST_COUNT")\ncount=$((count+1))\nprintf "%s" "$count" > "$SARECOMP_PATCH_TEST_COUNT"\n[ "$count" -ne 2 ] || exit 42\nexec /usr/bin/mv "$@"\n')
+            (shim/'mv').chmod(0o755)
+            env=dict(os.environ,PATH=str(shim)+':'+os.environ['PATH'],SARECOMP_PATCH_TEST_COUNT=str(run/'rename-count'))
+        apply(data,mode=='valid',env)
+        assert (directory/'.sarecomp-diagnostics').read_bytes()==policy
+        if mode=='valid':
+            assert sha(directory/'game')==sha(target)
+            assert sha(directory/'game.pre-performance-20260916')==before[0]
+            assert sha(reference)==sha(run/'old')
+        else:
+            assert (sha(directory/'game'),sha(directory/'resources/payload-files.tsv'))==before
+        records.append('cpu-update-diagnostics-reference-'+mode)
     (root/'result.json').write_text(json.dumps({'passed':True,'checks':records},indent=2)+'\n')
     print('SONIC_RUNTIME_PATCH_TESTS_OK '+json.dumps(records))
 

@@ -40,7 +40,8 @@ flock -n 9 || fail 'Another installation or patch is running.'
 sha() { sha256sum -- "$1" | cut -d ' ' -f 1; }
 regular() { [[ -f $1 && ! -L $1 && -O $1 ]]; }
 declare -A supported=()
-target_hash= target_size= base_hash= delta_hash= tool_hash= diagnostics=
+target_hash= target_size= base_hash= delta_hash= tool_hash= diagnostics= patch_id=
+reference_backups=()
 while IFS=$'\t' read -r kind first second; do
     case "$kind" in
         target) target_size=$first; target_hash=$second ;;
@@ -49,6 +50,8 @@ while IFS=$'\t' read -r kind first second; do
         tool) tool_hash=$first ;;
         supported) supported[$first]=1 ;;
         diagnostics) diagnostics=$first ;;
+        patch-id) patch_id=$first ;;
+        reference-backup) reference_backups+=("$first") ;;
         SARECOMP-RUNTIME-PATCH-1|'') ;;
         *) fail 'Unsupported patch metadata.' ;;
     esac
@@ -59,6 +62,13 @@ if [[ -n $diagnostics ]]; then
     backup_suffix=pre-diagnostics-v1
     title="Sonic Adventure Recompiled - Diagnostics ${diagnostics^^}"
 fi
+if [[ -n $patch_id ]]; then
+    [[ $patch_id =~ ^[a-z0-9][a-z0-9-]{0,47}$ && -z $diagnostics ]] || fail 'Invalid performance patch identity.'
+    backup_suffix="pre-$patch_id"
+fi
+for name in "${reference_backups[@]}"; do
+    [[ $name =~ ^game\.pre-[a-z0-9-]+$ ]] || fail 'Invalid patch reference name.'
+done
 [[ $target_hash =~ ^[0-9a-f]{64}$ && $target_size =~ ^[0-9]+$ && $base_hash =~ ^[0-9a-f]{64}$ ]] || fail 'Invalid patch identity.'
 [[ $(sha "$bundle/game.delta.zst") == "$delta_hash" && $(sha "$bundle/zstd") == "$tool_hash" ]] || fail 'The downloaded patch is damaged.'
 dirs=() hashes=() actions=() committed=()
@@ -119,6 +129,17 @@ for dir in "$app_root"/1.0-candidate-*; do
         [[ $current == "$record" && -n ${supported[$current]:-} ]] || fail 'An installed program was modified or damaged; it has not been overwritten.'
         action=update
         [[ $current != "$base_hash" ]] || reference="$dir/game"
+        # A Diagnostics update preserved the prior native-math executable.
+        # Authenticate that separate reference; rollback still backs up current.
+        if [[ -z $reference ]]; then
+            for name in "${reference_backups[@]}"; do
+                candidate="$dir/$name"
+                if regular "$candidate" && [[ $(sha "$candidate") == "$base_hash" ]]; then
+                    reference=$candidate
+                    break
+                fi
+            done
+        fi
     fi
     if [[ -n $diagnostics && ( -e $dir/.sarecomp-diagnostics || -L $dir/.sarecomp-diagnostics ) ]]; then
         regular "$dir/.sarecomp-diagnostics" || fail 'The internal diagnostics policy is not a regular user-owned file.'
@@ -189,7 +210,12 @@ for index in "${!dirs[@]}"; do
 done
 success=1
 if [[ -n $popup_pid ]]; then kill "$popup_pid" 2>/dev/null || true; popup_pid=; fi
-if [[ -n $diagnostics ]]; then
+if [[ -n $patch_id ]]; then
+    notice "CPU performance update installed successfully (${#dirs[@]} launch paths).
+
+Start the game using your existing Steam or desktop shortcut.
+Saves, Chao data, settings and diagnostics preference have been preserved."
+elif [[ -n $diagnostics ]]; then
     notice "Internal diagnostics ${diagnostics^^} (${#dirs[@]} launch paths).
 
 Start the game using your existing Steam or desktop shortcut.

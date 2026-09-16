@@ -51,14 +51,14 @@ p.add_argument('--scenario', default='emerald-coast',
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
 p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')
-p.add_argument('--transfer-plans', choices=('original','cached','verify'), default='original')
+p.add_argument('--transfer-plans', choices=('original','cached','verify','installed'), default='original')
 p.add_argument('--scalar-writes', choices=('original','fused'), default='original',
                help='Private native RAM store experiment; defaults to the retained path')
 p.add_argument('--stack-frames', choices=('original','fused'), default='original',
                help='Private complete stack sequence experiment')
 p.add_argument('--fpu-register-cache', choices=('original','retained'), default='original',
                help='Private nontrapping FPU integer-register retention')
-p.add_argument('--ram-regions', choices=('original','fused'), default='original',
+p.add_argument('--ram-regions', choices=('original','fused','installed'), default='original',
                help='Private mixed RAM/ALU prefix execution')
 p.add_argument('--telemetry', choices=('on','off'), default='off',
                help='Per-provider timers; off keeps release-like execution cost')
@@ -122,6 +122,8 @@ env.update({
 })
 log_path = run/'game.log'
 if a.diagnostics=='installed':env.pop('SARECOMP_INTERNAL_DIAGNOSTICS',None)
+if a.transfer_plans=='installed':env.pop('SARECOMP_PREPARED_TRANSFERS',None)
+if a.ram_regions=='installed':env.pop('SARECOMP_RAM_REGIONS',None)
 perf = None
 perf_log = None
 if a.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(a.begin_frame), SARECOMP_PROBE_END_FRAME=str(a.end_frame))

@@ -1,9 +1,9 @@
 """Bind a real partial-register AOT body to the private-ABI component test."""
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
-import re
 
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--source',type=Path,required=True)
@@ -27,14 +27,13 @@ end=owner.index('    }();',begin)
 body=owner[begin:end].replace('runtime_dispatch_detail::','procedure_fixture_detail::')
 # This witness deliberately mixes cached R3/R4 with raw R0/R5 and PR.
 # Do not pretend a class substitution alone handles that generated contract.
-replacements={registers:'auto& katana_registers = bank;',
-              'cpu.r[5]':'bank[5]','cpu.r[0]':'bank[0]','cpu.pr':'bank.pr()'}
-private=body
-for old,new in replacements.items():
-    if private.count(old)!=1:raise ValueError('Witness register shape changed: '+old)
-    private=private.replace(old,new)
-if re.search(r'cpu\.(?:r\b|pr\b|gbr\b|mach\b|macl\b|fpul\b|t\b)',private):
-    raise ValueError('An unredirected cached register remains')
+spec=importlib.util.spec_from_file_location('procedure_preparation',Path(__file__).with_name('prepare-procedure-registers.py'))
+preparation=importlib.util.module_from_spec(spec);spec.loader.exec_module(preparation)
+changed,report=preparation.transform_owner(owner,'8C055C8E')
+private_owner=changed[changed.index('BlockExit fn_8C055C8E_private('):]
+begin=private_owner.index('sonic::procedure_registers::Frame<> katana_registers(bank);')
+end=private_owner.index('    }();',begin)
+private=private_owner[begin:end].replace('runtime_dispatch_detail::','procedure_fixture_detail::').replace('Frame<>','Frame<Count>')
 source='''// Entire original inner body, including branches, delay slot and accounting.
 namespace procedure_fixture_detail {
 inline BlockAddress active_exit_source{};
@@ -54,4 +53,5 @@ encoded=source.encode()
 if not out.exists() or out.read_bytes()!=encoded:out.write_bytes(encoded)
 print(json.dumps({'owner':'8C055C8E','source_sha256':digest(data),
                   'body_sha256':digest(body.encode()),'output_sha256':digest(encoded),
-                  'original_register_mask':'0x18','raw_register_rewrites':3,'game_integration':False}))
+                  'original_register_mask':'0x18','raw_register_rewrites':report['raw_accesses'],
+                  'game_preparer_used':True,'game_integration':False}))

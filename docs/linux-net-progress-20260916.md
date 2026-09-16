@@ -109,3 +109,18 @@ Evidence: `runs/net60-gamma-comparison-20260916.json` and its two full summaries
 The subsequent code-address-page experiment was rejected and the local and
 VM experimental executables were restored byte-for-byte to B04B; see
 `linux-code-address-pages-20260916.md`.
+
+## Private-register pilot and explicit patch request
+
+The subsequent six-procedure shared-register pilot did not improve its fresh
+Gamma control: 220.103 versus 208.813 execution CPU ms/update, with differing
+update counts. It is OFF. The same B04B executable had earlier measured
+257.737 ms/update, so comparing against that older run would falsely attribute
+a large environmental difference to the new code. No new positive overall
+FPS percentage follows from this experiment.
+
+The user then explicitly requested a new Deck patch for the previous day's
+installation. That delivery uses the qualified B04 RAM/transfer/comparison
+paths with normal-start defaults, without the rejected register pilot. It does
+not mean the original large-gain or 20–25 ms target has been achieved. Hardware
+feedback remains necessary; do not label VM image throughput as Deck FPS.

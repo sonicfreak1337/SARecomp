@@ -37,6 +37,12 @@ opened by the patch. Executable and manifest updates are verified and reversible
 The shared policy is also compiled into the Windows performance candidate.
 The accepted `out/experimental` build and r354 snapshot are unchanged.
 
+The [2026-09-16 CPU update](cpu-update-20260916.md) preserves this policy but
+replaces the Linux executable with a newer identity. The original standalone
+ON/OFF patch packages remain bound to the D2 executable below; they must not
+be used to downgrade the CPU update. Its internal policy file and developer
+override continue to work normally.
+
 ## Verification and performance
 
 The Linux VM is a TCG software-graphics environment, not a Deck FPS estimate.

@@ -96,6 +96,14 @@ include("${SONIC_ROOT}/cmake/LinuxTransferPlans.cmake")
 include("${SONIC_ROOT}/cmake/LinuxScalarWrites.cmake")
 include("${SONIC_ROOT}/cmake/LinuxFpuRegisterCache.cmake")
 include("${SONIC_ROOT}/cmake/LinuxCodeAddressPages.cmake")
+include("${SONIC_ROOT}/cmake/LinuxProcedureRegisters.cmake")
+option(SARECOMP_LINUX_PERFORMANCE_DEFAULTS "Enable the measured RAM/transfer paths at normal startup" OFF)
+if(SARECOMP_LINUX_PERFORMANCE_DEFAULTS)
+    if(NOT SARECOMP_LINUX_RAM_REGIONS OR NOT SARECOMP_LINUX_TRANSFER_PLANS)
+        message(FATAL_ERROR "Performance defaults require compiled RAM regions and transfer plans")
+    endif()
+    target_compile_definitions(game PRIVATE SARECOMP_LINUX_PERFORMANCE_DEFAULTS=1)
+endif()
 
 # Private procedure ABI qualification only. No prototype source enters game.
 set(procedure_witness_source "${SONIC_WORKING}/generated/code/unit-v8C054D6C-8C055E6E-98a3248797026115.cpp")
@@ -103,7 +111,8 @@ set(procedure_witness "${CMAKE_BINARY_DIR}/generated/procedure-registers/procedu
 add_custom_command(OUTPUT "${procedure_witness}"
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-procedure-register-test.py"
         --source "${procedure_witness_source}" --output "${procedure_witness}"
-    DEPENDS "${SONIC_ROOT}/tools/prepare-procedure-register-test.py" "${procedure_witness_source}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-procedure-register-test.py"
+        "${SONIC_ROOT}/tools/prepare-procedure-registers.py" "${procedure_witness_source}"
         "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
 add_executable(sonic-linux-procedure-register-tests EXCLUDE_FROM_ALL
     "${SONIC_ROOT}/tools/test_procedure_registers.cpp" "${procedure_witness}")

@@ -1137,6 +1137,16 @@ int run_game(int argc, char** argv) {
 }
 
 int main(int argc,char** argv){
+#if defined(SARECOMP_LINUX_PERFORMANCE_DEFAULTS) && !defined(_WIN32)
+    // Set once before any worker or cached environment lookup. Explicit
+    // developer overrides still select the original path for comparisons.
+    ::setenv("SARECOMP_RAM_REGIONS", "1", 0);
+    ::setenv("SARECOMP_PREPARED_TRANSFERS", "1", 0);
+    std::cerr << "SONIC_CPU_PATH_DEFAULTS version=20260916 ram_regions="
+              << (std::getenv("SARECOMP_RAM_REGIONS") ? std::getenv("SARECOMP_RAM_REGIONS") : "unset")
+              << " prepared_transfers="
+              << (std::getenv("SARECOMP_PREPARED_TRANSFERS") ? std::getenv("SARECOMP_PREPARED_TRANSFERS") : "unset") << '\n';
+#endif
     try { sonic::diagnostics::initialize_internal_policy(sonic::paths::executable()); } catch (...) {}
     std::cerr << "SONIC_INTERNAL_DIAGNOSTICS version=1 enabled="
               << sonic::diagnostics::runtime_checks_enabled() << '\n';

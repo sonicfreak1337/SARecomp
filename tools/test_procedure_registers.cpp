@@ -113,21 +113,60 @@ void external(CpuState& c,unsigned mode,bool private_abi,Observations* log) {
     r[2]^=r[0];r[15]+=4u;r.macl()+=3u;
 }
 template<bool Count>
-[[gnu::noinline]] void prepared(Bank<Count>& r,unsigned depth,unsigned mode,Observations* log) {
-    auto& cpu=r.cpu();
+[[gnu::noinline]] void prepared(Bank<Count>& bank,unsigned depth,unsigned mode,Observations* log) {
+    auto& cpu=bank.cpu();
+    sonic::procedure_registers::Frame<Count> r(bank);
     const auto generation=cpu.exception_generation;
     arithmetic(r,cpu,depth);
     if(depth) {
-        prepared(r,depth-1,mode,log);
+        r.suspend_for_private_call();
+        prepared(bank,depth-1,mode,log);
         if(cpu.exception_generation!=generation)return;
+        r.reload_acquire();
     } else if(mode==9) {
         throw std::runtime_error("private body failure");
     } else if(mode) {
-        typename Bank<Count>::PublicBoundary boundary(r);
+        typename Bank<Count>::PublicBoundary boundary(bank);
         external(cpu,mode,true,log);
         if(!boundary.resume_if_no_new_exception())return;
     }
     r[2]^=r[0];r[15]+=4u;r.macl()+=3u;
+}
+void raw_windows() {
+    for(unsigned seed=0;seed<1024;++seed) {
+        CpuState a{.memory=Memory{0u}},b{.memory=Memory{0u}};
+        initialize(a,seed);initialize(b,seed);
+        {
+            NativeAotRegisterFile<0x00FFu,0x23u> r(a);
+            r[3]+=17;r.t()=false;
+            fpu_compare_greater(a,14,4);r.t()=a.t;
+            r.flush_release();
+            a.fpul=a.r[3];fpu_float_from_fpul(a,3);
+            a.r[5]=a.fpul;
+            r.reload_acquire();r[2]^=r[5];
+            r.flush_release();
+            raise_illegal_instruction(a,0x8C057C02u);
+            a.pr=0xAC123456u;
+        }
+        {
+            Bank<true> bank(b);sonic::procedure_registers::Frame<true> r(bank);
+            r[3]+=17;r.t()=false;
+            fpu_compare_greater(b,14,4);r.t()=b.t;
+            r.flush_release();
+            bank.raw_fpul()=bank.raw_r(3);fpu_float_from_fpul(b,3);
+            bank.raw_r(5)=bank.raw_fpul();
+            r.reload_acquire();r[2]^=r[5];
+            r.suspend_for_private_call();
+            require(!r.owns_registers() && bank.owned(),"private suspension published");
+            // Failed admission/depth still reaches a real public boundary.
+            r.flush_release();
+            raise_illegal_instruction(b,0x8C057C02u);
+            bank.raw_pr()=0xAC123456u;
+            require(!bank.owned(),"exception rollback reacquired registers");
+        }
+        require(snapshot(a)==snapshot(b),"released FPU/exception window differs");
+        ++cases;
+    }
 }
 void differential() {
     for(unsigned seed=1;seed<=64;++seed)for(unsigned depth=0;depth<8;++depth)
@@ -222,7 +261,7 @@ void microbenchmark() {
 }
 int main() {
     try {
-        differential();transfer_proof();actual_body();microbenchmark();
+        differential();transfer_proof();actual_body();raw_windows();microbenchmark();
         std::printf("SONIC_PROCEDURE_REGISTERS_PASS cases=%u game_integration=0\n",cases);
         return 0;
     } catch(const std::exception& e) {
