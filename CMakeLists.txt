@@ -546,6 +546,7 @@ target_link_libraries(sonic_motion_sampling_tests PRIVATE bcrypt
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib" KatanaRecomp::native_port_runtime)
 
+include("${SONIC_ROOT}/cmake/SonicAnimationHierarchy.cmake")
 add_executable(sonic_corner_indices_tests EXCLUDE_FROM_ALL tools/test_corner_indices.cpp)
 target_sources(katana_native_title_adapter PRIVATE src/sonic_mesh_plan.cpp)
 add_executable(sonic_mesh_plan_tests EXCLUDE_FROM_ALL tools/test_mesh_plan.cpp src/sonic_mesh_plan.cpp)
@@ -639,3 +640,4 @@ target_link_libraries(sonic_legacy_video_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_core.lib"
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
+include("${SONIC_ROOT}/cmake/SonicAnimationBridge.cmake")

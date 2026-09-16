@@ -94,4 +94,14 @@ This VM uses TCG CPU emulation and software graphics. Its throughput is not
 a Steam Deck FPS estimate. Earlier CPU-cost pairs have workload differences;
 they do not prove a large global frame-rate improvement. The update is the
 explicitly requested current candidate, not a claim of reaching 60 FPS or
-20–25 ms on the Deck. Hardware feedback is still needed.
+20–25 ms on the Deck.
+
+User feedback on the installed update: the Station Square screenshot shows
+Original timing, 22 Gamescope FPS / 46.1 ms, display 50 Hz, one CPU thread at
+92% and GPU load 6%. The user additionally reports about 55 **in-game SIM FPS**
+with Recompiled timing. These are different cadence modes and counters, not
+a matched before/after benchmark or a measured percentage gain. Original PAL
+gameplay schedules several logic passes per new image and normally targets
+about 25 images/s; Recompiled uses the admitted 60-Hz / 1/1 gameplay schedule.
+Stable 60 across demanding stages, especially Gamma Emerald Coast and Windy
+Valley, remains unconfirmed. Do not treat 22-to-55 as a 150% patch gain.

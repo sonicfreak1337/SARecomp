@@ -64,6 +64,8 @@
 #include "sonic_triangle_contacts.hpp"
 #include "sonic_collision_candidates.hpp"
 #include "sonic_motion_sampling.hpp"
+#include "sonic_animation_hierarchy.hpp"
+#include "sonic_pose_blend.hpp"
 #include "sonic_mesh_plan.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
@@ -2355,6 +2357,17 @@ thread_local SonicNativeTitleState sonic_native_title_state;
     // Original selects the title clock, not the slow translated math owners.
     // Preserve explicit leaf selection in the older private 60-Hz fixture.
     return !sonic_sixty_frame_fixture_enabled();
+}
+
+// These leaf families authenticate their own code, CPU/FPU mode and complete
+// memory effects. Their semantics do not depend on scene or video cadence.
+// Keep the wider callback-bearing collision owners on the gameplay gate.
+[[nodiscard]] bool sonic_native_leaf_math_active() noexcept {
+    static const bool retained = sonic_native_diagnostic_enabled("SARECOMP_GAMEPLAY_MATH_RETAINED");
+    static const bool gameplay_only = sonic_native_diagnostic_enabled("SARECOMP_NATIVE_MATH_GAMEPLAY_ONLY");
+    if (retained) return false;
+    return (gameplay_only || sonic_sixty_frame_fixture_enabled())
+        ? sonic_native_gameplay_math_active() : true;
 }
 
 // These tests publish synthetic gamepad snapshots inside the hidden process;
@@ -17984,6 +17997,10 @@ void emit_sonic_native_gameplay_probe_sample(
     const auto render_completions = sonic_native_title_state.render_completions.counters();
     SonicGuestReader reader(*context.cpu);
     std::uint32_t release=0,delta=0,tv_mode=0;
+    std::uint32_t math_main=0;
+    std::uint16_t math_scene=0;
+    const bool math_scope_readable=reader.u32(sonic_private_main_state,math_main) &&
+        reader.u16(0x8C7492F4u,math_scene);
     const bool cadence_readable=reader.u32(sonic_frame_producer_release,release) && reader.u32(0x8C754E04u,delta);
     const bool tv_mode_readable=reader.u32(0x8C754B44u,tv_mode);
     std::uint32_t player=0,game_ticks=0;
@@ -18022,6 +18039,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " release_slots=" << release << " logical_delta=" << delta
               << " sixty_frame_fixture=" << int(probe.sixty_frame_configured)
               << " native_gameplay_math=" << int(sonic_native_gameplay_math_active())
+              << " native_leaf_math=" << int(sonic_native_leaf_math_active())
+              << " math_scope_readable=" << int(math_scope_readable)
+              << " main_state=" << math_main << " scene=" << math_scene
               << " palette_native_calls=" << probe.palette_native_calls
               << " palette_original_calls=" << probe.palette_original_calls
               << " vertex_normals_native_calls=" << probe.vertex_normals_native_calls
@@ -18044,6 +18064,13 @@ void emit_sonic_native_gameplay_probe_sample(
               << " collision_candidates_original_calls=" << probe.collision_candidates_original_calls
               << " motion_sampling_native_calls=" << probe.motion_sampling_native_calls
               << " motion_sampling_original_calls=" << probe.motion_sampling_original_calls
+              << " animation_hierarchy_native_calls=" << sonic::animation_hierarchy::statistics().native_calls
+              << " animation_hierarchy_original_calls=" << sonic::animation_hierarchy::statistics().original_calls
+              << " animation_hierarchy_nodes=" << sonic::animation_hierarchy::statistics().nodes
+              << " animation_direct_write_calls=" << sonic::animation_hierarchy::statistics().direct_write_calls
+              << " pose_blend_native_calls=" << sonic::pose_blend::statistics().native_calls
+              << " pose_blend_original_calls=" << sonic::pose_blend::statistics().original_calls
+              << " pose_direct_write_calls=" << sonic::pose_blend::statistics().direct_write_calls
               << " matrix_vector_point_native_calls=" << probe.matrix_vector_native_calls[0]
               << " matrix_vector_point_original_calls=" << probe.matrix_vector_original_calls[0]
               << " matrix_vector_direction_native_calls=" << probe.matrix_vector_native_calls[1]
@@ -34316,7 +34343,7 @@ extern "C" katana::runtime::NativePortHookResult
 sonic_native_palette_lighting(
     katana::runtime::NativePortContext& context) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active())
+    if (!sonic_native_leaf_math_active())
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_PALETTE_LIGHTING");
@@ -34344,7 +34371,7 @@ extern "C" katana::runtime::NativePortHookResult
 sonic_native_vertex_normals(
     katana::runtime::NativePortContext& context) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active())
+    if (!sonic_native_leaf_math_active())
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_VERTEX_NORMALS");
@@ -34541,7 +34568,7 @@ sonic_native_collision_candidates(katana::runtime::NativePortContext& context) n
 static katana::runtime::NativePortHookResult
 sonic_native_motion_sampling_impl(katana::runtime::NativePortContext& context) noexcept {
     using namespace katana::runtime;
-    if(!sonic_native_gameplay_math_active() || !context.cpu)
+    if(!sonic_native_leaf_math_active() || !context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_MOTION_SAMPLING");
@@ -34573,7 +34600,7 @@ static katana::runtime::NativePortHookResult
 sonic_native_atan_impl(katana::runtime::NativePortContext& context,std::size_t index) noexcept {
     using namespace katana::runtime;
     auto& probe=sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active() || !context.cpu)
+    if (!sonic_native_leaf_math_active() || !context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_ATAN_MATH");
@@ -34616,7 +34643,7 @@ sonic_native_atan_scale(katana::runtime::NativePortContext& context) noexcept {
 static katana::runtime::NativePortHookResult
 sonic_native_matrix_inverse_impl(katana::runtime::NativePortContext& context, std::size_t index) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active() || !context.cpu)
+    if (!sonic_native_leaf_math_active() || !context.cpu)
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_MATRIX_INVERSE");
@@ -34649,7 +34676,7 @@ sonic_native_matrix_determinant(katana::runtime::NativePortContext& context) noe
 
 static katana::runtime::NativePortHookResult
 sonic_native_matrix_vectors_impl(katana::runtime::NativePortContext& context,std::size_t index) noexcept {
-    if(!sonic_native_gameplay_math_active() || !context.cpu)
+    if(!sonic_native_leaf_math_active() || !context.cpu)
         return {katana::runtime::NativePortHookAction::ContinueOriginal,0u,0u};
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_MATRIX_VECTORS");
@@ -34686,7 +34713,7 @@ sonic_native_matrix_vector_translation(katana::runtime::NativePortContext& conte
 static katana::runtime::NativePortHookResult
 sonic_native_collision_math_impl(katana::runtime::NativePortContext& context, std::size_t index) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active() || !context.cpu)
+    if (!sonic_native_leaf_math_active() || !context.cpu)
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_COLLISION_MATH");
@@ -34725,7 +34752,7 @@ static katana::runtime::NativePortHookResult
 sonic_native_matrix_stack_impl(
     katana::runtime::NativePortContext& context) noexcept {
     auto& probe = sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active() || !context.cpu)
+    if (!sonic_native_leaf_math_active() || !context.cpu)
         return {katana::runtime::NativePortHookAction::ContinueOriginal, 0u, 0u};
     static const bool enabled = [] {
         const auto* flag = std::getenv("SARECOMP_NATIVE_MATRIX_STACK");
@@ -37007,7 +37034,7 @@ sonic_native_ninja_model_draw_impl(
             static const bool indexed_corners_verify =
                 sonic_native_diagnostic_enabled("SARECOMP_INDEXED_CORNERS_VERIFY");
             const bool indexed_corner_eligible =
-                indexed_corners_requested && sonic_native_gameplay_math_active() &&
+                indexed_corners_requested && sonic_native_leaf_math_active() &&
                 model_transform.has_value() &&
                 !environment_mapping && !flat_shading && !observe_normal_draw &&
                 !native_mesh_cache_diagnostics_active() && corner_direct_reads &&
@@ -37024,7 +37051,7 @@ sonic_native_ninja_model_draw_impl(
             static const bool source_plan_verify=sonic_native_diagnostic_enabled("SARECOMP_MESH_SOURCE_PLAN_VERIFY");
             const sonic::geometry::MeshPlan* source_plan=nullptr;
             auto& source_plan_cache=sonic_native_title_state.model_source_plans;
-            if(source_plan_requested && sonic_native_gameplay_math_active() && model_transform &&
+            if(source_plan_requested && sonic_native_leaf_math_active() && model_transform &&
                !environment_mapping && !flat_shading && !observe_normal_draw && corner_direct_reads &&
                !native_mesh_cache_diagnostics_active() && material_owner==SonicNativeBasicMaterialOwner::TitleBasic &&
                !sdk_exceptional_header_color && !sdk_constant_colors && !sdk_float_colors && !sdk_exceptional_vertex_color){

@@ -105,6 +105,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   See `docs/linux-pgo-experiment-20260916.md`; do not repeat or expand this
   instrumentation without new evidence explaining the guest-call stall.
 - Use small relevant visual/boot checks, no full level matrix by default.
+- Whole semantic native owners `057B00` (animation hierarchy) and `0417C8`
+  (pose blending/SRT) are implemented for Windows and Linux, internally OFF.
+  See `docs/native-animation-hierarchy-20260916.md`: 184 positive and 18
+  rejection cases; short paired Linux results save 7.26% Gamma / 14.89%
+  Chaos-4-intro CPU per update, but image throughput gains are only 2.79% /
+  5.74%, with documented start/update differences. No Deck gain or new release
+  is qualified. The next model-pipeline boundary is documented separately;
+  do not discard guest-visible projection/color RAM or revive synchronous
+  GPU mesh creation as a supposed new optimization.
 - Generation-bound observer permission caching remains OFF. The Linux component
   cases and Gamma/Windy stage runs passed, but a 2–4% execution CPU reduction
   accompanied worse whole-frame throughput. Do not ship or expand it based on

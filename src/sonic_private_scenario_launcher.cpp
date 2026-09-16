@@ -46,6 +46,27 @@ static_assert(kGeneratedActionStageScenarios.size() == 32u);
 static_assert(kGeneratedActionStageCharacters.size() == 6u);
 static_assert(kGeneratedDiagnosticScenarios.size() == 1u);
 constexpr auto& kActionStageCharacters = kGeneratedActionStageCharacters;
+// Reviewed against PAL boot b3563abf...: table row 37 is 17:0 for Sonic.
+// Resident case 8C09D21E loads B_CHAOS4 via 8C09D984, then its ordinary
+// 1700/0000 resources. Use the existing state-12 provider, never the PRS entry.
+constexpr std::array<ScenarioDescriptor, 1u> kReviewedBossDiagnosticScenarios{{
+    {.id = "sonic-chaos-4",
+     .label = "Chaos 4 (diagnostic)",
+     .guest_path = "SONICAD/B_CHAOS4.PRS",
+     .encoded_identity = "sha256:9dd44867ea3e1881bdf11a6ade50869f3e4749f5440f7ce8fd10cfbb8f8719c3",
+     .decoded_identity = "sha256:4e5da90b871011e4406654c634bf6a706723779df753f12c94a48a2d671efbf0",
+     .encoded_size = 215545u, .decoded_size = 383276u,
+     .runtime_base = 0x0C900000u, .entry_offset = 0u,
+     .loader_case = 17u, .stage_major = 17u, .stage_minor = 0u,
+     .stage_table_index = 37u, .context_selector = 0u, .context_value = 0u,
+     .prerequisites = ScenarioPrerequisiteAdventureContext,
+     .provider_kind = ScenarioProviderKind::StageLoader,
+     .static_identity_proven = true, .entry_shape_proven = true,
+     .stage_minor_proven = true, .provider_abi_proven = true,
+     .selector_stage_major = 17u, .selector_stage_minor = 0u},
+}};
+constexpr auto kDiagnosticScenarioCount = kGeneratedDiagnosticScenarios.size() +
+                                           kReviewedBossDiagnosticScenarios.size();
 constexpr std::array<ScenarioDescriptor, 1u> kEventPreviewScenarios{{
     {.id = "sonic-event-chaos-preview",
      .label = "Sonic: EV0002 (experimental)",
@@ -103,12 +124,13 @@ constexpr std::array<ScenarioDescriptor, 2u> kStaffrollScenarios{{
 }};
 constexpr auto kScenarioDescriptors = [] {
     std::array<ScenarioDescriptor, kGeneratedActionStageScenarios.size() +
-                                   kGeneratedDiagnosticScenarios.size() +
+                                   kDiagnosticScenarioCount +
                                    kStaffrollScenarios.size() +
                                    kEventPreviewScenarios.size()> rows{};
     std::size_t index = 0u;
     for (const auto& row : kGeneratedActionStageScenarios) rows[index++] = row;
     for (const auto& row : kGeneratedDiagnosticScenarios) rows[index++] = row;
+    for (const auto& row : kReviewedBossDiagnosticScenarios) rows[index++] = row;
     for (const auto& row : kStaffrollScenarios) rows[index++] = row;
     for (const auto& row : kEventPreviewScenarios) rows[index++] = row;
     return rows;
@@ -118,13 +140,13 @@ constexpr auto kScenarioGroups = [] {
     std::copy(kActionStageCharacters.begin(), kActionStageCharacters.end(), groups.begin());
     groups[kActionStageCharacters.size()] = {
         "diagnostics-sonic", "Sonic / Diagnostics", kGeneratedActionStageScenarios.size(),
-        kGeneratedDiagnosticScenarios.size()};
+        kDiagnosticScenarioCount};
     groups[kActionStageCharacters.size() + 1u] = {
         "credits", "Tutorial / Credits",
-        kGeneratedActionStageScenarios.size() + kGeneratedDiagnosticScenarios.size(),
+        kGeneratedActionStageScenarios.size() + kDiagnosticScenarioCount,
         kStaffrollScenarios.size()};
     groups.back() = {"events", "Events", kGeneratedActionStageScenarios.size() +
-                     kGeneratedDiagnosticScenarios.size() + kStaffrollScenarios.size(),
+                     kDiagnosticScenarioCount + kStaffrollScenarios.size(),
                      kEventPreviewScenarios.size()};
     return groups;
 }();

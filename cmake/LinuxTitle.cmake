@@ -32,6 +32,7 @@ target_include_directories(sonic_linux_title PRIVATE "${SONIC_WORKING}/generated
     "${CMAKE_BINARY_DIR}/generated/motion-sampling" "${CMAKE_BINARY_DIR}/generated/fpu-body" "${SONIC_ROOT}/.local/ui-deps")
 target_compile_options(sonic_linux_title PRIVATE -O2 -g0 -frounding-math -ffp-contract=off -ffunction-sections -fdata-sections)
 target_link_libraries(sonic_linux_title PUBLIC sonic_linux_graphics sonic_linux_movie sonic_linux_aot_runtime)
+include("${SONIC_ROOT}/cmake/SonicAnimationHierarchy.cmake")
 
 add_executable(sonic-linux-mesh-plan-tests EXCLUDE_FROM_ALL
     "${SONIC_ROOT}/tools/test_mesh_plan.cpp" "${SONIC_ROOT}/src/sonic_mesh_plan.cpp")
@@ -121,3 +122,4 @@ target_include_directories(sonic-linux-procedure-register-tests PRIVATE "${SONIC
 target_compile_options(sonic-linux-procedure-register-tests PRIVATE -O2 -g0 -ffunction-sections -fdata-sections)
 target_link_options(sonic-linux-procedure-register-tests PRIVATE -Wl,--gc-sections)
 target_link_libraries(sonic-linux-procedure-register-tests PRIVATE sonic_linux_services)
+include("${SONIC_ROOT}/cmake/SonicAnimationBridge.cmake")

@@ -46,10 +46,18 @@ p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast',
-    choices=('emerald-coast','gamma-emerald-coast','sonic-windy-valley','amy-hot-shelter'),
+    choices=('emerald-coast','gamma-emerald-coast','sonic-windy-valley','amy-hot-shelter','sonic-chaos-4'),
     help='Reviewed performance scenarios; IDs match the private stage table exactly')
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
+p.add_argument('--native-animation', choices=('off','on'), default='off',
+               help='Same-executable comparison of the complete native animation hierarchy')
+p.add_argument('--native-pose', choices=('off','on'), default='off',
+               help='Same-executable comparison of the complete native pose mixer')
+p.add_argument('--math-scope', choices=('gameplay','all'), default='all',
+               help='Compare the former scene gate against independently admitted native leaves')
+p.add_argument('--phase', choices=('gameplay','stage-entry'), default='gameplay',
+               help='Stage-entry includes the ordinary introductory camera before gameplay')
 p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')
 p.add_argument('--transfer-plans', choices=('original','cached','verify','installed'), default='original')
 p.add_argument('--scalar-writes', choices=('original','fused'), default='original',
@@ -73,6 +81,8 @@ p.add_argument('--verify-corners', action='store_true', help='Rebuild every reus
 p.add_argument('--profile', action='store_true', help='Read-only perf sampling; diagnostic, not a throughput comparison')
 p.add_argument('--callgraph', action='store_true', help='With --profile, sample caller chains at 99 Hz')
 a = p.parse_args()
+if not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+    p.error('A virtual display is required; run this hidden probe with xvfb-run -a')
 if (a.begin_frame or a.end_frame) and not 0 < a.begin_frame < a.end_frame <= 10000:
     p.error('Fixed window requires 0 < begin-frame < end-frame <= 10000')
 if a.callgraph and not a.profile:
@@ -95,6 +105,7 @@ display.write_text('setup_complete=1\n'+viewport+
                    'vsync=2\ngameplay_timing='+str(int(a.gameplay_timing=='recompiled'))+'\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
+    'SARECOMP_NATIVE_POSE_BLEND':'1' if a.native_pose=='on' else '0',
     'SARECOMP_INTERNAL_DIAGNOSTICS':'1' if a.diagnostics=='on' else '0',
     'SARECOMP_PREPARED_TRANSFERS':'0' if a.transfer_plans=='original' else '1',
     'SARECOMP_PREPARED_TRANSFERS_VERIFY':'1' if a.transfer_plans=='verify' else '0',
@@ -103,7 +114,7 @@ env.update({
     'SARECOMP_FPU_REGISTER_CACHE':'1' if a.fpu_register_cache=='retained' else '0',
     'SARECOMP_RAM_REGIONS':'1' if a.ram_regions=='fused' else '0',
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
-    'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':'1',
+    'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':str(int(a.phase=='gameplay')),
     'KATANA_PORT_IGNORE_FOCUS':'1', 'KATANA_USER_DATA_ROOT':str(run/'user-data'),
     'SARECOMP_DISPLAY_CONFIG':str(display), 'SARECOMP_BENCHMARK_ISOLATED_INPUT':'1',
     'SARECOMP_VULKAN_DESCRIPTOR_CACHE':'1' if a.descriptor_cache=='on' else '0',
@@ -111,6 +122,8 @@ env.update({
     'SARECOMP_MESH_SHARED_CORNERS':'1' if a.shared_corners=='on' else '0',
     'SARECOMP_INDEXED_CORNERS_VERIFY':'1' if a.verify_corners else '0',
     'SARECOMP_GAMEPLAY_MATH_RETAINED':'1' if a.gameplay_math=='retained' else '0',
+    'SARECOMP_NATIVE_MATH_GAMEPLAY_ONLY':str(int(a.math_scope=='gameplay')),
+    'SARECOMP_NATIVE_ANIMATION_HIERARCHY':str(int(a.native_animation=='on')),
     'KATANA_PORT_FINAL_PROGRESS':'1',
     'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1' if a.telemetry=='on' else '0',
     'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
@@ -226,6 +239,9 @@ if a.end_frame:
 result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
+          'math_scope':a.math_scope, 'phase':a.phase,
+          'native_animation':a.native_animation,
+          'native_pose':a.native_pose,
           'diagnostics':a.diagnostics,
           'transfer_plans':a.transfer_plans,
           'scalar_writes':a.scalar_writes,

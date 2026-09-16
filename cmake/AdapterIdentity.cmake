@@ -16,6 +16,8 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
     sonic_collision_candidates.hpp sonic_collision_candidates.cpp ../tools/prepare_collision_candidates.py
     sonic_motion_sampling.hpp sonic_motion_sampling.cpp ../tools/prepare_motion_sampling.py
+    sonic_animation_hierarchy.hpp sonic_animation_hierarchy.cpp ../tools/prepare-animation-hierarchy.py
+    sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
     sonic_mesh_plan.hpp sonic_mesh_plan.cpp
     sonic_atan_math.hpp sonic_atan_math.cpp
     sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp

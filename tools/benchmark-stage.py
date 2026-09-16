@@ -39,7 +39,7 @@ parser.add_argument('--motion-sampling', choices=('native','retained'), default=
 parser.add_argument('--mesh-plan', choices=('cached','retained','verify'), default='cached', help='Matched authored topology/UV source-plan cache')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
 parser.add_argument('--matrix-vectors', choices=('native','retained'), default='native', help='Matched native SDK matrix-vector family comparison')
-parser.add_argument('--indexed-corners', choices=('on','off'), default='off', help='Transient authored-corner reuse experiment')
+parser.add_argument('--indexed-corners', choices=('installed','on','off'), default='installed', help='Keep product corner reuse unless explicitly comparing it')
 parser.add_argument('--shared-corners', choices=('on','off'), default='on', help='Exact point/UV reuse across polygons in one mesh draw')
 parser.add_argument('--verify-indexed-corners', action='store_true', help='Compare every reused corner with the original game vertex builder')
 parser.add_argument('--original-math-families', action='store_true', help='Compare against retained atan/contact owners')
@@ -59,6 +59,8 @@ parser.add_argument('--vulkan-descriptor-cache', choices=('on','off'), default='
 parser.add_argument('--vulkan-state-cache', choices=('on','off'), default='on')
 parser.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 parser.add_argument('--gameplay-math', choices=('native','retained'), default='native')
+parser.add_argument('--native-animation', choices=('on','off'), default='off')
+parser.add_argument('--native-pose', choices=('on','off'), default='off')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
 # Render interpolation was withdrawn; benchmark the original frame stream.
 parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
@@ -104,7 +106,8 @@ env['SARECOMP_NATIVE_COLLISION_CANDIDATES']='1' if args.collision_candidates=='n
 env['SARECOMP_NATIVE_MOTION_SAMPLING']='1' if args.motion_sampling=='native' else '0'
 env['SARECOMP_MESH_SOURCE_PLAN']='0' if args.mesh_plan=='retained' else '1'
 env['SARECOMP_MESH_SOURCE_PLAN_VERIFY']='1' if args.mesh_plan=='verify' else '0'
-env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
+if args.indexed_corners!='installed':
+    env['SARECOMP_INDEXED_CORNERS']='1' if args.indexed_corners=='on' else '0'
 env['SARECOMP_MESH_SHARED_CORNERS']='1' if args.shared_corners=='on' else '0'
 env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '0'
 env.update({
@@ -140,6 +143,8 @@ if args.dispatch_stats: env['SARECOMP_DISPATCH_MEMO_STATS']='1'
 if args.winmm_order=='position-first': env['SARECOMP_WINMM_POSITION_FIRST']='1'
 if args.hardware_input=='isolated': env['SARECOMP_BENCHMARK_ISOLATED_INPUT']='1'
 env['SARECOMP_GAMEPLAY_MATH_RETAINED']='1' if args.gameplay_math=='retained' else '0'
+env['SARECOMP_NATIVE_ANIMATION_HIERARCHY']='1' if args.native_animation=='on' else '0'
+env['SARECOMP_NATIVE_POSE_BLEND']='1' if args.native_pose=='on' else '0'
 if args.wait_for_gameplay: env['SARECOMP_PROBE_WAIT_FOR_GAMEPLAY']='1'
 if args.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(args.begin_frame), SARECOMP_PROBE_END_FRAME=str(args.end_frame))
 exe = (root/args.exe).resolve(strict=True)

@@ -1,0 +1,48 @@
+# Only the two containing units are rebuilt. No AOT regeneration or SDK edit.
+option(SARECOMP_NATIVE_ANIMATION_BRIDGE "Compile the internal native animation comparison route" ON)
+if(SARECOMP_NATIVE_ANIMATION_BRIDGE)
+    foreach(animation_unit IN ITEMS
+        unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp
+        unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp)
+    set(animation_bridge "${CMAKE_BINARY_DIR}/generated/animation-bridge/${animation_unit}")
+    if(TARGET sonic_linux_guest)
+        if(SARECOMP_LINUX_PROCEDURE_REGISTERS)
+            message(FATAL_ERROR "Native animation replaces, rather than layers on, the rejected register ABI experiment")
+        endif()
+        get_target_property(animation_sources sonic_linux_guest SOURCES)
+        set(animation_matches)
+        foreach(source IN LISTS animation_sources)
+            get_filename_component(name "${source}" NAME)
+            if(name STREQUAL animation_unit)
+                list(APPEND animation_matches "${source}")
+            endif()
+        endforeach()
+        list(LENGTH animation_matches count)
+        if(NOT count EQUAL 1)
+            message(FATAL_ERROR "Animation unit must have one active owner")
+        endif()
+        list(GET animation_matches 0 animation_input)
+        list(REMOVE_ITEM animation_sources "${animation_input}")
+        set_property(TARGET sonic_linux_guest PROPERTY SOURCES ${animation_sources} "${animation_bridge}")
+        get_source_file_property(animation_includes "${animation_input}" INCLUDE_DIRECTORIES)
+        if(animation_includes)
+            set_source_files_properties("${animation_bridge}" PROPERTIES INCLUDE_DIRECTORIES "${animation_includes};${SONIC_ROOT}/src")
+        else()
+            set_source_files_properties("${animation_bridge}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
+        endif()
+    else()
+        if(NOT SARECOMP_COMPACT_AOT_EXPERIMENT STREQUAL "OFF" OR
+           (DEFINED SARECOMP_RAM_READ_EXPERIMENT AND NOT SARECOMP_RAM_READ_EXPERIMENT STREQUAL "OFF"))
+            message(FATAL_ERROR "Native animation requires the retained Windows unit")
+        endif()
+        set(animation_input "${SONIC_WORKING}/generated/code/${animation_unit}")
+        target_sources(sonic_dispatch PRIVATE "${animation_bridge}")
+        set_source_files_properties("${animation_bridge}" PROPERTIES COMPILE_OPTIONS "/fp:strict;/bigobj")
+    endif()
+    add_custom_command(OUTPUT "${animation_bridge}"
+        COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-animation-bridge.py"
+            --source-root "${SONIC_WORKING}/generated" --input "${animation_input}" --output "${animation_bridge}"
+        DEPENDS "${SONIC_ROOT}/tools/prepare-animation-bridge.py" "${animation_input}"
+            "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
+    endforeach()
+endif()
