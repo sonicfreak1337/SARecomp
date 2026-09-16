@@ -120,6 +120,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   gain required for a patch. Its CMake default is OFF; the isolated build-linux
   candidate is ON. Future benchmark tools default provider telemetry OFF;
   specify `--telemetry on` to reproduce the older instrumented measurements.
+- The direct comparison with the pre-22:00 build establishes no positive net
+  gain; see `docs/linux-net-progress-20260916.md`. Do not report the earlier
+  dispatcher-toggle percentage as overall progress. The old Windy control
+  also aborted during shutdown after the measured window; its cause is open.
+- Qualified scalar RAM writes remain OFF. The 792-case Linux component test
+  passes and Gamma completes, but +1.82% image throughput with a one-update
+  workload difference is insufficient. See `docs/linux-scalar-writes-20260916.md`.
+  Do not expand ALL scope or ship this experiment based on its 3.80% normalized
+  execution-CPU result alone.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

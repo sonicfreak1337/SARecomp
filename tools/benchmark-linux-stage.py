@@ -52,6 +52,8 @@ p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
 p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')
 p.add_argument('--transfer-plans', choices=('original','cached','verify'), default='original')
+p.add_argument('--scalar-writes', choices=('original','fused'), default='original',
+               help='Private native RAM store experiment; defaults to the retained path')
 p.add_argument('--telemetry', choices=('on','off'), default='off',
                help='Per-provider timers; off keeps release-like execution cost')
 p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
@@ -90,6 +92,7 @@ env.update({
     'SARECOMP_INTERNAL_DIAGNOSTICS':'1' if a.diagnostics=='on' else '0',
     'SARECOMP_PREPARED_TRANSFERS':'0' if a.transfer_plans=='original' else '1',
     'SARECOMP_PREPARED_TRANSFERS_VERIFY':'1' if a.transfer_plans=='verify' else '0',
+    'SARECOMP_SCALAR_WRITES':'1' if a.scalar_writes=='fused' else '0',
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
     'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':'1',
     'KATANA_PORT_IGNORE_FOCUS':'1', 'KATANA_USER_DATA_ROOT':str(run/'user-data'),
@@ -214,6 +217,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
           'diagnostics':a.diagnostics,
           'transfer_plans':a.transfer_plans,
+          'scalar_writes':a.scalar_writes,
           'telemetry':a.telemetry, 'transfer_verification':transfer_verification,
           'transfer_verification_valid':transfer_verification_valid,
           'descriptor_cache':a.descriptor_cache,
