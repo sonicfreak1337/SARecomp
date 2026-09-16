@@ -109,6 +109,10 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   cases and Gamma/Windy stage runs passed, but a 2–4% execution CPU reduction
   accompanied worse whole-frame throughput. Do not ship or expand it based on
   the micro-cost alone; see `docs/linux-write-observer-guard-20260916.md`.
+- Dispatch TLS constinit remains OFF. The 41-unit candidate reduced code size
+  by 2%, but Linux Gamma/Windy execution CPU per update improved only 0.3%/2.6%,
+  without a useful global throughput gain. See
+  `docs/linux-aot-code-shape-20260916.md`; do not expand it based on code size.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
