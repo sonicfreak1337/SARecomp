@@ -4,6 +4,11 @@ Read-only investigation, 2026-09-13. The Steam installation and its settings
 were not modified or launched. No SADX assets or code were imported into the
 port. This is static analysis, not a measured SADX performance comparison.
 
+The later [execution and rendering comparison](sadx-execution-reference-20260916.md)
+examines the actual object loops and catch-up rendering guards in this same
+installed executable. It supersedes treating the limiter alone as a sufficient
+performance reference; the timing findings below remain unchanged.
+
 ## Installed version
 
 - Steam app 71250, build 411939.
