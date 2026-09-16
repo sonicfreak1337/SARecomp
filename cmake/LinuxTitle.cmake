@@ -96,3 +96,19 @@ include("${SONIC_ROOT}/cmake/LinuxTransferPlans.cmake")
 include("${SONIC_ROOT}/cmake/LinuxScalarWrites.cmake")
 include("${SONIC_ROOT}/cmake/LinuxFpuRegisterCache.cmake")
 include("${SONIC_ROOT}/cmake/LinuxCodeAddressPages.cmake")
+
+# Private procedure ABI qualification only. No prototype source enters game.
+set(procedure_witness_source "${SONIC_WORKING}/generated/code/unit-v8C054D6C-8C055E6E-98a3248797026115.cpp")
+set(procedure_witness "${CMAKE_BINARY_DIR}/generated/procedure-registers/procedure_register_fixture.inc")
+add_custom_command(OUTPUT "${procedure_witness}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-procedure-register-test.py"
+        --source "${procedure_witness_source}" --output "${procedure_witness}"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-procedure-register-test.py" "${procedure_witness_source}"
+        "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
+add_executable(sonic-linux-procedure-register-tests EXCLUDE_FROM_ALL
+    "${SONIC_ROOT}/tools/test_procedure_registers.cpp" "${procedure_witness}")
+target_include_directories(sonic-linux-procedure-register-tests PRIVATE "${SONIC_ROOT}/src"
+    "${CMAKE_BINARY_DIR}/generated/procedure-registers")
+target_compile_options(sonic-linux-procedure-register-tests PRIVATE -O2 -g0 -ffunction-sections -fdata-sections)
+target_link_options(sonic-linux-procedure-register-tests PRIVATE -Wl,--gc-sections)
+target_link_libraries(sonic-linux-procedure-register-tests PRIVATE sonic_linux_services)

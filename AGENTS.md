@@ -154,6 +154,12 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   workload differences). Its synthetic lookup and 2.44% code-size gains are
   not grounds for ALL expansion. See `docs/linux-code-address-pages-20260916.md`.
   The active isolated executable returns byte-for-byte to B04B afterward.
+- A private shared-register procedure ABI now has a Linux component prototype;
+  see `docs/linux-procedure-registers-20260916.md`. Its 70,657 comparisons include
+  a retained partial-mask body with raw CPU-register accesses. No game body uses
+  the carrier yet. Do not treat its synthetic call benchmark as a game gain or
+  replace NativeAotRegisterFile blindly: complete access/boundary classification
+  and explicit private/public call integration are still required.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
