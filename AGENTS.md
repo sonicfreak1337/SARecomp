@@ -129,6 +129,10 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   workload difference is insufficient. See `docs/linux-scalar-writes-20260916.md`.
   Do not expand ALL scope or ship this experiment based on its 3.80% normalized
   execution-CPU result alone.
+- Complete stack-sequence fusion remains OFF; see
+  `docs/linux-stack-frames-experiment-20260916.md`. The first gameplay pair was
+  marginal and predates a scheduler admission correction. The corrected helper
+  passes 1,876 component cases, but has no qualified gameplay speedup.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

@@ -34,6 +34,7 @@ struct Suspension {
 struct Module {std::string name;std::uint64_t base,size;};
 struct StackFrame {std::uint64_t ip;std::string symbol;};
 struct Stack {double elapsed_ms;std::vector<StackFrame> frames;};
+enum class StackMode { None, External, Executable };
 struct Report {
     DWORD pid=0,tid=0,error=0;
     std::uint64_t samples=0,skipped=0,errors=0;
@@ -41,6 +42,7 @@ struct Report {
     std::vector<Module> modules;
     std::map<std::uint64_t,std::uint64_t> ips;
     std::vector<Stack> stacks;
+    StackMode stack_mode=StackMode::None;
 };
 std::string narrow(const wchar_t* text){
     const auto size=WideCharToMultiByte(CP_UTF8,0,text,-1,nullptr,0,nullptr,nullptr);
@@ -51,13 +53,14 @@ struct Symbols {
     HANDLE process;bool active=false;
     ~Symbols(){if(active)SymCleanup(process);}
 };
-Report collect(DWORD pid,DWORD tid,unsigned milliseconds,bool with_stacks=false){
+Report collect(DWORD pid,DWORD tid,unsigned milliseconds,StackMode stack_mode=StackMode::None){
+    const bool with_stacks=stack_mode!=StackMode::None;
     Handle thread{OpenThread(THREAD_SUSPEND_RESUME|THREAD_GET_CONTEXT|THREAD_QUERY_LIMITED_INFORMATION|SYNCHRONIZE,FALSE,tid)};
     require(thread.value&&GetProcessIdOfThread(thread.value)==pid,"thread does not belong to the requested process");
     require(tid!=GetCurrentThreadId(),"cannot sample the calling thread");
     Handle process{OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ|SYNCHRONIZE,FALSE,pid)};
     require(process.value!=nullptr,"cannot inspect target process");
-    Report result;result.pid=pid;result.tid=tid;
+    Report result;result.pid=pid;result.tid=tid;result.stack_mode=stack_mode;
     std::vector<HMODULE> modules(1024);DWORD bytes=0;
     require(EnumProcessModules(process.value,modules.data(),DWORD(modules.size()*sizeof(HMODULE)),&bytes)&&bytes<=modules.size()*sizeof(HMODULE),"module inventory failed");
     for(unsigned i=0;i<bytes/sizeof(HMODULE);++i){
@@ -65,6 +68,11 @@ Report collect(DWORD pid,DWORD tid,unsigned milliseconds,bool with_stacks=false)
         if(GetModuleInformation(process.value,modules[i],&info,sizeof(info))&&GetModuleBaseNameW(process.value,modules[i],name,512))
             result.modules.push_back({narrow(name),reinterpret_cast<std::uint64_t>(info.lpBaseOfDll),info.SizeOfImage});
     }
+    require(!result.modules.empty(),"main executable inventory missing");
+    const auto& executable=result.modules.front();
+    const bool active_stacks=stack_mode==StackMode::Executable;
+    const unsigned stack_limit=active_stacks?256u:32u;
+    const unsigned depth_limit=active_stacks?64u:16u;
     Symbols symbols{process.value};
     if(with_stacks){
         SymSetOptions(SYMOPT_DEFERRED_LOADS|SYMOPT_FAIL_CRITICAL_ERRORS|SYMOPT_NO_PROMPTS|SYMOPT_IGNORE_CVREC|
@@ -87,7 +95,7 @@ Report collect(DWORD pid,DWORD tid,unsigned milliseconds,bool with_stacks=false)
     std::uint32_t jitter=0x53415245;auto next_stack=start;
     while(Clock::now()<end&&WaitForSingleObject(thread.value,0)==WAIT_TIMEOUT){
         CONTEXT context{};context.ContextFlags=with_stacks?CONTEXT_FULL:CONTEXT_CONTROL;
-        std::array<std::uint64_t,16> stack{};unsigned depth=0;
+        std::array<std::uint64_t,64> stack{};unsigned depth=0;
         bool valid=false;DWORD previous=DWORD(-1),resumed=DWORD(-1),error=0;
         const auto before=Clock::now();
         {
@@ -96,13 +104,14 @@ Report collect(DWORD pid,DWORD tid,unsigned milliseconds,bool with_stacks=false)
                 if(previous==0){
                     valid=GetThreadContext(thread.value,&context)!=FALSE;if(!valid)error=GetLastError();
                     const bool in_game=std::any_of(result.modules.begin(),result.modules.end(),[&](const Module& m){return m.name=="game.exe"&&context.Rip>=m.base&&context.Rip<m.base+m.size;});
-                    if(valid&&with_stacks&&!in_game&&before>=next_stack&&result.stacks.size()<32){
+                    const bool in_executable=context.Rip>=executable.base&&context.Rip<executable.base+executable.size;
+                    if(valid&&with_stacks&&(active_stacks?in_executable:!in_game)&&before>=next_stack&&result.stacks.size()<stack_limit){
                         auto unwind=context;STACKFRAME64 frame{};
                         frame.AddrPC.Offset=context.Rip;frame.AddrPC.Mode=AddrModeFlat;
                         frame.AddrStack.Offset=context.Rsp;frame.AddrStack.Mode=AddrModeFlat;
                         frame.AddrFrame.Offset=context.Rbp;frame.AddrFrame.Mode=AddrModeFlat;
                         stack[depth++]=context.Rip;DWORD64 last_sp=context.Rsp;bool first=true;
-                        while(depth<stack.size()&&StackWalk64(IMAGE_FILE_MACHINE_AMD64,process.value,thread.value,&frame,&unwind,nullptr,SymFunctionTableAccess64,SymGetModuleBase64,nullptr)){
+                        while(depth<depth_limit&&StackWalk64(IMAGE_FILE_MACHINE_AMD64,process.value,thread.value,&frame,&unwind,nullptr,SymFunctionTableAccess64,SymGetModuleBase64,nullptr)){
                             if(!frame.AddrPC.Offset)break;
                             if(frame.AddrPC.Offset==stack[depth-1]&&frame.AddrStack.Offset==last_sp){if(first){first=false;continue;}break;}
                             first=false;last_sp=frame.AddrStack.Offset;
@@ -129,7 +138,7 @@ Report collect(DWORD pid,DWORD tid,unsigned milliseconds,bool with_stacks=false)
                 if(SymFromAddr(process.value,stack[i],&displacement,symbol))name.assign(symbol->Name,symbol->NameLen);
                 captured.frames.push_back({stack[i],std::move(name)});
             }
-            result.stacks.push_back(std::move(captured));next_stack=Clock::now()+std::chrono::milliseconds(700);
+            result.stacks.push_back(std::move(captured));next_stack=Clock::now()+std::chrono::milliseconds(active_stacks?90:700);
         }
         jitter^=jitter<<13;jitter^=jitter>>17;jitter^=jitter<<5;
         Sleep(7+jitter%7); // Bounded jitter avoids sampling one fixed frame phase.
@@ -145,7 +154,8 @@ void write(const Report& r,const std::filesystem::path& path){
     require(!std::filesystem::exists(path),"profile output must be new");std::ofstream out(path);require(bool(out),"profile output open");
     out<<"{\n  \"schema\": \"sarecomp-execution-ip-v1\",\n  \"pid\": "<<r.pid<<", \"tid\": "<<r.tid
        <<",\n  \"samples\": "<<r.samples<<", \"skipped_suspended\": "<<r.skipped<<", \"errors\": "<<r.errors<<", \"last_error\": "<<r.error
-       <<",\n  \"elapsed_ms\": "<<r.elapsed_ms<<", \"suspension_ms\": "<<r.suspension_ms<<", \"max_suspension_ms\": "<<r.max_suspension_ms<<",\n  \"modules\": [";
+       <<",\n  \"elapsed_ms\": "<<r.elapsed_ms<<", \"suspension_ms\": "<<r.suspension_ms<<", \"max_suspension_ms\": "<<r.max_suspension_ms
+       <<",\n  \"stack_mode\": "<<quoted(r.stack_mode==StackMode::Executable?"active-executable":r.stack_mode==StackMode::External?"external":"none")<<",\n  \"modules\": [";
     bool comma=false;for(const auto& m:r.modules){if(comma)out<<',';comma=true;out<<"\n    {\"name\": "<<quoted(m.name)<<", \"base\": "<<m.base<<", \"size\": "<<m.size<<'}';}
     out<<"\n  ],\n  \"ips\": [";comma=false;
     for(const auto& [ip,count]:r.ips){if(comma)out<<',';comma=true;out<<"\n    {\"ip\": "<<ip<<", \"count\": "<<count<<'}';}
@@ -167,8 +177,14 @@ void self_test(){
     require(rejected,"foreign process/thread pair accepted");
     const auto normal=collect(GetCurrentProcessId(),worker.id,150);
     require(normal.samples>0&&!normal.errors&&worker.progress>0,"worker sample or resume failed");
-    const auto stack=collect(GetCurrentProcessId(),worker.id,100,true);
+    const auto stack=collect(GetCurrentProcessId(),worker.id,100,StackMode::External);
     require(!stack.stacks.empty()&&stack.stacks[0].frames.size()>1&&!stack.errors,"unwind self-test failed");
+    const auto active=collect(GetCurrentProcessId(),worker.id,150,StackMode::Executable);
+    require(!active.stacks.empty()&&active.stacks[0].frames.size()>1&&!active.errors,"active unwind self-test failed");
+    for(const auto& captured:active.stacks){
+        const auto& main=active.modules.front();const auto ip=captured.frames.front().ip;
+        require(ip>=main.base&&ip<main.base+main.size,"active stack outside executable");
+    }
     {
         Suspension external(worker.thread.value);require(external.previous==0,"self-test external suspension");
         const auto held=collect(GetCurrentProcessId(),worker.id,50);
@@ -181,9 +197,10 @@ void self_test(){
 int wmain(int argc,wchar_t** argv){
     try{
         if(argc==2&&std::wstring(argv[1])==L"--self-test"){self_test();return 0;}
-        require(argc==5||(argc==6&&std::wstring(argv[5])==L"--stacks"),"usage: sampler PID TID DURATION_MS NEW_OUTPUT.json [--stacks]");
+        require(argc==5||(argc==6&&(std::wstring(argv[5])==L"--stacks"||std::wstring(argv[5])==L"--active-stacks")),"usage: sampler PID TID DURATION_MS NEW_OUTPUT.json [--stacks|--active-stacks]");
         const auto pid=std::stoul(argv[1]),tid=std::stoul(argv[2]),duration=std::stoul(argv[3]);
         require(pid>0&&tid>0&&duration>=1000&&duration<=30000,"invalid bounded sample request");
-        const auto report=collect(pid,tid,duration,argc==6);write(report,argv[4]);return report.samples&&!report.errors?0:1;
+        const auto mode=argc==5?StackMode::None:std::wstring(argv[5])==L"--active-stacks"?StackMode::Executable:StackMode::External;
+        const auto report=collect(pid,tid,duration,mode);write(report,argv[4]);return report.samples&&!report.errors?0:1;
     }catch(const std::exception& e){std::cerr<<"EXECUTION_SAMPLER_ERROR "<<e.what()<<'\n';return 1;}
 }

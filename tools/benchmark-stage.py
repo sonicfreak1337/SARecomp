@@ -47,6 +47,7 @@ parser.add_argument('--dispatch-memo', choices=('on','off'), default='on')
 parser.add_argument('--dispatch-stats', action='store_true')
 parser.add_argument('--profile-ms', type=int, default=0, help='Private execution-thread IP sample duration, 1000..30000; perturbs timing')
 parser.add_argument('--profile-stacks', action='store_true', help='Up to 32 bounded Windows stack traces outside the game module; diagnostic only')
+parser.add_argument('--profile-active-stacks', action='store_true', help='Up to 256 bounded game-execution call chains; diagnostic only')
 parser.add_argument('--trace-exceptions', action='store_true', help='Trace host exceptions in the owned game; diagnostic, not a timing comparison')
 parser.add_argument('--winmm-order', choices=('position-first','capabilities-first'), default='capabilities-first')
 parser.add_argument('--hardware-input', choices=('fallback','isolated'), default='fallback',
@@ -71,6 +72,8 @@ if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.tag): parser.error('Invalid tag')
 if not re.fullmatch(r'[a-z0-9-]+', args.scenario): parser.error('Invalid scenario')
 if args.profile_ms and not 1000 <= args.profile_ms <= 30000: parser.error('Profile duration must be 1000..30000 ms')
 if args.profile_stacks and not args.profile_ms: parser.error('--profile-stacks requires --profile-ms')
+if args.profile_active_stacks and not args.profile_ms: parser.error('--profile-active-stacks requires --profile-ms')
+if args.profile_active_stacks and args.profile_stacks: parser.error('Select one stack sampling mode')
 if args.sixty_frame_fixture and args.scenario!='emerald-coast' and not args.sixty_frame_matrix: parser.error('Additional stages require --sixty-frame-matrix')
 if args.sixty_frame_matrix and not args.sixty_frame_fixture: parser.error('Matrix requires --sixty-frame-fixture')
 if args.native_palette and not args.sixty_frame_fixture: parser.error('Native palette experiment requires the private60-frame fixture')
@@ -184,7 +187,7 @@ with (run/'stdout.log').open('wb') as out, (run/'stderr.log').open('wb') as err:
                     'cpu_ms':cpu_ms(process)})
                 if args.profile_ms and profiler is None and int(row['elapsed_ms'])>=10000 and row.get('execution_cpu_valid')=='1':
                     profiler=subprocess.Popen([str(sampler_exe),str(process.pid),row['execution_thread_id'],
-                        str(args.profile_ms),str(run/'execution-ip.json')]+(['--stacks'] if args.profile_stacks else []),stdout=out,stderr=err,stdin=subprocess.DEVNULL,
+                        str(args.profile_ms),str(run/'execution-ip.json')]+(['--active-stacks'] if args.profile_active_stacks else ['--stacks'] if args.profile_stacks else []),stdout=out,stderr=err,stdin=subprocess.DEVNULL,
                         startupinfo=startup,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.BELOW_NORMAL_PRIORITY_CLASS)
             if elapsed>110:
                 process.kill(); forced=True; break

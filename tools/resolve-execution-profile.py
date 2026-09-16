@@ -261,6 +261,7 @@ def main():
     output=args.profile.with_name('execution-ip-resolved.json')
     if output.exists():raise ValueError('resolved output must be new')
     result={'schema':'sarecomp-execution-ip-resolved-v1','exe_sha256':digest,'pid':profile['pid'],'tid':profile['tid'],
+        'stack_mode':profile.get('stack_mode','legacy'),
         'samples':profile['samples'],'elapsed_ms':profile['elapsed_ms'],'suspension_ms':profile['suspension_ms'],
         'max_suspension_ms':profile['max_suspension_ms'],'modules':modules.most_common(),'objects':objects.most_common(),
         'attribution':'nearest public code symbol; aliases retained; not exclusive CPU percentages or call counts',

@@ -1,14 +1,22 @@
 option(SARECOMP_LINUX_SCALAR_WRITES "Fuse native scalar RAM write proofs and stores" OFF)
+option(SARECOMP_LINUX_STACK_FRAMES "Fuse complete checked integer/PR stack sequences" OFF)
 set(SARECOMP_LINUX_SCALAR_WRITE_SCOPE "PROFILE" CACHE STRING "Scalar write replacement scope: PROFILE or ALL")
 set_property(CACHE SARECOMP_LINUX_SCALAR_WRITE_SCOPE PROPERTY STRINGS PROFILE ALL)
-if(SARECOMP_LINUX_SCALAR_WRITES)
+if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES)
+    if(SARECOMP_LINUX_SCALAR_WRITES AND SARECOMP_LINUX_STACK_FRAMES)
+        message(FATAL_ERROR "Select one memory experiment")
+    endif()
+    set(scalar_mode scalar)
+    if(SARECOMP_LINUX_STACK_FRAMES)
+        set(scalar_mode stack)
+    endif()
     if(SARECOMP_LINUX_PRELOADED_READS OR SARECOMP_LINUX_READ_GROUPS OR
        SARECOMP_LINUX_AOT_STATISTICS OR SARECOMP_LINUX_FPU_REGIONS OR
        SARECOMP_LINUX_HARDWARE_FPU OR SARECOMP_LINUX_WRITE_OBSERVER_GUARD OR
        SARECOMP_LINUX_CONSTINIT_DISPATCH OR NOT SARECOMP_LINUX_PGO STREQUAL "OFF")
         message(FATAL_ERROR "Scalar writes require unchanged guest sources")
     endif()
-    set(scalar_dir "${CMAKE_BINARY_DIR}/generated/scalar-writes")
+    set(scalar_dir "${CMAKE_BINARY_DIR}/generated/${scalar_mode}-writes")
     get_target_property(scalar_guest_sources sonic_linux_guest SOURCES)
     if(SARECOMP_LINUX_SCALAR_WRITE_SCOPE STREQUAL "PROFILE")
         include("${SONIC_ROOT}/cmake/LinuxPreloadedReadUnits.cmake")
@@ -47,8 +55,9 @@ if(SARECOMP_LINUX_SCALAR_WRITES)
             --memory-source "${SONIC_LINUX_SDK}/src/runtime/memory.cpp"
             --runtime-source "${CMAKE_BINARY_DIR}/generated/internal-diagnostics/native_port_runtime.cpp"
             --source-root "${SONIC_WORKING}/generated"
-            --units-file "${scalar_dir}/units.txt" --destination "${scalar_dir}"
+            --units-file "${scalar_dir}/units.txt" --destination "${scalar_dir}" --mode "${scalar_mode}"
         DEPENDS "${SONIC_ROOT}/tools/prepare-scalar-writes.py" "${SONIC_ROOT}/src/sonic_scalar_write_view.hpp"
+            "${SONIC_ROOT}/tools/prepare-stack-frames.py" "${SONIC_ROOT}/src/sonic_stack_frames.hpp"
             "${SONIC_LINUX_SDK}/src/runtime/memory.cpp"
             "${CMAKE_BINARY_DIR}/generated/internal-diagnostics/native_port_runtime.cpp"
             "${SONIC_WORKING}/generated/.katana-generated-artifacts"
@@ -75,4 +84,11 @@ if(SARECOMP_LINUX_SCALAR_WRITES)
     target_compile_options(sonic-linux-scalar-write-tests PRIVATE -O2 -g0)
     target_link_options(sonic-linux-scalar-write-tests PRIVATE -Wl,--gc-sections)
     target_link_libraries(sonic-linux-scalar-write-tests PRIVATE sonic_linux_services)
+    if(SARECOMP_LINUX_STACK_FRAMES)
+        add_executable(sonic-linux-stack-frame-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_stack_frames.cpp")
+        target_include_directories(sonic-linux-stack-frame-tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_ROOT}/tools")
+        target_compile_options(sonic-linux-stack-frame-tests PRIVATE -O2 -g0)
+        target_link_options(sonic-linux-stack-frame-tests PRIVATE -Wl,--gc-sections)
+        target_link_libraries(sonic-linux-stack-frame-tests PRIVATE sonic_linux_services)
+    endif()
 endif()

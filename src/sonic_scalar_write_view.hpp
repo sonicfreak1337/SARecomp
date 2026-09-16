@@ -32,9 +32,17 @@ inline bool enabled() noexcept {
     return value && !diagnostics::runtime_checks_enabled();
 }
 
+inline bool stack_frames_enabled() noexcept {
+    static const bool value = [] {
+        const char* p = std::getenv("SARECOMP_STACK_FRAMES");
+        return p && std::strcmp(p, "1") == 0;
+    }();
+    return value && !diagnostics::runtime_checks_enabled();
+}
+
 inline void bind(Memory& memory, const NativePortImmutableWriteGuard& guard,
                  std::uint64_t observer_generation) noexcept {
-    if (!enabled()) return;
+    if (!enabled() && !stack_frames_enabled()) return;
     for (auto& slot : bindings) {
         if (slot.memory == &memory) return; // Duplicate registration fails closed.
     }
@@ -67,8 +75,9 @@ inline bool capture_admitted(const Memory* memory,
 
 class View final {
   public:
-    View(Memory& memory, const NativePortImmutableWriteGuard* immutable) noexcept {
-        if (!enabled() || !immutable) return;
+    View(Memory& memory, const NativePortImmutableWriteGuard* immutable,
+         bool stack_frame = false) noexcept {
+        if (!(stack_frame ? stack_frames_enabled() : enabled()) || !immutable) return;
         for (const auto& slot : bindings) {
             if (slot.memory != &memory || slot.immutable != immutable ||
                 !memory.guest_write_observer_pair_current(slot.observer_generation))
@@ -88,6 +97,26 @@ class View final {
 
     [[nodiscard]] bool available() const noexcept {
         return immutable_ && direct_.write_bytes && static_cast<bool>(direct_);
+    }
+
+    template<std::size_t N>
+    [[nodiscard]] bool try_write_words(std::uint32_t address,
+                                     const std::array<std::uint32_t,N>& values) const noexcept {
+        static_assert(N >= 2 && N <= 16);
+        static_assert(std::endian::native == std::endian::little);
+        constexpr auto bytes = N * sizeof(std::uint32_t);
+        std::uint32_t first=0, last=0;
+        // Scalar-width alignment checks are word-aligned even for a group of
+        // e.g. three words. Two endpoint checks also reject backing wrap.
+        if (!immutable_ || !direct_.write_bytes || address > UINT32_MAX - (bytes - 4) ||
+            !katana::runtime::direct_linear_guard_offset(direct_,address,4,first) ||
+            !katana::runtime::direct_linear_guard_offset(direct_,address+bytes-4,4,last) ||
+            last != first + bytes - 4 || immutable_->tracks_address(address,bytes))
+            return false;
+        std::memcpy(direct_.write_bytes+first,values.data(),bytes);
+        counters_->indexed_region_hits += N;
+        counters_->unobserved_accesses += N;
+        return true;
     }
 
     template<class T>
