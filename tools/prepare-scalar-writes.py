@@ -81,6 +81,7 @@ def main():
     p.add_argument('--units-file', type=Path, required=True)
     p.add_argument('--destination', type=Path, required=True)
     p.add_argument('--mode', choices=('scalar','stack','region'), default='scalar')
+    p.add_argument('--guard-probe', action='store_true', help='Private sampled RAM-miss diagnosis, never distribution')
     a = p.parse_args()
     out = a.destination.resolve(); root = a.source_root.resolve()
     if out == root or out in root.parents or root in out.parents:
@@ -123,10 +124,34 @@ def main():
             transformed,frames=stack.transform(data.decode())
             count=0
         else:transformed, count = transform(data.decode())
+        if a.guard_probe and unit == 'unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp':
+            # Exact observed PCs, after the original preflight and before any
+            # original side effect. Log at most eight misses per site.
+            for pc,address,write_access in [('8C057FEA','katana_registers[14] + 4u','write'),
+                                             ('8C057FEC','katana_registers[13] + 44u','read')]:
+                needle=f'const bool katana_guarded_linear_access_{pc} = katana_direct_ram_can_{write_access}({address}, 4u);'
+                diagnostic='''
+                    if (!katana_guarded_linear_access_PC) {
+                        static unsigned sonic_misses=0;
+                        if (sonic_misses < 8u) {
+                            ++sonic_misses;
+                            const auto fresh=cpu.memory.direct_linear_memory_guard(false);
+                            std::fprintf(stderr,"SONIC_RAM_GUARD_MISS pc=PC address=%08x sr=%08x mmu=%08x fpscr=%08x old=%u fresh=%u old_generation=%llu fresh_generation=%llu base=%08x span=%08x watches=%zu sink=%u write_observer_allows=%u\\n",
+                                static_cast<unsigned>(ADDRESS),cpu.sr,cpu.mmucr,cpu.fpscr,
+                                static_cast<unsigned>(static_cast<bool>(katana_direct_ram)),static_cast<unsigned>(static_cast<bool>(fresh)),
+                                static_cast<unsigned long long>(katana_direct_ram.generation),static_cast<unsigned long long>(fresh.generation),
+                                fresh.physical_base,fresh.physical_span,cpu.memory.watchpoint_count(),
+                                static_cast<unsigned>(static_cast<bool>(cpu.memory.guest_memory_access_sink())),
+                                static_cast<unsigned>(cpu.memory.guest_write_observer_allows_prevalidated_linear_writes()));
+                        }
+                    }'''.replace('PC',pc).replace('ADDRESS',address)
+                transformed=once(transformed,needle,needle+diagnostic)
+            transformed='#include <cstdio>\n'+transformed
         output = transformed.encode()
         write(out/unit, output)
         report['units'].append({'unit':unit,'source_sha256':digest(data),
                                'output_sha256':digest(output),'write_helpers':count,'frame_sequences':frames})
+    report['guard_probe']=a.guard_probe
     write(out/'preparation.json',(json.dumps(report,indent=2)+'\n').encode())
     print('SONIC_SCALAR_WRITES_READY units='+str(len(units))+' helpers='+str(sum(u['write_helpers'] for u in report['units']))+
           ' stack_frames='+str(sum(len(u['frame_sequences']) for u in report['units'])))

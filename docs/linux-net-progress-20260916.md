@@ -78,3 +78,34 @@ yet been established for the requested period.
 SHA-256: `b04b0d28594452918151e2780e25eee04328e2fc006e0edb81ab1cddde359d75`.
 Evidence: `runs/ram-page-comparison-20260916.json`. The experiment remains
 default OFF. No new patch or installer; the 20–25 ms target remains open.
+
+## Like-for-like timing follow-up: Recompiled Gamma
+
+The pre-22:00 D2 executable and restored B04B also completed hidden Gamma runs
+with Recompiled timing: 60 Hz, release 1, delta 1, native math enabled throughout.
+Each 5..25 image window contains exactly 20 game updates and 20 new images.
+This removes the Original-mode difference in updates per image; it does not
+make the complete workloads identical.
+
+| Build | Execution CPU ms/update | New images/s | Process CPU ms/update |
+| --- | ---: | ---: | ---: |
+| D2 control | 495.841 | 0.25297 | 7667.438 |
+| B04B candidate | 457.704 | 0.24625 | 7820.617 |
+
+The measured execution cost falls 7.69%, while image throughput falls 2.66%.
+Player coordinates and HUD timer match at both boundaries. Absolute game ticks
+have a one-tick offset; native motion sampling increases by 9,786 calls in the
+control versus 8,884 in the candidate. Smaller matrix/palette count differences
+also remain. Therefore 7.69% is the observed cost difference of this pair, not
+an isolated optimization percentage or a new qualified net FPS gain.
+
+Both runs completed the requested window with the expected host-deadline exit,
+without forced termination or concurrent compilation. The VM's software
+renderer and repeated presentations consume substantial additional CPU;
+neither its total image rate nor these milliseconds predict Steam Deck FPS.
+The target remains unmet and no patch/installer is produced.
+
+Evidence: `runs/net60-gamma-comparison-20260916.json` and its two full summaries.
+The subsequent code-address-page experiment was rejected and the local and
+VM experimental executables were restored byte-for-byte to B04B; see
+`linux-code-address-pages-20260916.md`.

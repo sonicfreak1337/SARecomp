@@ -1,6 +1,7 @@
 option(SARECOMP_LINUX_SCALAR_WRITES "Fuse native scalar RAM write proofs and stores" OFF)
 option(SARECOMP_LINUX_STACK_FRAMES "Fuse complete checked integer/PR stack sequences" OFF)
 option(SARECOMP_LINUX_RAM_REGIONS "Execute mixed RAM/ALU prefixes with shared bookkeeping" OFF)
+option(SARECOMP_LINUX_RAM_GUARD_PROBE "Private bounded RAM-miss diagnosis" OFF)
 set(SARECOMP_LINUX_SCALAR_WRITE_SCOPE "PROFILE" CACHE STRING "Scalar write replacement scope: PROFILE or ALL")
 set_property(CACHE SARECOMP_LINUX_SCALAR_WRITE_SCOPE PROPERTY STRINGS PROFILE ALL)
 if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES OR SARECOMP_LINUX_RAM_REGIONS)
@@ -56,12 +57,16 @@ if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES OR SARECOMP_LINUX
     set_property(TARGET sonic_linux_guest PROPERTY SOURCES ${scalar_guest_sources})
     string(JOIN "\n" scalar_unit_list ${scalar_units})
     file(GENERATE OUTPUT "${scalar_dir}/units.txt" CONTENT "${scalar_unit_list}\n")
+    set(scalar_probe_args)
+    if(SARECOMP_LINUX_RAM_GUARD_PROBE)
+        list(APPEND scalar_probe_args --guard-probe)
+    endif()
     add_custom_command(OUTPUT ${scalar_outputs} "${scalar_dir}/preparation.json"
         COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-scalar-writes.py"
             --memory-source "${SONIC_LINUX_SDK}/src/runtime/memory.cpp"
             --runtime-source "${CMAKE_BINARY_DIR}/generated/internal-diagnostics/native_port_runtime.cpp"
             --source-root "${SONIC_WORKING}/generated"
-            --units-file "${scalar_dir}/units.txt" --destination "${scalar_dir}" --mode "${scalar_mode}"
+            --units-file "${scalar_dir}/units.txt" --destination "${scalar_dir}" --mode "${scalar_mode}" ${scalar_probe_args}
         DEPENDS "${SONIC_ROOT}/tools/prepare-scalar-writes.py" "${SONIC_ROOT}/src/sonic_scalar_write_view.hpp"
             "${SONIC_ROOT}/tools/prepare-stack-frames.py" "${SONIC_ROOT}/src/sonic_stack_frames.hpp"
             "${SONIC_ROOT}/tools/prepare-ram-regions.py" "${SONIC_ROOT}/src/sonic_ram_regions.hpp"

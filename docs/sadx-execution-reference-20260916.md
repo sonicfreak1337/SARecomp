@@ -133,3 +133,33 @@ Representative retained direct call:
 `unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp:2067`.
 The implemented follow-up and measured limitations are recorded in
 `linux-ram-regions-experiment-20260916.md`.
+
+## Larger procedure boundary, not another dispatch lookup
+
+Inspection of `NativeAotRegisterFile` and a generated direct call shows four
+register transfers between two ordinary AOT functions: caller to `CpuState`,
+`CpuState` to the callee's private register array, callee back to `CpuState`,
+then `CpuState` back to the caller. The compiler may optimize individual copies;
+this source observation is not their exclusive measured cost.
+
+Existing depth guards and `NativeAotCallExitStateFrame` manage recursion and
+exit metadata, not a shared register owner. Merely replacing the registerfile
+class or borrowing a thread-local array is unsafe. Some generated bodies access
+`cpu.r` directly (the angle helper `8C055C8E` is a concrete example), and external
+callbacks can replace CPU/register-bank state.
+
+A private procedure ABI could share one complete register carrier across an
+authenticated closure of prepared bodies while keeping the public AOT ABI.
+It requires complete GPR/scalar access classification, explicit publication
+before runtime/unaltered bodies, and invalidation/reload after exceptions,
+MMIO, SR-bank changes and reentrant callbacks. Pending dispatch selection,
+depth limits, return/exception checks, stack writes and cycle safepoints remain.
+This is a larger architectural direction, not an implemented performance gain.
+
+The fresh exact B04B profile also identifies `8C057B00` as recursive hierarchy
+to matrix-buffer construction (child +44, sibling +48, 64-byte output stride),
+not vertex submission. The SRT mixer `8C0417C8` has a separate live rotation
+callback at `8C19AC84`. Existing native matrix/model leaves do not replace either
+complete owner. The first owner accounts for only 17 of 1,087 game IP samples;
+its shared callees must not be added as though exclusive. This finding alone
+does not justify a large-gain claim or another isolated leaf rewrite.

@@ -148,6 +148,12 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Fixed-literal call dispatch was also audited: the 41 units already have
   2,886 direct callee sites and zero remaining static_call sites. Do not repeat
   that pilot; remaining dynamic dispatch selects functional hooks/overlays.
+- Page-proven code-address translation remains OFF. The independent mapping
+  oracle passes 253,912 cases, but a 41-unit Linux game comparison shows no
+  useful throughput gain (Gamma -3.79%, Windy -0.50% images/s, with recorded
+  workload differences). Its synthetic lookup and 2.44% code-size gains are
+  not grounds for ALL expansion. See `docs/linux-code-address-pages-20260916.md`.
+  The active isolated executable returns byte-for-byte to B04B afterward.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
