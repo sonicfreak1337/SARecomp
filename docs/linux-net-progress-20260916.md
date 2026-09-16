@@ -59,3 +59,22 @@ Deck FPS improvement. Do not present the CPU percentages as net FPS gained.
 See `linux-ram-regions-experiment-20260916.md` and
 `runs/ram-vector-comparison-20260916.json`. No release patch or installer exists
 for this candidate; the large-gain requirement and 20–25 ms goal remain open.
+
+## Page-proof follow-up, B04B
+
+The subsequent closed-region page-proof helper passes 1,440 component cases and
+both hidden gameplay probes. On the same scope it saves only 1.42% execution CPU
+versus C772 in Windy and costs 0.61% more in Gamma. Neither is a qualified global
+increment; Gamma also performs 65 rather than 67 updates in its image window.
+
+Against the fresh pre-22:00 D2 controls, the latest measured CPU/update costs are
+257.737 ms in Gamma (-5.20%) and 271.563 ms in Windy (-10.45%). Raw image rates are
+0.42418 and 0.46235 respectively. Gamma's workload differs; Windy retains the
+update count, coordinates and HUD timer but has 20 fewer collision-length calls
+and a one-tick absolute offset. Its +2.70% image rate is one VM pair, not a
+repeatable global/Deck gain. No honest single positive net FPS percentage has
+yet been established for the requested period.
+
+SHA-256: `b04b0d28594452918151e2780e25eee04328e2fc006e0edb81ab1cddde359d75`.
+Evidence: `runs/ram-page-comparison-20260916.json`. The experiment remains
+default OFF. No new patch or installer; the 20–25 ms target remains open.

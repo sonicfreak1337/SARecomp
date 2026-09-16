@@ -131,3 +131,62 @@ Evidence: `runs/ram-vector-{gamma-on,windy-on}-20260916.json`,
 `runs/ram-vector-comparison-20260916.json`, and
 `runs/ram-region-profile-coverage-20260916.json`.
 The large gain and 20–25 ms target remain open. No installer or patch was produced.
+
+## Closed-region page proofs
+
+The follow-up keeps the same 967 prefixes and replaces repeated access proof
+work inside them. The original entry read guard must still be current for the
+same Memory object. A separately authenticated write capability must describe
+the same backing, mapping geometry and generation. A stale read proof cannot
+be refreshed implicitly through the writable view.
+
+Only this callback-free scope may reuse those snapshots. Scalar accesses and
+atomic read groups preserve translation, privilege, alignment, span and backing
+boundaries. An entire 256-byte page can reuse its address proof; a writable page
+also needs a negative immutable/code-range proof. Mixed pages retain individual
+store checks. Page proofs cache no memory values: dependent and aliased reads
+still see prior stores immediately. All proof state dies before an original
+fallback, scheduler or external call. In particular, the immutable guard's
+generation is not used as a cross-callback classification version.
+
+Successful accesses accumulate locally and are published to both original
+memory counters on scope exit, before any original instruction can run. Read
+groups retain their weight and all-or-miss behavior. No counter or functional
+invalidation is disabled.
+
+The component executable passes 1,440 comparisons, including additional page
+crossings, mixed code/data pages, backing wrap, alias stores, failed read groups,
+and classification changes between regions. The 100,000-region component probe
+takes 167.770 ms with the checked helper and 122.378 ms with page proofs in the
+VM: 27.1% less CPU time, matching checksum 1264239228500476. This is a small
+synthetic workload, not a game or Deck performance claim. Evidence:
+`runs/ram-page-component-20260916.log`.
+
+The page-proof candidate is SHA-256
+`b04b0d28594452918151e2780e25eee04328e2fc006e0edb81ab1cddde359d75`,
+1,680,564,688 bytes. Both hidden Linux game runs complete normally at the expected
+deadline; the timing, input, renderer and diagnostic settings above are retained.
+
+| Stage | Updates / 20 images | Execution CPU ms/update | New images/s |
+| --- | ---: | ---: | ---: |
+| Gamma Emerald Coast | 65 | 257.73739 | 0.424178 |
+| Sonic Windy Valley | 68 | 271.56259 | 0.462353 |
+
+Relative to the preceding C772 candidate, Gamma execution cost is 0.61% higher
+and Windy is 1.42% lower. Gamma starts at matching recorded state but performs
+two fewer updates by the end; its raw 1.07% image increase is not equivalent
+work. Windy retains matching updates, coordinates and HUD timer, with a two-tick
+absolute offset and 22 fewer native collision-length calls. Its image increase
+is only 0.93%. The component speedup has not become a useful global gain.
+
+Relative to the fresh D2 pre-22:00 controls, the latest candidate measures
+5.20%/10.45% lower execution CPU per update in Gamma/Windy. The raw image-rate
+changes are +6.47%/+2.70%; Gamma differs in update count and native-call work,
+and Windy's small difference is one pair, not a repeatable Deck result. These
+CPU reductions must not be reported as overall FPS improvement since 22:00.
+
+Evidence: `runs/ram-page-{gamma-on,windy-on}-20260916.json` and
+`runs/ram-page-comparison-20260916.json`. The new helper is retained inside the
+disabled-by-default RAM-region experiment, with the checked helper as component
+control. It is not a release change and does not justify ALL-scope recompilation.
+No installer or patch was produced; the 20–25 ms goal remains open.

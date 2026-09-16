@@ -139,6 +139,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   show 5.77%/9.16% lower execution CPU/update, but workload differences and only
   1.75% Windy image throughput do not qualify a large global/Deck FPS gain.
   Do not ship or expand blindly from owner membership or static region counts.
+- The B04B follow-up uses per-region RAM page proofs and batched memory counts.
+  All 1,440 component cases and Gamma/Windy probes pass. The 27.1% synthetic
+  saving becomes only -1.42% Windy / +0.61% Gamma execution cost versus C772;
+  this is not a new qualified global win. Latest pre-22 control comparisons
+  show -5.20%/-10.45% CPU/update with workload differences, not net FPS gained.
+  Keep it within the default-OFF RAM experiment; no ALL expansion or shipping.
+  Fixed-literal call dispatch was also audited: the 41 units already have
+  2,886 direct callee sites and zero remaining static_call sites. Do not repeat
+  that pilot; remaining dynamic dispatch selects functional hooks/overlays.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

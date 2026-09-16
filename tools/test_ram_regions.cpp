@@ -2,6 +2,7 @@
 #include "sonic_ram_regions.hpp"
 #include "sonic_stack_frames.hpp"
 #include <xmmintrin.h>
+#include <ctime>
 
 namespace {
 struct Owned {
@@ -288,10 +289,73 @@ void generated_vector_compare(unsigned mode,bool gbr) {
     require(std::ranges::equal(a.f.ram->bytes(),b.f.ram->bytes()),"vector prefix stores differ");
     ++cases;
 }
+
+template<class Access>
+std::array<std::uint32_t,20> page_sequence(Owned& o,const DirectLinearMemoryGuard& entry,std::uint32_t base) {
+    Access access(o.f.cpu,entry,&o.guard);
+    std::array<std::uint32_t,20> result{};
+    result[0]=access.template read<32>(base,result[1]);
+    result[2]=access.template write<32>(base+4,result[1]);
+    result[3]=access.template read<32>(base+4,result[4]);
+    result[5]=access.template write<8>(base+7,0xAB);
+    result[6]=access.template read<16,true>(base+6,result[7]);
+    std::array<std::uint32_t,4> words{sentinel,sentinel,sentinel,sentinel};
+    result[8]=access.template read_group<4>(base+8,words);
+    std::copy(words.begin(),words.end(),result.begin()+9);
+    result[13]=access.template write<16>(base+24,0xEDCB);
+    result[14]=access.template read<32>(base+24,result[15]);
+    result[16]=access.template read<8,true>(base+7,result[17]);
+    result[18]=access.template write<32>(base+0x10000,0x12345678);
+    result[19]=access.template read<32>(base,result[1]);
+    return result;
 }
-int main() {
+
+void page_compare(std::uint32_t base,unsigned mode,bool stale) {
+    Owned a,b;
+    auto ga=a.f.cpu.memory.direct_linear_memory_guard(false),gb=b.f.cpu.memory.direct_linear_memory_guard(false);
+    mutate(a,mode);mutate(b,mode);
+    if(!stale){ga=a.f.cpu.memory.direct_linear_memory_guard(false);gb=b.f.cpu.memory.direct_linear_memory_guard(false);}
+    const auto expected=page_sequence<sonic::ram_regions::CheckedAccess>(a,ga,base);
+    const auto actual=page_sequence<sonic::ram_regions::Access>(b,gb,base);
+    require(expected==actual,"page proof access/group result differs");
+    require(counts(a.f.cpu.memory)==counts(b.f.cpu.memory),"page proof memory accounting differs");
+    require(std::ranges::equal(a.f.ram->bytes(),b.f.ram->bytes()),"page proof alias/partial store differs");
+    require(a.f.log==b.f.log,"page proof observer log differs");
+    // A second region must acquire new proofs after a classification change.
+    for(auto* o:{&a,&b}) {
+        o->guard.reserve_additional_runtime_executable_ranges(1);
+        o->guard.add_runtime_executable_range(0x0C002000,256);
+    }
+    require(page_sequence<sonic::ram_regions::CheckedAccess>(a,ga,0x8C002000)==
+            page_sequence<sonic::ram_regions::Access>(b,gb,0x8C002000),"page proof survived a region boundary");
+    require(counts(a.f.cpu.memory)==counts(b.f.cpu.memory),"second region counters differ");
+    require(std::ranges::equal(a.f.ram->bytes(),b.f.ram->bytes()),"second region stores differ");
+    ++cases;
+}
+
+template<class Access>
+void page_benchmark(const char* name) {
+    Owned o;
+    const auto entry=o.f.cpu.memory.direct_linear_memory_guard(false);
+    const auto begin=std::clock();
+    std::uint64_t checksum=0;
+    constexpr unsigned iterations=100000;
+    for(unsigned i=0;i<iterations;++i) {
+        const auto result=page_sequence<Access>(o,entry,0x8C002000+(i&3)*64);
+        checksum+=result[1]+static_cast<std::uint64_t>(result[15])+result[7]+result[12];
+    }
+    const auto elapsed=1000.0*(std::clock()-begin)/CLOCKS_PER_SEC;
+    std::cout<<"SONIC_RAM_PAGE_BENCH path="<<name<<" iterations="<<iterations<<" cpu_ms="<<elapsed<<" checksum="<<checksum<<'\n';
+}
+}
+int main(int argc,char** argv) {
     try {
         require(sonic::scalar_writes::ram_regions_enabled(),"set SARECOMP_RAM_REGIONS=1");
+        if(argc==2&&std::string_view(argv[1])=="--benchmark") {
+            page_benchmark<sonic::ram_regions::CheckedAccess>("checked");
+            page_benchmark<sonic::ram_regions::Access>("snapshot");
+            return 0;
+        }
         for(unsigned mode=0;mode<=18;++mode)for(bool stale:{false,true})
             for(auto base:{0x8C000100u,0xAC000100u,0x0C000100u,0x8C010100u,0x8C000001u,
                 0x8C0007F8u,0x8C0009F8u,0x8C00FFFCu,0x8C01FFFCu,0xFFFFFFFFu,0xE0000000u}) compare(base,mode,stale);
@@ -306,6 +370,10 @@ int main() {
                     generated_mixed_compare(mode,bits,fpscr,0u);
         for(auto resume:{0x8C036F94u,0x8C036F98u})generated_mixed_compare(0,0x3F800001u,fpscr_dn_mask,resume);
         for(unsigned mode=0;mode<10;++mode)for(bool gbr:{false,true})generated_vector_compare(mode,gbr);
+        for(unsigned mode=0;mode<=18;++mode)for(bool stale:{false,true})
+            for(auto base:{0x8C000100u,0xAC000100u,0x0C000100u,0x8C0007F0u,0x8C000810u,
+                0x8C0009F0u,0x8C000A10u,0x8C00FFF0u,0x8C01FFF0u,0x8C000001u,0xFFFFFFFFu})
+                page_compare(base,mode,stale);
         require(!sonic::scalar_writes::requested_capture,"capture scope leaked");
         for(const auto& b:sonic::scalar_writes::bindings)require(!b.memory,"binding leaked");
         std::cout<<"SONIC_RAM_REGIONS_OK cases="<<cases<<" complete="<<complete_hits<<" partial="<<partial_hits

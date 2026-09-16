@@ -108,6 +108,12 @@ class View final {
         return immutable_ && direct_.write_bytes && static_cast<bool>(direct_);
     }
 
+    // Only for an admitted callback-free region. The copy must be discarded
+    // before any scheduler, guest call, observer or original fallback runs.
+    [[nodiscard]] DirectLinearMemoryGuard closed_region_snapshot() const noexcept {
+        return available() ? direct_ : DirectLinearMemoryGuard{};
+    }
+
     template<std::size_t N>
     [[nodiscard]] bool try_write_words(std::uint32_t address,
                                      const std::array<std::uint32_t,N>& values) const noexcept {

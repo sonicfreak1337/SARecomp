@@ -109,3 +109,27 @@ The [public SADX decompilation](https://github.com/doldecomp/sadx) was also
 checked at `4c2b833be9b4b63d57d761beb647cb8d9acbedb6`. Its available C/C++ sources
 at that revision are SDK/runtime/library work, not a complete native gameplay
 implementation we can directly adopt. It targets a different release as well.
+
+## Fixed-callee follow-up
+
+A separate read-only audit checked the actual prepared-transfer dispatcher and
+the 41 profiled AOT units. They already contain 2,886 direct
+`fn_*_runtime_entry(cpu, context)` call sites, zero remaining `static_call`
+sites, 2,342 `runtime_only_call` sites and 18 exact-guarded fallbacks. These are
+static source counts, including generated repetitions, not call frequencies.
+The exact-guarded examples also already have an admitted direct-call path.
+
+That path preserves register publication, chainability and pending selection,
+the call-depth guard, exception generation, return PC and current memory guard.
+Remaining dynamic dispatch also selects native replacement hooks and overlays;
+substituting an AOT function pointer would bypass functional owner selection.
+The old exact Windows profile attributes 18/1,316 game samples to
+`dispatch_native` and 15/1,316 to entry lookup, including dynamic calls. It does
+not support a new fixed-literal-call optimization, especially after prepared
+transfers. Do not repeat that pilot without new evidence.
+
+Effective source: `build-linux/generated/transfer-plans/native-port-dispatch.cpp`.
+Representative retained direct call:
+`unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp:2067`.
+The implemented follow-up and measured limitations are recorded in
+`linux-ram-regions-experiment-20260916.md`.
