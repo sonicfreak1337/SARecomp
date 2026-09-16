@@ -113,6 +113,13 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   by 2%, but Linux Gamma/Windy execution CPU per update improved only 0.3%/2.6%,
   without a useful global throughput gain. See
   `docs/linux-aot-code-shape-20260916.md`; do not expand it based on code size.
+- Prepared transfer plans cover the shared indirect dispatcher across all
+  modules; see `docs/linux-prepared-transfers-20260916.md`. Two Linux pairs
+  measured about 4–5% less execution CPU, with a small Windy state difference.
+  Keep the tested experiment for further global work, but it is not the large
+  gain required for a patch. Its CMake default is OFF; the isolated build-linux
+  candidate is ON. Future benchmark tools default provider telemetry OFF;
+  specify `--telemetry on` to reproduce the older instrumented measurements.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

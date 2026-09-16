@@ -51,6 +51,9 @@ p.add_argument('--scenario', default='emerald-coast',
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
 p.add_argument('--diagnostics', choices=('on','off','installed'), default='off')
+p.add_argument('--transfer-plans', choices=('original','cached','verify'), default='original')
+p.add_argument('--telemetry', choices=('on','off'), default='off',
+               help='Per-provider timers; off keeps release-like execution cost')
 p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
 p.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 p.add_argument('--aspect', choices=('original','deck'), default='original',
@@ -85,6 +88,8 @@ display.write_text('setup_complete=1\n'+viewport+
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
     'SARECOMP_INTERNAL_DIAGNOSTICS':'1' if a.diagnostics=='on' else '0',
+    'SARECOMP_PREPARED_TRANSFERS':'0' if a.transfer_plans=='original' else '1',
+    'SARECOMP_PREPARED_TRANSFERS_VERIFY':'1' if a.transfer_plans=='verify' else '0',
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
     'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':'1',
     'KATANA_PORT_IGNORE_FOCUS':'1', 'KATANA_USER_DATA_ROOT':str(run/'user-data'),
@@ -94,7 +99,8 @@ env.update({
     'SARECOMP_MESH_SHARED_CORNERS':'1' if a.shared_corners=='on' else '0',
     'SARECOMP_INDEXED_CORNERS_VERIFY':'1' if a.verify_corners else '0',
     'SARECOMP_GAMEPLAY_MATH_RETAINED':'1' if a.gameplay_math=='retained' else '0',
-    'KATANA_PORT_FINAL_PROGRESS':'1', 'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1',
+    'KATANA_PORT_FINAL_PROGRESS':'1',
+    'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1' if a.telemetry=='on' else '0',
     'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
     'KATANA_SONIC_PRIVATE_SCENARIO':a.scenario, 'KATANA_SONIC_GAMEPLAY_PROBE':'1',
     'KATANA_SONIC_GAMEPLAY_INPUT_PROFILE':'3', 'KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE':'1',
@@ -190,6 +196,11 @@ stop_reason = json.loads(frontiers[-1]).get('stop_reason') if frontiers else Non
 # NativePortStopReason::HostDeadline is 2; a completed probe alone must not
 # hide a later failure during shutdown.
 expected_stop = game.returncode == 1 and stop_reason == 2 and not forced
+transfer_checks = re.findall(r'^SONIC_PREPARED_TRANSFERS verified=(\d+) misses=(\d+)$', text, re.MULTILINE)
+transfer_verification = ({'verified':int(transfer_checks[-1][0]), 'misses':int(transfer_checks[-1][1])}
+                         if transfer_checks else None)
+transfer_verification_valid = (a.transfer_plans != 'verify' or
+                               bool(transfer_verification and transfer_verification['verified'] > 0))
 measured_samples = samples
 frame_window_valid = True
 if a.end_frame:
@@ -202,6 +213,9 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
           'diagnostics':a.diagnostics,
+          'transfer_plans':a.transfer_plans,
+          'telemetry':a.telemetry, 'transfer_verification':transfer_verification,
+          'transfer_verification_valid':transfer_verification_valid,
           'descriptor_cache':a.descriptor_cache,
           'state_cache':a.state_cache,
           'shared_corners':a.shared_corners, 'verify_corners':a.verify_corners,
@@ -215,4 +229,4 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
 (run/'summary.json').write_text(json.dumps(result, indent=2)+'\n')
 print('SONIC_LINUX_PROBE_FINISHED ' + json.dumps({k:v for k,v in result.items()
       if k not in ('samples','configuration')}), flush=True)
-raise SystemExit(0 if result['completed'] and expected_stop and frame_window_valid else 1)
+raise SystemExit(0 if result['completed'] and expected_stop and frame_window_valid and transfer_verification_valid else 1)

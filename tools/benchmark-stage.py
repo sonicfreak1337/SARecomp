@@ -21,6 +21,8 @@ parser.add_argument('--width', type=int, default=3182)
 parser.add_argument('--height', type=int, default=1332)
 parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
+parser.add_argument('--telemetry', choices=('on','off'), default='off',
+                    help='Per-provider timers; off keeps release-like execution cost')
 parser.add_argument('--update-timing', action='store_true', help='Private read-only original update/timer trace; diagnostic timing')
 parser.add_argument('--render-completion', action='store_true', help='Private native guest-render completion experiment')
 parser.add_argument('--sixty-frame-fixture', action='store_true', help='Private60-Hz/single-step experiment; not a product setting')
@@ -105,7 +107,8 @@ env['SARECOMP_INDEXED_CORNERS_VERIFY']='1' if args.verify_indexed_corners else '
 env.update({
     'KATANA_PORT_BACKGROUND_TEST':'1', 'KATANA_PORT_IGNORE_FOCUS':'1',
     'KATANA_USER_DATA_ROOT':str(saves), 'KATANA_PORT_FINAL_PROGRESS':'1',
-    'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1', 'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
+    'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1' if args.telemetry=='on' else '0',
+    'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
     'KATANA_SONIC_PRIVATE_SCENARIO':args.scenario, 'KATANA_SONIC_GAMEPLAY_PROBE':'1',
     'KATANA_SONIC_GAMEPLAY_INPUT_PROFILE':'3', 'KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE':'1',
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'100000', 'SARECOMP_DISPLAY_CONFIG':str(display),

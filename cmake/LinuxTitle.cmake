@@ -92,3 +92,4 @@ set_target_properties(game PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPAT
 include("${SONIC_ROOT}/cmake/LinuxPgo.cmake")
 include("${SONIC_ROOT}/cmake/LinuxWriteObserverGuard.cmake")
 include("${SONIC_ROOT}/cmake/LinuxConstinitDispatch.cmake")
+include("${SONIC_ROOT}/cmake/LinuxTransferPlans.cmake")
