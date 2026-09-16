@@ -80,7 +80,7 @@ def main():
     p.add_argument('--source-root', type=Path, required=True)
     p.add_argument('--units-file', type=Path, required=True)
     p.add_argument('--destination', type=Path, required=True)
-    p.add_argument('--mode', choices=('scalar','stack'), default='scalar')
+    p.add_argument('--mode', choices=('scalar','stack','region'), default='scalar')
     a = p.parse_args()
     out = a.destination.resolve(); root = a.source_root.resolve()
     if out == root or out in root.parents or root in out.parents:
@@ -101,14 +101,15 @@ def main():
     lines = (root/'.katana-generated-artifacts').read_text().splitlines()
     if lines[0] != 'katana-codegen-artifacts-v2' or lines[1] != 'generation\tsha256:'+digest(('\n'.join(lines[2:])+'\n').encode()):
         raise ValueError('Invalid retained source manifest')
-    if a.mode=='stack' and lines[1] != 'generation\tsha256:ad51236f53b465bcac54c915df97ecdcb6467f8f06e5b36f85885e19525129f1':
+    if a.mode in ('stack','region') and lines[1] != 'generation\tsha256:ad51236f53b465bcac54c915df97ecdcb6467f8f06e5b36f85885e19525129f1':
         raise ValueError('Stack admission helpers need review for this generation')
     records = {parts[0]:parts for line in lines[2:] if len(parts:=line.split('\t')) >= 3}
     units = a.units_file.read_text().splitlines()
     if len(units) != len(set(units)): raise ValueError('Duplicate unit')
     stack=None
-    if a.mode=='stack':
-        spec=importlib.util.spec_from_file_location('stack_frames',Path(__file__).with_name('prepare-stack-frames.py'))
+    if a.mode in ('stack','region'):
+        script='prepare-stack-frames.py' if a.mode=='stack' else 'prepare-ram-regions.py'
+        spec=importlib.util.spec_from_file_location('memory_regions',Path(__file__).with_name(script))
         stack=importlib.util.module_from_spec(spec);spec.loader.exec_module(stack)
     report = {'schema':'sarecomp-scalar-writes-v1','mode':a.mode,'memory_sha256':MEMORY_SHA,
               'runtime_sha256':RUNTIME_SHA,'generation':lines[1],'units':[]}

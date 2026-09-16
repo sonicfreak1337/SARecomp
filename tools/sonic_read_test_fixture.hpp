@@ -30,7 +30,7 @@ struct Event {
     bool operator==(const Event&) const=default;
 };
 struct Log {
-    std::array<Event,64> entries{};
+    std::array<Event,256> entries{};
     std::size_t size=0;
     bool overflow=false;
     void add(Event e) noexcept { if(size<entries.size()) entries[size++]=e; else overflow=true; }
@@ -69,12 +69,13 @@ struct Fixture {
     std::array<std::uint32_t,7> error{};
     bool preflight=false;
     unsigned fallbacks=0;
-    Fixture() {
+    explicit Fixture(std::size_t ram_size=0x10000u)
+        : ram(std::make_shared<LinearMemoryDevice>(ram_size)) {
         services.log=&log;
         cpu.address_space=std::make_shared<RuntimeAddressSpace>();
         cpu.memory.map_region("ram0",0x0C000000u,ram);
-        cpu.memory.map_region("ram1",0x0C010000u,ram);
-        cpu.memory.bind_direct_linear_alias_window(0x0C000000u,0x20000u,*ram);
+        cpu.memory.map_region("ram1",0x0C000000u+static_cast<std::uint32_t>(ram_size),ram);
+        cpu.memory.bind_direct_linear_alias_window(0x0C000000u,static_cast<std::uint32_t>(2*ram_size),*ram);
         cpu.memory.set_lookup_mode(MemoryLookupMode::Indexed);
         cpu.write_sr(sr_md_mask);
         cpu.r.fill(0x13572468u); cpu.r_bank.fill(0x24681357u);

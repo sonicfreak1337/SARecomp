@@ -40,9 +40,17 @@ inline bool stack_frames_enabled() noexcept {
     return value && !diagnostics::runtime_checks_enabled();
 }
 
+inline bool ram_regions_enabled() noexcept {
+    static const bool value = [] {
+        const char* p = std::getenv("SARECOMP_RAM_REGIONS");
+        return p && std::strcmp(p, "1") == 0;
+    }();
+    return value && !diagnostics::runtime_checks_enabled();
+}
+
 inline void bind(Memory& memory, const NativePortImmutableWriteGuard& guard,
                  std::uint64_t observer_generation) noexcept {
-    if (!enabled() && !stack_frames_enabled()) return;
+    if (!enabled() && !stack_frames_enabled() && !ram_regions_enabled()) return;
     for (auto& slot : bindings) {
         if (slot.memory == &memory) return; // Duplicate registration fails closed.
     }
@@ -76,8 +84,9 @@ inline bool capture_admitted(const Memory* memory,
 class View final {
   public:
     View(Memory& memory, const NativePortImmutableWriteGuard* immutable,
-         bool stack_frame = false) noexcept {
-        if (!(stack_frame ? stack_frames_enabled() : enabled()) || !immutable) return;
+         bool stack_frame = false, bool ram_region = false) noexcept {
+        if (!(ram_region ? ram_regions_enabled() :
+              stack_frame ? stack_frames_enabled() : enabled()) || !immutable) return;
         for (const auto& slot : bindings) {
             if (slot.memory != &memory || slot.immutable != immutable ||
                 !memory.guest_write_observer_pair_current(slot.observer_generation))

@@ -58,6 +58,8 @@ p.add_argument('--stack-frames', choices=('original','fused'), default='original
                help='Private complete stack sequence experiment')
 p.add_argument('--fpu-register-cache', choices=('original','retained'), default='original',
                help='Private nontrapping FPU integer-register retention')
+p.add_argument('--ram-regions', choices=('original','fused'), default='original',
+               help='Private mixed RAM/ALU prefix execution')
 p.add_argument('--telemetry', choices=('on','off'), default='off',
                help='Per-provider timers; off keeps release-like execution cost')
 p.add_argument('--begin-frame', type=int, default=0, help='Optional exact warmup boundary; requires --end-frame')
@@ -99,6 +101,7 @@ env.update({
     'SARECOMP_SCALAR_WRITES':'1' if a.scalar_writes=='fused' else '0',
     'SARECOMP_STACK_FRAMES':'1' if a.stack_frames=='fused' else '0',
     'SARECOMP_FPU_REGISTER_CACHE':'1' if a.fpu_register_cache=='retained' else '0',
+    'SARECOMP_RAM_REGIONS':'1' if a.ram_regions=='fused' else '0',
     'LD_LIBRARY_PATH': str(library), 'SDL_AUDIODRIVER':'dummy',
     'KATANA_PORT_BACKGROUND_TEST':'1', 'SARECOMP_PROBE_WAIT_FOR_GAMEPLAY':'1',
     'KATANA_PORT_IGNORE_FOCUS':'1', 'KATANA_USER_DATA_ROOT':str(run/'user-data'),
@@ -226,6 +229,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'scalar_writes':a.scalar_writes,
           'stack_frames':a.stack_frames,
           'fpu_register_cache':a.fpu_register_cache,
+          'ram_regions':a.ram_regions,
           'telemetry':a.telemetry, 'transfer_verification':transfer_verification,
           'transfer_verification_valid':transfer_verification_valid,
           'descriptor_cache':a.descriptor_cache,

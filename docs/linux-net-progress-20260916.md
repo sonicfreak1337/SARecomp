@@ -37,3 +37,25 @@ write experiment is a separate candidate and is not included in this table.
 
 Evidence: `runs/net-since2200-comparison-20260916.json` and its four referenced
 full summaries. All boundary differences and binary identities are recorded.
+
+## Later mixed RAM execution candidate
+
+The subsequent candidate C772 combines prepared transfers with 967 mixed
+RAM/ALU/FP prefixes in 41 common units. Fresh D2 controls and candidate runs
+all completed; this does not resolve or erase the older shutdown abort above.
+
+| Stage | Execution CPU ms/update, D2 -> C772 | CPU cost reduction | New images/s, D2 -> C772 |
+| --- | ---: | ---: | ---: |
+| Gamma Emerald Coast | 271.871 -> 256.172 | 5.77% | 0.39841 -> 0.41968 |
+| Sonic Windy Valley | 303.250 -> 275.487 | 9.16% | 0.45021 -> 0.45811 |
+
+Gamma differs by one update and by native-call/position boundaries, so its raw
+5.34% image-rate increase is not a qualified net gain. Windy retains 68 updates,
+matching coordinates and HUD timer; its absolute game tick is offset by one and
+the candidate makes two extra collision-length calls. Its image throughput
+improves only 1.75%. These are single VM pairs, not a reproducible global or
+Deck FPS improvement. Do not present the CPU percentages as net FPS gained.
+
+See `linux-ram-regions-experiment-20260916.md` and
+`runs/ram-vector-comparison-20260916.json`. No release patch or installer exists
+for this candidate; the large-gain requirement and 20–25 ms goal remain open.

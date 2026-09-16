@@ -133,6 +133,12 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   `docs/linux-stack-frames-experiment-20260916.md`. The first gameplay pair was
   marginal and predates a scheduler admission correction. The corrected helper
   passes 1,876 component cases, but has no qualified gameplay speedup.
+- Mixed RAM/ALU/FP regions remain experimental and default OFF; see
+  `docs/linux-ram-regions-experiment-20260916.md`. The isolated C772 build
+  covers 967 regions and passes 1,022 component cases. Fresh Gamma/Windy pairs
+  show 5.77%/9.16% lower execution CPU/update, but workload differences and only
+  1.75% Windy image throughput do not qualify a large global/Deck FPS gain.
+  Do not ship or expand blindly from owner membership or static region counts.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
