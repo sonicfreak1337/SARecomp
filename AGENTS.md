@@ -99,6 +99,11 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   arithmetic kernel improved, but matched Linux Gamma/Windy gameplay did not;
   see `docs/linux-fpu-regions-experiment-20260916.md`. Do not expand it across
   the whole AOT pack based on the kernel result or repeat the per-op MXCSR path.
+- Linux PGO remains OFF. The compiler/profile fixture round trip is qualified,
+  but two 119-unit game training builds stalled at Gamma loading, including
+  counters-only instrumentation. No valid game profile or USE gain exists.
+  See `docs/linux-pgo-experiment-20260916.md`; do not repeat or expand this
+  instrumentation without new evidence explaining the guest-call stall.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
