@@ -1,0 +1,13 @@
+# Research-only component. No replacement enters the game target here.
+add_executable(sonic_fpu_region_tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_fpu_region.cpp")
+target_include_directories(sonic_fpu_region_tests PRIVATE "${SONIC_ROOT}/src")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_options(sonic_fpu_region_tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+    target_link_libraries(sonic_fpu_region_tests PRIVATE sonic_linux_aot_runtime)
+else()
+    target_compile_options(sonic_fpu_region_tests PRIVATE /O2 /EHsc /utf-8 /fp:strict /clang:-fno-lto)
+    if(TARGET sonic_fpu_runtime)
+        target_link_libraries(sonic_fpu_region_tests PRIVATE sonic_fpu_runtime)
+    endif()
+    target_link_libraries(sonic_fpu_region_tests PRIVATE KatanaRecomp::native_port_runtime)
+endif()

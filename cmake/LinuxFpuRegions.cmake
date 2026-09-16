@@ -1,0 +1,31 @@
+option(SARECOMP_LINUX_FPU_REGIONS "Hardware arithmetic inside selected pure AOT epochs" OFF)
+if(SARECOMP_LINUX_FPU_REGIONS)
+    if(SARECOMP_LINUX_READ_GROUPS OR SARECOMP_LINUX_PRELOADED_READS OR SARECOMP_LINUX_AOT_STATISTICS OR SARECOMP_LINUX_HARDWARE_FPU)
+        message(FATAL_ERROR "FPU regions require an isolated comparison")
+    endif()
+    include("${SONIC_ROOT}/cmake/LinuxPreloadedReadUnits.cmake")
+    set(fpu_region_dir "${CMAKE_BINARY_DIR}/generated/fpu-regions")
+    set(fpu_region_sources)
+    set(fpu_region_inputs)
+    set(fpu_region_arguments)
+    get_target_property(guest_sources sonic_linux_guest SOURCES)
+    foreach(unit IN LISTS linux_preloaded_units)
+        list(APPEND fpu_region_sources "${fpu_region_dir}/${unit}")
+        list(APPEND fpu_region_inputs "${SONIC_WORKING}/generated/code/${unit}")
+        list(APPEND fpu_region_arguments --unit "${unit}")
+        list(FIND guest_sources "${SONIC_WORKING}/generated/code/${unit}" unit_index)
+        if(unit_index LESS 0)
+            message(FATAL_ERROR "FPU region member missing: ${unit}")
+        endif()
+        list(REMOVE_AT guest_sources ${unit_index})
+        list(INSERT guest_sources ${unit_index} "${fpu_region_dir}/${unit}")
+        set_source_files_properties("${fpu_region_dir}/${unit}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
+    endforeach()
+    add_custom_command(OUTPUT ${fpu_region_sources} "${fpu_region_dir}/preparation.json"
+        COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-fpu-regions.py"
+            --source-root "${SONIC_WORKING}/generated" --destination "${fpu_region_dir}"
+            --helper "${SONIC_ROOT}/src/sonic_fpu_region.hpp" ${fpu_region_arguments}
+        DEPENDS "${SONIC_ROOT}/tools/prepare-fpu-regions.py" "${SONIC_ROOT}/src/sonic_fpu_region.hpp"
+            "${SONIC_WORKING}/generated/.katana-generated-artifacts" ${fpu_region_inputs} VERBATIM)
+    set_property(TARGET sonic_linux_guest PROPERTY SOURCES ${guest_sources})
+endif()

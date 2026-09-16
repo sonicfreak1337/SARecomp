@@ -64,3 +64,4 @@ if(SARECOMP_FPU_RUNTIME_FAST)
         COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/audit-fpu-runtime.py"
             "${CMAKE_BINARY_DIR}/game-native-port.map" VERBATIM)
 endif()
+include("${SONIC_ROOT}/cmake/SonicFpuRegion.cmake")

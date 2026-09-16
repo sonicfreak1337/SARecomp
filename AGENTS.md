@@ -95,6 +95,10 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Never conflate the diagnostic switch with disabling functional memory,
   module-lifetime, executable-invalidation or timing behavior. The first Gamma
   VM comparison shows no useful gain; the 20–25 ms performance target stays open.
+- The closed hardware-FPU-region experiment also remains OFF. Its native
+  arithmetic kernel improved, but matched Linux Gamma/Windy gameplay did not;
+  see `docs/linux-fpu-regions-experiment-20260916.md`. Do not expand it across
+  the whole AOT pack based on the kernel result or repeat the per-op MXCSR path.
 - Use small relevant visual/boot checks, no full level matrix by default.
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
