@@ -392,6 +392,16 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Do not confuse this target with the intermediate 901962 test executable or
   overwrite the completed morning Sep17 update. The 20–25 ms Deck goal stays open.
 
+- The user explicitly requested a full Steam Deck test installer for friends
+  containing all current patches. It is delivered separately as
+  `out/installers/SonicAdventureRecompiled-SteamDeck-Test-2026-09-17.run`;
+  see `docs/steam-deck-test-installer-20260917.md`. Its stripped game has identical
+  allocated runtime sections to the v2 CPU update and excludes the in-progress
+  movement replacement. Full GDI installation, payload/content hashes, defaults,
+  installed Gamma gameplay and matching diagnostics toggles are checked in Linux.
+  A subsequent Deck crash without a capsule/reproduction remains unresolved;
+  do not present the test installer as its fix or as a final release promotion.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
