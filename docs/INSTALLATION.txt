@@ -1,0 +1,40 @@
+SONIC ADVENTURE RECOMPILED - TEST BUILD
+Installation guide | 17 September 2026
+
+BEFORE YOU START
+Extract the complete archive first. Keep the .gdi and ALL accompanying track
+files together, with their original names. Select the .gdi when setup asks
+for the game disc; setup checks the supported PAL version automatically.
+All current patches are included. Do not apply older patches to this build.
+
+WINDOWS
+1. Run SonicAdventureRecompiled-Windows-Test-2026-09-17.exe.
+2. Follow setup, select the .gdi and wait for installation to finish.
+3. Launch "Sonic Adventure Recompiled" from the desktop or Start menu.
+
+STEAM DECK
+1. Switch to Desktop Mode and extract the archive.
+2. Right-click SonicAdventureRecompiled-SteamDeck-Test-2026-09-17.run,
+   open Properties > Permissions and enable "Is executable". Then run it.
+3. Follow setup and select the .gdi. No sudo password is needed.
+4. In Steam, choose Games > Add a Non-Steam Game to My Library and select
+   "Sonic Adventure Recompiled" from the installed applications.
+5. Return to Gaming Mode and launch the game from your library.
+   Do not force Proton or another compatibility tool: this is a native game.
+The Deck preset uses 1280x800 fullscreen. Display and timing options are
+available in the game's Options menu.
+
+LINUX PC
+Requires 64-bit x86 Linux, glibc 2.31+, X11/XWayland and a Vulkan driver.
+1. Mark SonicAdventureRecompiled-Linux-Test-2026-09-17.run as executable
+   in its file properties, then run it.
+   Alternatively, open a terminal in its folder and enter:
+   sh ./SonicAdventureRecompiled-Linux-Test-2026-09-17.run
+2. Follow setup and select the .gdi. Run as your normal user, without sudo.
+3. Launch "Sonic Adventure Recompiled" from the applications menu or desktop.
+
+UPDATES AND FEEDBACK
+Close the game before reinstalling. Existing saves and settings are preserved.
+For bug reports, include your platform, character, level and what happened.
+
+Port by SoNiCFReaK | Powered by KatanaRecomp

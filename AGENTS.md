@@ -402,6 +402,20 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   A subsequent Deck crash without a capsule/reproduction remains unresolved;
   do not present the test installer as its fix or as a final release promotion.
 
+- Current full test installers for all three platforms are dated 2026-09-17
+  under `out/installers/`, with a shared English `INSTALLATION.txt`. See
+  `docs/test-installers-20260917.md`: real full installation and installed Gamma
+  gameplay pass on Windows and Linux; all original/payload hashes and reinstall
+  settings preservation pass. Linux/Deck use the same stripped v2 runtime;
+  Windows includes the newer movement code with its default OFF. Do not claim
+  byte-identical cross-platform source snapshots or a new Deck performance gain.
+  At the user's request, obsolete published installers/patches and reproducible
+  staging/test-installation duplicates were moved to a desktop deletion folder,
+  not deleted by the agent. `runs/cleanup-installer-moved-20260917.json` records
+  25 entries / 9.56 GiB and their original paths. Older artifact paths in these
+  historical reports may no longer exist. Current v2 patches and matching
+  diagnostic switches are retained; user archives, baseline and saves are intact.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
