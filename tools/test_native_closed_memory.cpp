@@ -66,6 +66,18 @@ struct Fixture {
             put(0x8C038F24u,0x3F800000u);put(0x8C038F28u,0xBF000000u);put(0x8C038F2Cu,0x3E800000u);
             for(unsigned i=0;i<1024u;++i)put(palette+i*4u,0xC0010000u^(i*0x9E3779B9u));
         }else if(family==1u){
+            // Include raw reserved state: the retained FSCHG pair masks it,
+            // while full-stack/empty-pop early returns must preserve it.
+            cpu.fpscr|=fpscr_flag_mask|fpscr_cause_mask|fpscr_exception_enable_mask;
+            if(mode&1u)cpu.fpscr|=~fpscr_writable_mask;
+            constexpr std::array raw{0u,0x80000000u,1u,0x80000001u,0x7F800000u,
+                0xFF800000u,0x7FC00001u,0x7FA00001u};
+            for(unsigned i=0;i<16u;++i){
+                cpu.xf[i]=raw[(i+mode)%raw.size()]^(i<<8u);
+                put(points+i*4u,raw[(i+variant)%raw.size()]^(i<<9u));
+                put(matrix+i*4u,raw[(i+variant+mode)%raw.size()]^(i<<10u));
+                put(matrix-64u+i*4u,raw[(i+3u)%raw.size()]^(i<<11u));
+            }
             cpu.pc=variant<3u?sonic::matrix_stack::push_entry:sonic::matrix_stack::pop_entry;
             put(0x8C88F5D8u,8u);put(0x8C88F5DCu,variant==2u?8u:3u);put(0x8C88F538u,matrix);
             cpu.r[4]=variant<3u?(variant==0u?0u:points):(variant==3u?1u:3u);
@@ -127,8 +139,10 @@ int main(int argc,char** argv)try{
             if(observer==0u)fast.product();else if(observer==1u)fast.observed();
             else{fast.product();fast.observed();} // revoke the registered observer generation
             const auto before=mm::closed_leaf_counts;
+            const auto before_metrics=fast.cpu.memory.performance_counters();
             require(fast.run(f),"native fixture declined");
             const auto after=mm::closed_leaf_counts;
+            const auto after_metrics=fast.cpu.memory.performance_counters();
             require(reference.run(f),"retained fixture declined");
             require(architecture(fast.cpu)==architecture(reference.cpu),"CPU differs");
             require(std::ranges::equal(fast.ram->bytes(),reference.ram->bytes()),"RAM differs");
@@ -136,13 +150,29 @@ int main(int argc,char** argv)try{
             if(observer)require(fast.events==reference.events,"ordered fallback writes differ");
             require((after.calls>before.calls)==(observer==0u && expect_direct),"wrong native admission");
             if(observer==0u && expect_direct)require(after.words-before.words==reference.events.size(),"write count differs");
+            if(f==1u && observer==0u && expect_direct){
+                // Whole matrix copies still account every read and overwritten
+                // MOVCA write of the original closed leaf.
+                const auto expected_reads=variant==0u?3u:variant==1u?19u:
+                    variant==2u?2u:variant==3u?18u:1u;
+                const auto expected_accesses=expected_reads+reference.events.size();
+                require(after_metrics.indexed_region_hits-before_metrics.indexed_region_hits==expected_accesses &&
+                    after_metrics.unobserved_accesses-before_metrics.unobserved_accesses==expected_accesses,
+                    "matrix bulk memory accounting differs");
+            }
             words+=after.words-before.words;++cases;
         }
     }
     if(sonic::palette_batch::enabled() && expect_direct)
         require(sonic::palette_batch::counts.closed_loops==48,"palette closed loop coverage");
+    if(sonic::matrix_stack::bulk_enabled() && expect_direct){
+        const auto& c=sonic::matrix_stack::bulk_counts;
+        require(c.pushes==8u && c.pops==4u && c.saved==12u && c.loaded==8u,"matrix bulk coverage");
+    }
     std::cout<<"NATIVE_CLOSED_MEMORY_OK cases="<<cases<<" direct_words="<<words
         <<" palette_closed_loops="<<sonic::palette_batch::counts.closed_loops
+        <<" matrix_bulk_pushes="<<sonic::matrix_stack::bulk_counts.pushes
+        <<" matrix_bulk_pops="<<sonic::matrix_stack::bulk_counts.pops
         <<" full_ram=exact cpu=exact observer_revoke=ok\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<"NATIVE_CLOSED_MEMORY_FAIL "<<e.what()<<'\n';return 1;}

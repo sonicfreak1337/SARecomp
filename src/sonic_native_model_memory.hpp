@@ -30,6 +30,17 @@ public:
     }
     bool direct()const noexcept{return bytes_!=nullptr;}
     std::uint64_t word_count()const noexcept{return count_;}
+    // The caller has admitted the complete disjoint matrix destination and
+    // authenticated the product observer. Two original MOVCA stores are
+    // overwritten by the following sixteen raw matrix words; no callback can
+    // observe their intermediate values. Retain all eighteen memory accesses.
+    bool try_store_matrix_snapshot(std::uint32_t address,
+        const std::array<std::uint32_t,16>& words) noexcept {
+        if(!bytes_)return false;
+        std::memcpy(bytes_+(address&0xFFFFFFu),words.data(),64u);
+        count_+=18u;
+        return true;
+    }
     void store(std::uint32_t address,std::uint32_t value,katana::runtime::CodeWriteSource source){
         if(bytes_){std::memcpy(bytes_+(address&0xFFFFFFu),&value,4u);++count_;return;}
         if(!memory_.try_write_direct_linear_u32(address&0x1FFFFFFFu,value,source))
@@ -64,6 +75,10 @@ public:
     bool try_store(std::uint32_t address,std::uint32_t value,katana::runtime::CodeWriteSource source){
         if(!direct())return false;
         writes_->store(address,value,source);return true;
+    }
+    bool try_store_matrix_snapshot(std::uint32_t address,
+        const std::array<std::uint32_t,16>& words) noexcept {
+        return direct() && writes_->try_store_matrix_snapshot(address,words);
     }
 private:
     std::optional<Writes> writes_;

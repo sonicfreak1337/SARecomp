@@ -18,6 +18,9 @@ def main():
     regions = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(regions)
     prepared = json.loads(args.preparation.read_text())
+    extended = prepared.get('extended_regions', False)
+    if not isinstance(extended, bool):
+        raise ValueError('Invalid extended_regions flag in preparation')
     totals, unsupported, examples = Counter(), Counter(), {}
     for unit in prepared['units']:
         data = (args.source_root / 'code' / unit['unit']).read_bytes()
@@ -33,7 +36,7 @@ def main():
                 raise ValueError('Unclosed instruction')
             block = source[match.start():end + 2 + len(match[1])]
             totals['ordinary_instruction_blocks'] += 1
-            if regions.classify(block):
+            if regions.classify(block, extended=extended):
                 totals['classified_blocks'] += 1
                 continue
             origin = re.search(r'const katana::runtime::GuestInstructionOrigin guest_origin\{[^\n]+\};\n', block)
@@ -47,12 +50,14 @@ def main():
             unsupported[body] += 1
             examples.setdefault(body, {'unit': unit['unit'], 'pc': match[2], 'source': block})
     result = {'scope': 'static retained source shapes, not dynamic coverage or FPS',
+              'extended_regions': extended,
+              'preparation_sha256': hashlib.sha256(args.preparation.read_bytes()).hexdigest(),
               'totals': dict(totals), 'unsupported': [
                   {'count': count, 'shape': body, **examples[body]}
                   for body, count in unsupported.most_common()]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + '\n')
-    print(json.dumps({'totals': dict(totals), 'top': [
+    print(json.dumps({'extended_regions': extended, 'totals': dict(totals), 'top': [
         {'count': count, 'shape': body[:320], 'pc': examples[body]['pc']}
         for body, count in unsupported.most_common(16)]}, indent=2))
 

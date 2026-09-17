@@ -48,6 +48,15 @@ std::uint32_t peek(const DirectLinearMemoryGuard& g,std::uint32_t a) noexcept {
 }
 } // namespace
 
+bool bulk_enabled() noexcept {
+    static const bool value=[] {
+        const char* option=std::getenv("SARECOMP_NATIVE_MATRIX_BULK");
+        return option && std::strcmp(option,"1")==0 &&
+            sonic::native_cpu::enabled("SARECOMP_NATIVE_MATRIX_BULK");
+    }();
+    return value;
+}
+
 static bool try_push(katana::runtime::CpuState& cpu,
                  const katana::runtime::NativePortImmutableWriteGuard* immutable_guard,
                  bool batch_stores,std::uint64_t* staged_groups) {
@@ -107,6 +116,29 @@ static bool try_push(katana::runtime::CpuState& cpu,
     ++cpu.r[2]; cpu.r[1]=pointer_address;
     store(0x8C639BCCu,cpu.r[6],cpu.r[2],CodeWriteSource::Cpu);
     cpu.r[5]=load(cpu.r[1]); cpu.t=cpu.r[4]==0u;
+    if(native_writes.direct() && bulk_enabled()) {
+        // In scalar entry mode, each odd-indexed 64-bit FMOV addresses XF.
+        // Descending pair stores produce XF[0..15] in ascending RAM order.
+        // Complete preflight already excludes source/control/code aliases.
+        (void)native_writes.try_store_matrix_snapshot(cpu.r[5],cpu.xf);
+        ++bulk_counts.saved;
+        cpu.r[5]+=64u;
+        store(0x8C639BF2u,cpu.r[1],cpu.r[5],CodeWriteSource::Cpu);
+        if(cpu.t) {
+            (void)native_writes.try_store_matrix_snapshot(cpu.r[5],cpu.xf);
+            ++bulk_counts.saved;
+        } else {
+            if(!direct_linear_guard_read_u32_group(g,(cpu.r[4]&0x1FFFFFFFu)|0x80000000u,cpu.xf))
+                throw std::runtime_error("native matrix: admitted input changed");
+            cpu.r[4]+=64u;
+            ++bulk_counts.loaded;
+        }
+        // Two FSCHG writes restore SZ and clear reserved FPSCR bits. Raw copy
+        // preserves payloads; no host floating-point arithmetic occurs.
+        cpu.fpscr&=fpscr_writable_mask;
+        ++bulk_counts.pushes;
+        cpu.r[0]=1u;cpu.pc=cpu.pr;return true;
+    }
     // MOVCA.L is a scalar StoreQueue-source write in the unchanged retained
     // executor/AOT. Each pair store emits low then high Fpu-source events,
     // before committing R5, exactly like FmovStorePreDecrement in that executor.
@@ -228,6 +260,14 @@ static bool try_pop(katana::runtime::CpuState& cpu,
     cpu.r[4]<<=2u; cpu.r[5]=pointer_address; cpu.r[4]<<=2u;
     cpu.r[1]=load(cpu.r[5]); cpu.r[1]-=cpu.r[4];
     store(0x8C639AFAu,cpu.r[5],cpu.r[1]);
+    if(native_writes.direct() && bulk_enabled()) {
+        if(!direct_linear_guard_read_u32_group(g,(cpu.r[1]&0x1FFFFFFFu)|0x80000000u,cpu.xf))
+            throw std::runtime_error("native matrix: admitted stack changed");
+        cpu.r[1]+=64u;
+        cpu.fpscr&=fpscr_writable_mask;
+        ++bulk_counts.pops;++bulk_counts.loaded;
+        cpu.r[0]=1u;cpu.pc=cpu.pr;return true;
+    }
     cpu.write_fpscr(cpu.read_fpscr()^fpscr_sz_mask);
     for (unsigned i=0;i<8u;++i) {
         const auto low=load(cpu.r[1]),high=load(cpu.r[1]+4u);

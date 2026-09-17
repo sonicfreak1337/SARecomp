@@ -18110,6 +18110,10 @@ void emit_sonic_native_gameplay_probe_sample(
               << " model_packet_vertices=" << sonic_native_title_state.model_source_plans.stats.model_packet_vertices
               << " closed_memory_calls=" << sonic::model_memory::closed_leaf_counts.calls
               << " closed_memory_words=" << sonic::model_memory::closed_leaf_counts.words
+              << " matrix_bulk_pushes=" << sonic::matrix_stack::bulk_counts.pushes
+              << " matrix_bulk_pops=" << sonic::matrix_stack::bulk_counts.pops
+              << " matrix_bulk_saved=" << sonic::matrix_stack::bulk_counts.saved
+              << " matrix_bulk_loaded=" << sonic::matrix_stack::bulk_counts.loaded
               << " render_context_captures=" << sonic::render_context::statistics().captures
               << " render_context_commits=" << sonic::render_context::statistics().commits
               << " render_context_fallbacks=" << sonic::render_context::statistics().fallbacks

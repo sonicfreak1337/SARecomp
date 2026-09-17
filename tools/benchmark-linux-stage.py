@@ -68,6 +68,7 @@ p.add_argument('--native-pose', choices=('off','on','installed'), default='insta
                help='Same-executable comparison of the complete native pose mixer')
 p.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
 p.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
+p.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -150,6 +151,7 @@ env.update({
     'SARECOMP_NATIVE_MODEL_PACKETS_VERIFY':str(int(a.native_model_packets=='verify')),
     'SARECOMP_NATIVE_PROJECTION_BATCH':str(int(a.native_projection_batch!='off')),
     'SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY':str(int(a.native_projection_batch=='verify')),
+    'SARECOMP_NATIVE_MATRIX_BULK':str(int(a.native_matrix_bulk=='on')),
     'SARECOMP_NATIVE_CLOSED_MEMORY':str(int(a.native_closed_memory=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
@@ -283,6 +285,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_animation':a.native_animation,
           'native_model_packets':a.native_model_packets,
           'native_projection_batch':a.native_projection_batch,
+          'native_matrix_bulk':a.native_matrix_bulk,
           'native_closed_memory':a.native_closed_memory,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,

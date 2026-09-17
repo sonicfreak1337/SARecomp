@@ -2,6 +2,12 @@
 #include "katana/runtime/runtime.hpp"
 namespace katana::runtime { class NativePortImmutableWriteGuard; }
 namespace sonic::matrix_stack {
+struct BulkCounts {
+    std::uint64_t pushes=0,pops=0,saved=0,loaded=0;
+};
+inline thread_local BulkCounts bulk_counts{};
+// Internal opt-in; preserves the product observer and entire leaf admission.
+bool bulk_enabled() noexcept;
 // Complete PAL byte spans, including their inline literal islands.
 inline constexpr std::uint32_t push_entry=0x8C639BB0u, push_size=0x80u;
 inline constexpr std::uint32_t pop_entry=0x8C639AD8u, pop_size=0x40u;

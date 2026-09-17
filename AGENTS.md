@@ -238,9 +238,20 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Matched Linux Gamma saves 18.84% execution CPU/update, but Chaos-4 entry
   costs 1.44% more. Windows results are also mixed. Do not promote or advertise
   a global/Deck gain from the favorable scene alone. The development Linux
-  game and `out/projection-batch-windows-20260917/game.exe` now contain this
+  game and `out/projection-batch-windows-20260917/game.exe` contain this
   OFF path plus the retained extended RAM experiment; the Sep17 patch is
   unchanged. Continue from these reports without repeating unchanged tests.
+
+- Whole-matrix bulk push/pop remains internal-OFF after exact 588-case tests
+  on Windows and Linux but mixed/negative paired gameplay results. See
+  `docs/native-matrix-bulk-20260917.md`. Current `build-linux/game` and
+  `out/matrix-bulk-windows-20260917/game.exe` include this OFF path and the
+  projection OFF path, plus the retained extended RAM experiment. Final tests
+  include reserved-FPSCR normalization; performance-run binary identities are
+  recorded separately. Do not promote this experiment or repeat unchanged
+  pairs. The next static inventory must use `extended_regions` from preparation
+  metadata: its largest remaining gaps are FMOV predecrement and unattempted
+  FPU instruction groups. Original group accounting must remain exact.
 
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
