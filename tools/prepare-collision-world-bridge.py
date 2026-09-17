@@ -17,7 +17,7 @@ def sha(data):return hashlib.sha256(data).hexdigest()
 def local_resumes(text,ram,owner):
     _,entry,begin,end=owner
     instructions,delays,calls=world.inspect(ram,entry,begin,end)
-    memory=lambda line:re.search(r'\b(?:load|load16|load8|store|store16)\(',line) is not None
+    memory=lambda line:re.search(r'\b(?:load|load16|load8|store|store16|fload|fstore)\(',line) is not None
     restart={entry}
     for pc,op in instructions.items():
         if pc+2 in delays:

@@ -24,6 +24,18 @@ OWNERS = (
     ('polygon_allocate', 0x8C02CFC0, 0x8C02CFC0, 0x8C02D00E),
     ('buckets_join', 0x8C02D00E, 0x8C02D00E, 0x8C02D050),
 )
+SDK_OWNERS = (
+    ('point', 0x8C638E0C, 0x8C638E0C, 0x8C638E64),
+    ('push', 0x8C639BB0, 0x8C639BB0, 0x8C639C30),
+    ('pop', 0x8C639AD8, 0x8C639AD8, 0x8C639B18),
+    ('rotate_x', 0x8C639E08, 0x8C639E08, 0x8C639E98),
+    ('rotate_y', 0x8C639E9C, 0x8C639E9C, 0x8C639F32),
+    ('rotate_z', 0x8C63A10C, 0x8C63A10C, 0x8C63A1A2),
+    ('scale', 0x8C63A52C, 0x8C63A52C, 0x8C63A5D8),
+    ('translate', 0x8C63A744, 0x8C63A744, 0x8C63A7B4),
+    ('identity', 0x8C63A820, 0x8C63A820, 0x8C63A886),
+    ('sqrt', 0x8C63A904, 0x8C63A904, 0x8C63A918),
+)
 
 def inspect(ram, entry, begin, end):
     # CF48 tail-branches into CF20; walk that whole reviewed release owner.
@@ -32,7 +44,35 @@ def inspect(ram, entry, begin, end):
 def emit_simple(pc, op, ram, restart=None):
     n, m = (op >> 8) & 15, (op >> 4) & 15
     r, s = f'cpu.r[{n}]', f'cpu.r[{m}]'
-    if op & 0xF00F == 0x0007:
+    at=restart or f'RestartPoint{{0x{pc:08X}u}}'
+    if op == 0xF3FD:
+        body='cpu.write_fpscr(cpu.fpscr^fpscr_sz_mask);'
+    elif op == 0xFBFD:
+        body='cpu.write_fpscr(cpu.fpscr^fpscr_fr_mask);'
+    elif op & 0xF1FF == 0xF0FD:
+        body=f'fpu_sine_cosine(cpu,{n}u);'
+    elif op & 0xF3FF == 0xF1FD:
+        body=f'fpu_transform_vector(cpu,{n&12}u);'
+    elif op & 0xF0FF == 0xF06D:
+        body=f'fpu_square_root(cpu,{n}u);'
+    elif op & 0xF0FF == 0x00C3:
+        body=f'store({at},{r},cpu.r[0],CodeWriteSource::StoreQueue);'
+    elif pc>=0x8C638000 and op>>12==15 and 6<=(op&15)<=12:
+        # SDK owners temporarily change SZ/FR. Preserve pair selection, ordered
+        # RAM alias effects, and instruction-atomic rejection before mutation.
+        low=op&15
+        if low in (6,8,9):
+            addr=f'cpu.r[0]+{s}' if low==6 else s
+            body=f'fload({at},{n}u,{addr});'
+            if low==9:body+=f'{s}+=(cpu.fpscr&fpscr_sz_mask)?8u:4u;'
+        elif low in (7,10,11):
+            addr=f'cpu.r[0]+{r}' if low==7 else r
+            if low==11:
+                body=f'{{const auto address={r}-((cpu.fpscr&fpscr_sz_mask)?8u:4u);fstore({at},address,{m}u);{r}=address;}}'
+            else:body=f'fstore({at},{addr},{m}u);'
+        else:
+            body=f'if(cpu.fpscr&fpscr_sz_mask)write_fpu_pair_bits(cpu,{n}u,read_fpu_pair_bits(cpu,{m}u));else cpu.fr[{n}]=cpu.fr[{m}];'
+    elif op & 0xF00F == 0x0007:
         body = f'cpu.macl={r}*{s};'
     elif op & 0xF0FF == 0x4010:
         body = f'--{r};cpu.t={r}==0u;'
@@ -87,7 +127,7 @@ def main():
         raise ValueError('Unexpected original PAL image')
     a.output.mkdir(parents=True,exist_ok=True)
     spans=[];reports=[]
-    for name,entry,begin,end in OWNERS:
+    for name,entry,begin,end in OWNERS+SDK_OWNERS:
         ins,delays,calls=inspect(ram,entry,begin,end)
         used=dict(ins);used.update({pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0] for pc in delays})
         spans.append((begin,end-begin));literals=set()
@@ -100,6 +140,7 @@ def main():
         reports.append(dict(name=name,entry=f'{entry:08X}',begin=f'{begin:08X}',end=f'{end:08X}',
             instructions=len(ins),delays=len(delays),calls=calls,
             reachable={f'{pc:08X}':f'{op:04X}' for pc,op in sorted(used.items())}))
+        if entry>=0x8C638000 and calls:raise ValueError('SDK closure contains a call')
     merged=[]
     for start,size in sorted(spans):
         if merged and start<=sum(merged[-1]):merged[-1]=(merged[-1][0],max(start+size,sum(merged[-1]))-merged[-1][0])

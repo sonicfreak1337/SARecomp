@@ -453,6 +453,28 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   remains retired. Latest user scope: include both Knuckles stages, but keep
   testing short rather than expanding the full matrix.
 
+- The complete collision-world SDK extension remains internal-OFF after full
+  Windows/Linux qualification; see `docs/native-collision-world-sdk-20260917.md`.
+  Ten SDK owners share the world's RAM and preserve exact partial-fault private
+  continuations. Both platforms pass 78 world / 450 SDK comparisons and 8 world
+  / 18 SDK actual-AOT cases. The first Linux arithmetic discrepancy was fixed
+  by preserving helper-local SDK FPU epochs; no tolerance was weakened.
+  Matched Linux Sky Deck improves 7.32% CPU / 20.63% images, but Lost World costs
+  5.72% CPU / loses 9.27% images. Gamma has differing endpoints and supplies no
+  qualified gain. Keep the extension OFF and its parent world group ON; do not
+  ship it or repeat unchanged tests. Current development artifacts are
+  `build-linux/game` and `out/world-sdk-windows-20260917/game.exe`; the delivered
+  v2 patch and installers remain unchanged. Next is the distinct complete
+  live render/motion hierarchy group, retaining mutable callbacks/draws.
+
+- Latest delivery request: continue broad native function-group work and build
+  the next Deck patch on September 18, 2026 around 05:20 Europe/Berlin. The
+  one-shot heartbeat `sarecomp-deck-patch-18-09-05-20` is already scheduled in
+  this thread. Do not create a duplicate. Deliver qualified changes only,
+  briefly verify actual Linux patch installation and preserve all saves,
+  settings and diagnostic ON/OFF switches. Delete that automation after
+  delivery. This authorizes the next patch; the previous Sep17 v2 remains.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

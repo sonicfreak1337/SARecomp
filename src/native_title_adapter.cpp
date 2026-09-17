@@ -38584,7 +38584,7 @@ bool sonic_collision_world_resume(void* opaque,katana::runtime::CpuState& cpu,st
     if(cpu.trap_pending || context.stop_reason!=katana::runtime::NativePortStopReason::None ||
        !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
     struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
-    const bool handled=resume_geometry(cpu,owner) || resume_pools(cpu,owner) || resume_eligibility(cpu,owner);
+    const bool handled=resume_geometry(cpu,owner) || resume_pools(cpu,owner) || resume_eligibility(cpu,owner) || resume_sdk(cpu,owner);
     return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
 }
 }

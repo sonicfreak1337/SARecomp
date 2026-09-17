@@ -14,13 +14,13 @@ std::set<std::uint32_t> original_entries;
 bool original_entry(std::uint32_t pc) noexcept {return original_entries.contains(pc);}
 void load_original_entries(const std::filesystem::path& root){
     const std::regex row(R"(\{0x([A-F0-9]{8})u, &fn_([A-F0-9]{8})_runtime_entry, true, (?:true|false)\})");
-    for(const auto* name:{"native-port-dispatch-shard-202757.cpp","native-port-dispatch-shard-202762.cpp"}){
+    for(const auto* name:{"native-port-dispatch-shard-202757.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202951.cpp"}){
         std::ifstream f(root/name);const std::string text{std::istreambuf_iterator<char>(f),{}};
         require(!text.empty(),"original dispatcher shard missing");
         for(auto i=std::sregex_iterator(text.begin(),text.end(),row);i!=std::sregex_iterator();++i)
-            if(family::contains(std::stoul((*i)[2].str(),nullptr,16)))original_entries.insert(std::stoul((*i)[1].str(),nullptr,16));
+            if(family::contains(std::stoul((*i)[2].str(),nullptr,16)) || family::sdk_contains(std::stoul((*i)[2].str(),nullptr,16)))original_entries.insert(std::stoul((*i)[1].str(),nullptr,16));
     }
-    require(original_entries.size()==735,"original static entry identity");
+    require(original_entries.size()==1023,"original static entry identity");
 }
 struct Host final:NativePortHostServices {
     std::uint64_t monotonic_time_nanoseconds()const noexcept override{return 1;}
@@ -38,10 +38,10 @@ void external(CpuState& c,std::uint32_t target){
 namespace sonic::collision_world {
 bool resume(void*,CpuState& c,std::uint32_t owner){
     struct Depth{Depth(){++resume_depth;}~Depth(){--resume_depth;}} depth;
-    return (resume_geometry(c,owner) || resume_pools(c,owner) || resume_eligibility(c,owner)) && !c.trap_pending;
+    return (resume_geometry(c,owner) || resume_pools(c,owner) || resume_eligibility(c,owner) || resume_sdk(c,owner)) && !c.trap_pending;
 }
 Outcome try_dispatch(CpuState& c,NativePortAotServices& s){
-    last_outcome=execute(c,s.immutable_write_guard(),{active_fixture,Fixture::invoke,resume});
+    last_outcome=execute(c,s.immutable_write_guard(),{active_fixture,Fixture::invoke,resume,Fixture::sdk_boundary},true,true);
     return last_outcome;
 }
 }
@@ -114,5 +114,31 @@ int main(int argc,char** argv)try{
         }
         std::cout<<"world-aot case="<<kind<<" outcome="<<int(last_outcome)<<" pc="<<std::hex<<a.cpu.pc<<std::dec<<'\n';++cases;
     }
-    std::cout<<"SONIC_COLLISION_WORLD_AOT_OK cases="<<cases<<" exact_cpu_ram=1 sparse_entries=preserved\n";return 0;
+    unsigned sdk_cases=0;
+    for(auto owner:{0x8C638E0Cu,0x8C639BB0u,0x8C639AD8u,0x8C639E08u,0x8C639E9Cu,
+                   0x8C63A10Cu,0x8C63A52Cu,0x8C63A744u,0x8C63A820u})
+    for(unsigned kind=0;kind<2;++kind){
+        Fixture a(image,0),b(image,0);active_fixture=&a;
+        for(auto* f:{&a,&b}){
+            f->cpu.pc=owner;f->cpu.r[4]=kind?0x8CFFFFF0u:A+1;f->cpu.r[5]=B;f->cpu.r[6]=kind?0x8CFFFFFCu:C;
+            f->vector(B,1,2,3);
+            if(owner==0x8C639BB0u){f->cpu.r[4]=0;f->put(0x8C88F538u,kind?0x8CFFFFC0u:A+1);}
+            if(owner==0x8C639AD8u){f->cpu.r[4]=1;f->put(0x8C88F5DCu,2);f->put(0x8C88F538u,kind?0x8D000030u:A+65);}
+            if(owner==0x8C638E0Cu && kind)f->cpu.r[4]=A;
+            if(owner==0x8C639E08u || owner==0x8C639E9Cu || owner==0x8C63A10Cu)f->cpu.r[5]=0x2468u;
+        }
+        sonic::scalar_writes::unbind(&a.cpu.memory,&a.immutable);
+        a.cpu.memory.set_guest_write_observer({});a.cpu.memory.set_guest_write_batch_observer({});
+        NativePortContext context;context.cpu=&a.cpu;context.host=&host;
+        NativePortAotServices aot(context,original_entry,a.immutable);
+        sonic::scalar_writes::bind(a.cpu.memory,a.immutable,a.cpu.memory.guest_write_observer_generation());
+        katana_port_generated::runtime_dispatch_detail::active_services=&aot;
+        const auto before=family::counts.resumes;
+        const auto outcome=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,family::resume},false,true);
+        while(b.cpu.pc!=returned && !b.cpu.trap_pending){require(++b.steps<2000u,"SDK fallback bound");(void)execute_dynamic_sh4_block(b.cpu,services,1u);}
+        compare(a,b,"SDK AOT fallback");require(a.cpu.trap_pending,"SDK expected original exception");
+        require(family::counts.resumes==before+1,"SDK did not restart exactly once");
+        std::cout<<"SDK-aot owner="<<std::hex<<owner<<std::dec<<" kind="<<kind<<" outcome="<<int(outcome)<<'\n';++sdk_cases;
+    }
+    std::cout<<"SONIC_COLLISION_WORLD_AOT_OK cases="<<cases<<" sdk_cases="<<sdk_cases<<" exact_cpu_ram=1 sparse_entries=preserved\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}

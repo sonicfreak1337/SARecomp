@@ -54,6 +54,21 @@ foreach(world_unit IN ITEMS
     list(APPEND world_bridges "${world_bridge}")
 endforeach()
 
+set(world_sdk_bridge "${CMAKE_BINARY_DIR}/generated/world-bridge/sdk-continuations.cpp")
+add_custom_command(OUTPUT "${world_sdk_bridge}"
+    COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-collision-world-sdk-bridge.py"
+        --source-root "${SONIC_WORKING}/generated" --output "${world_sdk_bridge}"
+        --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+    DEPENDS "${SONIC_ROOT}/tools/prepare-collision-world-sdk-bridge.py"
+        "${SONIC_ROOT}/tools/prepare-collision-world-bridge.py" "${SONIC_ROOT}/tools/prepare-collision-world.py"
+        "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
+target_sources(${world_target} PRIVATE "${world_sdk_bridge}")
+set_source_files_properties("${world_sdk_bridge}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
+if(NOT TARGET sonic_linux_guest)
+    set_source_files_properties("${world_sdk_bridge}" PROPERTIES COMPILE_OPTIONS "/fp:strict;/bigobj")
+endif()
+list(APPEND world_bridges "${world_sdk_bridge}")
+
 get_target_property(world_test_sources sonic-collision-world-tests SOURCES)
 list(REMOVE_ITEM world_test_sources "${SONIC_ROOT}/tools/test_collision_world.cpp")
 add_executable(sonic-collision-world-aot-tests EXCLUDE_FROM_ALL

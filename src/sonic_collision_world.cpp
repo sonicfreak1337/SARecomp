@@ -40,11 +40,12 @@ class Access {
     const NativePortImmutableWriteGuard& immutable;
     DirectLinearMemoryGuard read{},write{};
     bool p0{};
+    bool sdk;
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
 public:
     std::uint64_t serial{};
-    Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
+    Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard,bool closed_sdk):c(cpu),immutable(guard),sdk(closed_sdk){}
     ~Access(){flush();}
     bool refresh() {
         ++serial;
@@ -73,8 +74,22 @@ public:
     }
     bool identity(unsigned i)const noexcept {
         const auto& s=identities[i];
+        if(!sdk && s.address>=0x8C638000u)return true;
         return range(s.address,std::uint32_t(s.bytes.size())) &&
             std::memcmp(read.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size())==0;
+    }
+    void fload(RestartPoint at,unsigned reg,std::uint32_t address) {
+        if(!(c.fpscr&fpscr_sz_mask)){c.fr[reg]=u32(address,at);return;}
+        if(!range(address,8u,4u))restart(at);
+        std::uint64_t value;std::memcpy(&value,read.read_bytes+(address&0xFFFFFFu),8u);
+        write_fpu_pair_bits(c,reg,value);
+    }
+    void fstore(RestartPoint at,std::uint32_t address,unsigned reg) {
+        if(!(c.fpscr&fpscr_sz_mask)){u32(address,c.fr[reg],at);return;}
+        const auto physical=address&0x1FFFFFFFu;
+        if(!write || !range(address,8u,4u) || immutable.tracks_address(physical,8u))restart(at);
+        const auto value=read_fpu_pair_bits(c,reg);
+        std::memcpy(write.write_bytes+(address&0xFFFFFFu),&value,8u);stores+=2;
     }
     bool admit_stack(std::uint32_t a,std::uint32_t size) {
         if(!write || !range(a,size,4u) || immutable.tracks_address(a&0x1FFFFFFFu,size) ||
@@ -151,7 +166,8 @@ class Index {
         return *data;
     }
 public:
-    explicit Index(bool on):enabled(on){}
+    bool sdk;
+    explicit Index(bool on,bool closed_sdk):enabled(on),sdk(closed_sdk){}
     bool membership(CpuState& cpu,Access& a){
         if(!enabled)return false;
         auto& d=tables(a);
@@ -202,7 +218,7 @@ public:
     }
 };
 #ifdef SARECOMP_COLLISION_WORLD_TEST_COVERAGE
-#define WORLD_SITE(pc) (visited[((pc)-0x8C000000u)/2u]=true)
+#define WORLD_SITE(pc) (visited[((pc)>=0x8C638000u?0x53000u+(pc)-0x8C638000u:(pc)-0x8C000000u)/2u]=true)
 #else
 #define WORLD_SITE(pc) ((void)0)
 #endif
@@ -213,14 +229,28 @@ void body(CpuState& cpu,Access& a,Calls calls,Index& index,std::uint32_t owner){
     const auto load8=[&](RestartPoint at,std::uint32_t address){return a.load<std::uint8_t>(address,at);};
     const auto store=[&](RestartPoint at,std::uint32_t address,std::uint32_t value,CodeWriteSource source){a.store<std::uint32_t>(address,value,at,source);};
     const auto store16=[&](RestartPoint at,std::uint32_t address,std::uint16_t value,CodeWriteSource source){a.store<std::uint16_t>(address,value,at,source);};
+    const auto fload=[&](RestartPoint at,unsigned reg,std::uint32_t address){a.fload(at,reg,address);};
+    const auto fstore=[&](RestartPoint at,std::uint32_t address,unsigned reg){a.fstore(at,address,reg);};
     const auto set_t=[&](bool value){cpu.t=value;};
-    std::optional<HostFpuExecutionEpoch> epoch;epoch.emplace(cpu);
+    // SDK arithmetic retains its original helper-local rounding scopes. In
+    // particular FSCA -> FTRV must not inherit one larger rounding epoch.
+    std::optional<HostFpuExecutionEpoch> epoch;
+    if(!sdk_contains(owner))epoch.emplace(cpu);
     const auto call=[&](std::uint32_t target){
         // Sharing memory does not broaden the reviewed arithmetic epoch.
         epoch.reset();cpu.pc=target;const auto continuation=cpu.pr;
-        if(contains(target)){
+        if(contains(target) || (index.sdk && sdk_contains(target))){
+#ifdef SARECOMP_COLLISION_WORLD_TEST_COVERAGE
+            if(sdk_contains(target) && calls.sdk_boundary)calls.sdk_boundary(calls.context,cpu,target,false);
+#endif
             ++counts.internal_calls;
             if(!run(cpu,a,calls,index,target))throw ResumeOriginal{};
+            // SDK destinations are live RAM and may alias list/index inputs.
+            // Retain the old callback's index lifetime without reacquiring RAM.
+            if(sdk_contains(target))++a.serial;
+#ifdef SARECOMP_COLLISION_WORLD_TEST_COVERAGE
+            if(sdk_contains(target) && calls.sdk_boundary)calls.sdk_boundary(calls.context,cpu,target,true);
+#endif
         }else{
             a.flush();++counts.callbacks;
             if(!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation)throw Interrupted{};
@@ -264,6 +294,36 @@ void body(CpuState& cpu,Access& a,Calls calls,Index& index,std::uint32_t owner){
     case 0x8C02D00Eu: {
 #include "world-buckets_join.inc"
     }
+    case 0x8C638E0Cu: {
+#include "world-point.inc"
+    }
+    case 0x8C639BB0u: {
+#include "world-push.inc"
+    }
+    case 0x8C639AD8u: {
+#include "world-pop.inc"
+    }
+    case 0x8C639E08u: {
+#include "world-rotate_x.inc"
+    }
+    case 0x8C639E9Cu: {
+#include "world-rotate_y.inc"
+    }
+    case 0x8C63A10Cu: {
+#include "world-rotate_z.inc"
+    }
+    case 0x8C63A52Cu: {
+#include "world-scale.inc"
+    }
+    case 0x8C63A744u: {
+#include "world-translate.inc"
+    }
+    case 0x8C63A820u: {
+#include "world-identity.inc"
+    }
+    case 0x8C63A904u: {
+#include "world-sqrt.inc"
+    }
     default:throw Interrupted{};
     }
 }
@@ -305,21 +365,30 @@ bool contains(std::uint32_t pc) noexcept {
     }
 }
 std::span<const SourceSpan> source_spans() noexcept {return identities;}
+bool sdk_contains(std::uint32_t pc) noexcept {
+    switch(pc){
+    case 0x8C638E0Cu:case 0x8C639BB0u:case 0x8C639AD8u:
+    case 0x8C639E08u:case 0x8C639E9Cu:case 0x8C63A10Cu:
+    case 0x8C63A52Cu:case 0x8C63A744u:case 0x8C63A820u:case 0x8C63A904u:return true;
+    default:return false;
+    }
+}
 bool retained_source_matches(CpuState& cpu,const NativePortImmutableWriteGuard* guard) noexcept {
     if(!guard || guard->write_detected())return false;
     const auto memory=cpu.memory.direct_linear_memory_guard(false);
     if(!memory || memory.physical_base!=0x0C000000u || memory.physical_span<0x1000000u || memory.backing_mask!=0xFFFFFFu)return false;
     for(const auto& s:identities)
+        if(s.address<0x8C638000u || sdk_enabled())
         if(std::memcmp(memory.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return false;
     return true;
 }
-Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls calls,bool indexed){
+Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls calls,bool indexed,bool sdk){
     ++counts.declined;
-    if(!guard || !calls.invoke || !contains(cpu.pc))return Outcome::Declined;
-    Access access(cpu,*guard);
+    if(!guard || !calls.invoke || !(contains(cpu.pc) || (sdk && sdk_contains(cpu.pc))))return Outcome::Declined;
+    Access access(cpu,*guard,sdk);
     if(!access.refresh())return Outcome::Declined;
     for(unsigned i=0;i<identities.size();++i)if(!access.identity(i))return Outcome::Declined;
-    --counts.declined;++counts.calls;Index index(indexed);
+    --counts.declined;++counts.calls;Index index(indexed,sdk);
     try{run(cpu,access,calls,index,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

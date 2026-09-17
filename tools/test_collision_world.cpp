@@ -105,9 +105,9 @@ struct Fixture {
         case 0x8C63A744u:case 0x8C639E08u:case 0x8C639E9Cu:case 0x8C63A10Cu:case 0x8C63A52Cu:
         case 0x8C63A820u:case 0x8C63A904u:case 0x8C640862u:case 0x8C6409C0u:case 0x8C6406A6u:case 0x8C10C99Cu:return true;default:return false;}
     }
-    bool child(std::uint32_t target){
-        trace.emplace_back(target,cpu.pr);++callback_index;
-        if(stop_after==callback_index)return false;
+    bool child(std::uint32_t target,bool record=true){
+        if(record){trace.emplace_back(target,cpu.pr);++callback_index;}
+        if(record && stop_after==callback_index)return false;
         if(target==0x8C052E30u){
             half(0x8C754E30u,std::uint16_t(records.size()));
             for(unsigned i=0;i<records.size();++i){const auto p=0x8C754E34u+i*12;put(p,records[i].flags);put(p+4,records[i].key);put(p+8,records[i].task);}
@@ -117,7 +117,7 @@ struct Fixture {
             const auto end=cpu.pr;
             do{require(++steps<3000000u,"SDK instruction bound");(void)execute_dynamic_sh4_block(cpu,services,1u);require(!cpu.trap_pending,"SDK trap");}while(cpu.pc!=end);
         }
-        if(mutation && callback_index==1){
+        if(record && mutation && callback_index==1){
             if(mutation==1)cpu.memory.set_guest_write_observer([](const GuestWriteEvent&)noexcept{});
             if(mutation==2)put(njs+4,models+1);
         }
@@ -129,6 +129,13 @@ struct Fixture {
         const auto ok=f.child(target);
         if(f.oracle){require(f.oracle->child(target)==ok,"callback result");compare(f,*f.oracle,"callback return");}
         return ok;
+    }
+    static void sdk_boundary(void* p,CpuState& c,std::uint32_t target,bool returned){
+        auto& f=*static_cast<Fixture*>(p);require(&c==&f.cpu && family::sdk_contains(target),"SDK boundary");
+        if(!f.oracle)return;
+        if(!returned)advance(*f.oracle);
+        else require(f.oracle->child(target,false),"SDK reference return");
+        compare(f,*f.oracle,returned?"SDK return":"SDK entry");
     }
 };
 void advance(Fixture& f){
@@ -182,12 +189,43 @@ int main(int argc,char** argv)try{
     for(unsigned variant=0;variant<26;++variant)for(auto mode:{0u,1u,fpscr_fr_mask}){
         Fixture n(image,mode),r(image,mode);setup(n,variant);setup(r,variant);n.oracle=&r;
         std::cout<<"world case "<<std::dec<<variant<<" mode "<<mode<<'\n';
-        const auto outcome=family::execute(n.cpu,&n.immutable,{&n,Fixture::invoke,nullptr});
+        const auto outcome=family::execute(n.cpu,&n.immutable,{&n,Fixture::invoke,nullptr,Fixture::sdk_boundary},true,true);
         require(outcome==family::Outcome::Complete,"native did not complete");advance(r);compare(n,r,"return");
         require(n.trace==r.trace,"external call order");++cases;
     }
+    unsigned sdk_cases=0;
+    for(auto owner:{0x8C638E0Cu,0x8C639BB0u,0x8C639AD8u,0x8C639E08u,0x8C639E9Cu,
+                   0x8C63A10Cu,0x8C63A52Cu,0x8C63A744u,0x8C63A820u,0x8C63A904u})
+    for(unsigned variant=0;variant<15;++variant)for(auto mode:{0u,1u,fpscr_fr_mask}){
+        Fixture n(image,mode),r(image,mode);
+        for(auto* f:{&n,&r}){
+            f->cpu.pc=owner;f->cpu.r[4]=(variant&1)?A:0;f->cpu.r[5]=B;f->cpu.r[6]=C;
+            f->vector(B,1.25f,-2.f,.5f);
+            for(unsigned i=0;i<32;++i)f->putf(A+i*4,float(int(i%5)-2)*.125f);
+            if(owner==0x8C639E08u || owner==0x8C639E9Cu || owner==0x8C63A10Cu)f->cpu.r[5]=variant*4093u;
+            if(owner==0x8C639AD8u){f->cpu.r[4]=1;f->put(0x8C88F5DCu,2);f->put(0x8C88F538u,A+128);}
+            if(variant==2)f->cpu.r[6]=B; // in-place point
+            if(variant==3){f->cpu.r[4]|=0x20000000u;f->cpu.r[6]|=0x20000000u;}
+            if(variant==4 && owner==0x8C638E0Cu){f->cpu.r[4]=A;f->cpu.r[6]=A+4;}
+            if(variant==5 && owner==0x8C63A820u)f->cpu.r[4]=0x8C67C590u;
+            if(variant==6 && (owner==0x8C639E08u || owner==0x8C639E9Cu || owner==0x8C63A10Cu)){
+                f->cpu.r[4]=A;f->cpu.r[15]=A+32; // matrix overlaps original scratch stack
+            }
+            if(variant==7){f->cpu.xf[7]=0x7FC12345u;f->put(A+28,0x7F800000u);}
+            if(variant==8){f->cpu.fr[4]=0x80000000u;f->cpu.xf[3]=0x80000000u;}
+            if(variant==9){f->put(0x8C88F5DCu,64);f->cpu.fr[4]=0xC0800000u;}
+            if(variant==10){f->put(0x8C88F5DCu,0xFFFFFFFFu);f->cpu.fr[4]=0x7FC00001u;}
+            if(variant==11 && owner==0x8C639AD8u){f->cpu.r[4]=2;f->put(0x8C88F5DCu,1);}
+            if(variant==12 && owner==0x8C639AD8u)f->cpu.r[4]=2;
+            if(variant==13 && owner==0x8C639AD8u)f->cpu.r[4]=0;
+            if(variant==14)f->cpu.fpscr|=0xC0000000u;
+        }
+        std::cout<<"SDK case "<<std::hex<<owner<<std::dec<<" variant "<<variant<<" mode "<<mode<<'\n';
+        require(family::execute(n.cpu,&n.immutable,{&n,Fixture::invoke,nullptr},false,true)==family::Outcome::Complete,"SDK native incomplete");
+        require(r.child(owner,false),"SDK reference incomplete");compare(n,r,"SDK standalone");++sdk_cases;
+    }
     unsigned coverage=0;for(bool v:family::visited)coverage+=v;
-    std::cout<<"SONIC_COLLISION_WORLD_OK cases="<<cases<<" instructions_visited="<<coverage
+    std::cout<<"SONIC_COLLISION_WORLD_OK cases="<<cases<<" sdk_cases="<<sdk_cases<<" instructions_visited="<<coverage
         <<" membership="<<family::counts.membership_hits<<" eligibility="<<family::counts.eligibility_hits<<" internal="<<family::counts.internal_calls<<'\n';
     return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}

@@ -1,6 +1,6 @@
 set(collision-world_dir "${CMAKE_BINARY_DIR}/generated/collision-world-resolver")
 set(collision-world_outputs "${collision-world_dir}/world-identities.inc")
-foreach(world_part world eligibility hierarchy polygons vertices object_allocate object_release polygon_dot buckets_clear polygon_allocate buckets_join)
+foreach(world_part world eligibility hierarchy polygons vertices object_allocate object_release polygon_dot buckets_clear polygon_allocate buckets_join point push pop rotate_x rotate_y rotate_z scale translate identity sqrt)
     list(APPEND collision-world_outputs "${collision-world_dir}/world-${world_part}.inc")
 endforeach()
 add_custom_command(OUTPUT ${collision-world_outputs}
