@@ -7,7 +7,10 @@
 namespace sonic::projection_batch {
 struct Result {
     std::vector<std::array<std::uint32_t,4>> transformed;
-    std::vector<std::array<std::uint32_t,3>> positions;
+    // Four-word stride lets projection keep complete vertex records in SIMD
+    // registers. Word 3 is private scratch; publication still preserves the
+    // original guest record's fourth word.
+    std::vector<std::array<std::uint32_t,4>> positions;
     std::vector<std::uint8_t> clipped;
     std::array<std::uint32_t,4> read_ahead{},last_second{};
     std::uint32_t clip_count=0;

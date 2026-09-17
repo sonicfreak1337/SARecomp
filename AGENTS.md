@@ -267,6 +267,23 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   results; inspect register pressure and whole FPU epoch boundaries before
   further code-shape expansion. No repeated unchanged test suite is needed.
 
+- Projection layout/padding follow-up: see
+  `docs/native-projection-layout-20260917.md`. Four-vertex SIMD transposes
+  replace scalar temporary-array scatter/gather; one unobserved buffer capture
+  preserves padding. Both platforms pass 4,096 exact cases and actual-game
+  dual-path verification; Original/Recompiled timing is preserved. Current
+  same-executable ON/OFF pairs save only 0.48%/0.76% Windows CPU and
+  2.59%/2.49% Linux CPU (Gamma/Chaos 4), with +0.83%/-0.31% Linux image
+  throughput. The older 18.84% Gamma result is not reproduced or additive.
+  This does not isolate new layout versus old batch; no such gain is claimed.
+  The experiment remains OFF; delivered binaries/patch are unchanged.
+  Current development artifacts are `build-linux/game` and
+  `out/projection-layout-windows-20260917/game.exe`, with the separate EXTENDED
+  RAM/FPU experiment retained. Do not promote, expand ALL, or repeat unchanged
+  suites from these small results. Investigate repeated RAM-capability setup
+  and CPU state publication next; preserve callback/generation boundaries and
+  distinguish that work from the rejected observer-permission cache.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

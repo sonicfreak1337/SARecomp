@@ -49,37 +49,53 @@ bool calculate(const std::uint8_t* points,std::size_t even,const std::uint32_t* 
             _mm_castps_si128(flush(_mm_castps_si128(value))));
     }
     for(std::size_t base=0;base<=even;base+=4){
-        alignas(16) std::uint32_t axes[3][4];
-        for(unsigned lane=0;lane<4;++lane){
-            const auto index=base+lane<=even?base+lane:even;
-            for(unsigned axis=0;axis<3;++axis)axes[axis][lane]=out.transformed[index][axis];
-        }
-        __m128 transformed[3];
-        for(unsigned row=0;row<3;++row){
-            transformed[row]=_mm_castsi128_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(axes[row])));
-            if(!bounded(transformed[row],row==2))return false;
-        }
-        const auto inverse=_mm_div_ps(one,transformed[2]);
-        const auto px=_mm_mul_ps(_mm_mul_ps(transformed[0],sx),inverse);
-        const auto py=_mm_mul_ps(_mm_mul_ps(transformed[1],sy),inverse);
+        // Transpose four whole records in registers. Previously each quad
+        // scattered twelve scalar words onto the stack and gathered them
+        // again, followed by a second scalar scatter of projected results.
+        const auto load=[&](std::size_t i){
+            return _mm_castsi128_ps(_mm_loadu_si128(reinterpret_cast<const __m128i*>(
+                out.transformed[i<=even?i:even].data())));
+        };
+        auto tx=load(base),ty=load(base+1),tz=load(base+2),tw=load(base+3);
+        _MM_TRANSPOSE4_PS(tx,ty,tz,tw);
+        if(!bounded(tx) || !bounded(ty) || !bounded(tz,true))return false;
+        const auto inverse=_mm_div_ps(one,tz);
+        const auto px=_mm_mul_ps(_mm_mul_ps(tx,sx),inverse);
+        const auto py=_mm_mul_ps(_mm_mul_ps(ty,sy),inverse);
         const auto x=_mm_add_ps(px,cx),y=_mm_add_ps(py,cy);
-        const auto visible=unsigned(_mm_movemask_ps(_mm_cmpgt_ps(transformed[2],near)));
-        alignas(16) std::uint32_t raw[3][4],depth[4],xs[4],ys[4],before_x[4];
-        for(unsigned axis=0;axis<3;++axis)_mm_store_si128(reinterpret_cast<__m128i*>(raw[axis]),_mm_castps_si128(transformed[axis]));
-        _mm_store_si128(reinterpret_cast<__m128i*>(depth),_mm_castps_si128(inverse));
-        _mm_store_si128(reinterpret_cast<__m128i*>(xs),_mm_castps_si128(x));
-        _mm_store_si128(reinterpret_cast<__m128i*>(ys),_mm_castps_si128(y));
-        _mm_store_si128(reinterpret_cast<__m128i*>(before_x),_mm_castps_si128(px));
-        for(unsigned lane=0;lane<4 && base+lane<=even;++lane){
-            const auto i=base+lane;
-            if(i==even){out.read_ahead={raw[0][lane],raw[1][lane],raw[2][lane],depth[lane]};continue;}
-            out.positions[i]={xs[lane],ys[lane],depth[lane]};
-            const bool clipped=(visible&(1u<<lane))==0;
-            out.clip_count+=unsigned(clipped);
-            if(i<out.clipped.size())out.clipped[i]=std::uint8_t(clipped);
-            if(i+1u==even){
-                out.last_second={before_x[lane],ys[lane],raw[2][lane],depth[lane]};
-                out.last_compare=!clipped;
+        const auto visible=unsigned(_mm_movemask_ps(_mm_cmpgt_ps(tz,near)));
+        auto r0=x,r1=y,r2=inverse,r3=_mm_setzero_ps();
+        _MM_TRANSPOSE4_PS(r0,r1,r2,r3);
+        const auto remaining=even-base;
+        if(remaining>=4){
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base].data()),_mm_castps_si128(r0));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base+1].data()),_mm_castps_si128(r1));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base+2].data()),_mm_castps_si128(r2));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base+3].data()),_mm_castps_si128(r3));
+        }else if(remaining==2){
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base].data()),_mm_castps_si128(r0));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out.positions[base+1].data()),_mm_castps_si128(r1));
+        }
+        const unsigned lanes=remaining>=4?4u:unsigned(remaining);
+        const unsigned clipped=(~visible)&((1u<<lanes)-1u);
+        // Include the even padding vertex in R13, but never in the title's
+        // actual-point clip array. The read-ahead vertex has neither effect.
+        out.clip_count+=(clipped&1u)+((clipped>>1)&1u)+((clipped>>2)&1u)+((clipped>>3)&1u);
+        for(unsigned lane=0;lane<lanes && base+lane<out.clipped.size();++lane)
+            out.clipped[base+lane]=std::uint8_t((clipped>>lane)&1u);
+        if(remaining<=4){
+            alignas(16) std::uint32_t depth[4],before_x[4];
+            _mm_store_si128(reinterpret_cast<__m128i*>(depth),_mm_castps_si128(inverse));
+            if(remaining){
+                _mm_store_si128(reinterpret_cast<__m128i*>(before_x),_mm_castps_si128(px));
+                const auto last=even-1;
+                out.last_second={before_x[remaining-1],out.positions[last][1],
+                    out.transformed[last][2],depth[remaining-1]};
+                out.last_compare=(visible&(1u<<(remaining-1)))!=0;
+            }
+            if(remaining<4){
+                const auto& last=out.transformed[even];
+                out.read_ahead={last[0],last[1],last[2],depth[remaining]};
             }
         }
     }

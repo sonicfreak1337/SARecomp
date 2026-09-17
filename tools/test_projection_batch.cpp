@@ -53,7 +53,7 @@ int main()try{
     std::mt19937 random(0x3729426);sonic::projection_batch::Result result;
     std::uint64_t accepted=0,declined=0,vertices=0;
     for(unsigned test=0;test<4096;++test){
-        const unsigned count=std::array{1u,2u,3u,4u,5u,7u,16u,31u,128u,129u}[test%10];
+        const unsigned count=std::array{1u,2u,3u,4u,5u,6u,7u,8u,9u,16u,31u,128u,129u}[test%13];
         const auto even=(count+1)&~1u;
         CpuState a{.memory=Memory{0u}},b{.memory=Memory{0u}};
         a.sr=b.sr=sr_md_mask;a.fpscr=b.fpscr=fpscr_dn_mask|fpscr_flag_inexact_mask|

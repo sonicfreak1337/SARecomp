@@ -34986,7 +34986,20 @@ sonic_native_ninja_model_transform(
         // Each 16-byte SDK cache record owns three floats. The fourth word is
         // not written by the original store-queue routine, so retain the
         // existing title-RAM value instead of inventing hardware residue.
-        for (std::uint64_t record = 0u; record < transformed_count; ++record) {
+        static const bool projection_batch_enabled=[] {
+            const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH");
+            return value && std::strcmp(value,"1")==0 &&
+                sonic::native_cpu::enabled("SARECOMP_NATIVE_PROJECTION_BATCH");
+        }();
+        const auto previous_output = projection_batch_enabled
+            ? reader.direct_bytes(output, output_size)
+            : std::span<const std::uint8_t>{};
+        if (!previous_output.empty()) {
+            // One already-admitted, unobserved RAM capture preserves every
+            // padding word without rechecking each word's address. XYZ is
+            // overwritten by either the native batch or the retained loop.
+            std::memcpy(output_bytes.data(), previous_output.data(), output_size);
+        } else for (std::uint64_t record = 0u; record < transformed_count; ++record) {
             std::uint32_t padding = 0u;
             const auto byte_offset = static_cast<std::uint32_t>(record * 16u);
             if (!reader.u32(output + byte_offset + 12u, padding))
@@ -35025,11 +35038,6 @@ sonic_native_ninja_model_transform(
         sonic_native_title_state.transformed_point_clipped.clear();
         std::uint32_t observed_transformed_points = 0u;
 
-        static const bool projection_batch_enabled=[] {
-            const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH");
-            return value && std::strcmp(value,"1")==0 &&
-                sonic::native_cpu::enabled("SARECOMP_NATIVE_PROJECTION_BATCH");
-        }();
         static const bool projection_batch_verify=[] {
             const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY");
             return value && std::strcmp(value,"1")==0;
