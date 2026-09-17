@@ -91,6 +91,26 @@ def extended_memory(body):
     return None
 
 
+def extended_fmov_predecrement(body):
+    """Admit the exact scalar half of an authenticated FMOV predecrement."""
+    m = re.fullmatch(
+        r'\{\s*const std::uint32_t width = \(cpu.fpscr & katana::runtime::fpscr_sz_mask\) != 0u \? 8u : 4u;\s*'
+        r'const std::uint32_t address = katana_registers\[(\d+)\] - width;\s*'
+        r'if \(\(cpu.fpscr & katana::runtime::fpscr_sz_mask\) != 0u\) \{\s*'
+        r'const std::uint64_t bits = katana::runtime::read_fpu_pair_bits\(cpu, (\d+)u\);\s*'
+        r'katana_direct_ram_write_u32\(katana_direct_ram_writes, guest_origin, address, static_cast<std::uint32_t>\(bits\), katana::runtime::CodeWriteSource::Fpu, katana_guarded_unknown_ram_writes\);\s*'
+        r'katana_direct_ram_write_u32\(katana_direct_ram_writes, guest_origin, address \+ 4u, static_cast<std::uint32_t>\(bits >> 32u\), katana::runtime::CodeWriteSource::Fpu, katana_guarded_unknown_ram_writes\);\s*'
+        r'\} else \{\s*'
+        r'katana_direct_ram_write_u32\(katana_direct_ram_writes, guest_origin, address, cpu.fr\[(\d+)\], katana::runtime::CodeWriteSource::Fpu, katana_guarded_unknown_ram_writes\);\s*'
+        r'\}\s*katana_registers\[(\d+)\] = address;\s*\}', body.strip())
+    if not m or m[1] != m[4] or m[2] != m[3] or any(int(x) > 15 for x in m.groups()):
+        return None
+    return dict(operation=f'access.write<32>(sonic_address, cpu.fr[{m[3]}])',
+                before=f'const auto sonic_address = katana_registers[{m[1]}] - 4u;',
+                after=f'katana_registers[{m[1]}] = sonic_address;', memory=True,
+                store=True, extended_kind='fmov_predecrement')
+
+
 def classify(block, extended=False):
     # No delay-slot, branch or nested accounting group can match. The
     # instruction comments themselves are never sufficient.
@@ -140,11 +160,32 @@ def classify(block, extended=False):
                     fmov=False, arithmetic=True)
     if attempts != ['2']: return None
     fmov = 'raise_fpu_disabled(' in block
+    if extended:
+        constant = re.fullmatch(
+            r'katana::runtime::ExplicitGuestInstructionAttempt guest_instruction_attempt\(\s*'
+            r'cpu, katana::runtime::relocate_code_address_inline\(0x[0-9A-F]{8}u\), 2u\);\s*'
+            r'if \(\(cpu.sr & katana::runtime::sr_fd_mask\) != 0u\) \{\s*'
+            r'katana_registers.flush_release\(\);\s*'
+            r'raise_fpu_disabled\(cpu, katana::runtime::relocate_code_address_inline\(0x[0-9A-F]{8}u\)\);\s*return;\s*\}\s*'
+            r'if \(\(cpu.fpscr & katana::runtime::fpscr_pr_mask\) != 0u\) \{\s*'
+            r'katana_registers.flush_release\(\);\s*'
+            r'raise_illegal_instruction\(cpu, katana::runtime::relocate_code_address_inline\(0x[0-9A-F]{8}u\)\);\s*return;\s*\}\s*'
+            r'(cpu.fr\[(?:[0-9]|1[0-5])\] = (?:0x00000000u|0x3F800000u);)\s*'
+            r'guest_instruction_attempt.complete\(\);', inner)
+        if constant:
+            return dict(operation=constant[1], memory=False, store=False, cycles=2,
+                        attempt=True, fmov=True, strict_fmov=True, extended_kind='fldi')
     if 'try {' in block:
         origin = re.search(r'const katana::runtime::GuestInstructionOrigin guest_origin\{[^\n]+\};\n', block)
         if not origin or block.count('try {') != 1 or block.count('enter_memory_exception_with_provenance(') != 1:
             return None
         body = block[origin.end():block.index('guest_instruction_attempt.complete();')].strip()
+        if fmov and extended:
+            result = extended_fmov_predecrement(body)
+            if result:
+                if 'if (katana_guest_write_exit_requested)' not in block or block.count('flush_pending_guest_cycles(') > 1:
+                    return None
+                return dict(result, cycles=2, attempt=True, fmov=True)
         if fmov:
             # Scalar FMOV without predecrement/postincrement; paired mode is
             # kept in the untouched original. No float conversion is used.

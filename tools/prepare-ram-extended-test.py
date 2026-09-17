@@ -21,11 +21,13 @@ spec.loader.exec_module(r)
 source = data.decode()
 changed, report = r.transform(source, extended=True)
 nodes = [n for atom in r.instructions(source, True) for n in atom]
-result = 'static unsigned extended_completed[4]{}, extended_partial[4]{};\n'
+result = 'static unsigned extended_completed[7]{}, extended_partial[7]{};\n'
 records = []
 for index, (first, last, size) in enumerate((
         (0x8C01995E, 0x8C01996E, 9), (0x8C0199B2, 0x8C0199CC, 14),
-        (0x8C01A40E, 0x8C01A41C, 8), (0x8C01A702, 0x8C01A712, 9))):
+        (0x8C01A40E, 0x8C01A41C, 8), (0x8C01A702, 0x8C01A712, 9),
+        (0x8C01A18C, 0x8C01A1A0, 11), (0x8C01A240, 0x8C01A276, 28),
+        (0x8C01A480, 0x8C01A4C8, 37))):
     if not any(g['pc'] == f'{first:08X}' and g['last_pc'] == f'{last:08X}' and g['instructions'] == size for g in report):
         raise ValueError('Extended witness interval changed')
     selected = [n for n in nodes if first <= n['pc'] <= last]
@@ -66,7 +68,7 @@ result += '''struct ExtendedWitness {
     void (*original)(Owned&,const DirectLinearMemoryGuard&,std::uint32_t);
     void (*extended)(Owned&,const DirectLinearMemoryGuard&,std::uint32_t);
     std::uint32_t first;
-    std::array<std::uint32_t,16> resumes;
+    std::array<std::uint32_t,40> resumes;
 };
 static constexpr ExtendedWitness extended_witnesses[] = {
 '''
@@ -79,4 +81,4 @@ if not a.output.exists() or a.output.read_text() != result:
     a.output.write_text(result)
 a.output.with_suffix('.json').write_text(json.dumps({'source_sha256': hashlib.sha256(data).hexdigest(),
     'witnesses': records}, indent=2) + '\n')
-print('SONIC_RAM_EXTENDED_WITNESSES_READY instructions=40 witnesses=4')
+print('SONIC_RAM_EXTENDED_WITNESSES_READY instructions=116 witnesses=7')

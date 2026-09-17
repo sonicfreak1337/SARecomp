@@ -244,7 +244,7 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 
 - Whole-matrix bulk push/pop remains internal-OFF after exact 588-case tests
   on Windows and Linux but mixed/negative paired gameplay results. See
-  `docs/native-matrix-bulk-20260917.md`. Current `build-linux/game` and
+  `docs/native-matrix-bulk-20260917.md`. Its development Linux game and
   `out/matrix-bulk-windows-20260917/game.exe` include this OFF path and the
   projection OFF path, plus the retained extended RAM experiment. Final tests
   include reserved-FPSCR normalization; performance-run binary identities are
@@ -252,6 +252,20 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   pairs. The next static inventory must use `extended_regions` from preparation
   metadata: its largest remaining gaps are FMOV predecrement and unattempted
   FPU instruction groups. Original group accounting must remain exact.
+
+- The subsequent extended RAM/FPU prefix experiment is qualified functionally
+  (5,040 comparisons per platform), but remains OFF in source defaults. See
+  `docs/native-ram-fpu-prefixes-20260917.md`: same 41 units, 1,490 prefixes,
+  23,853 instructions; Windows Gamma gameplay saves 3.36% CPU. Matched Linux
+  Chaos-4 entry saves 2.75%, but Gamma costs 11.97% more CPU / loses 18.26%
+  image throughput. Do not replace its fresh control with an older slower run,
+  claim a global/Deck gain, expand ALL or ship it. Current `build-linux/game`
+  and `out/ram-fpu-windows-20260917/game.exe` explicitly contain this extended
+  candidate; source defaults and delivered Sep17 patch remain unchanged.
+  Original and Recompiled Windows probes pass, and the latter retains exactly
+  one update per image at 60-Hz authored timing. Continue from the recorded
+  results; inspect register pressure and whole FPU epoch boundaries before
+  further code-shape expansion. No repeated unchanged test suite is needed.
 
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

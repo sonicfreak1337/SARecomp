@@ -346,6 +346,18 @@ void extended_compare(unsigned index,unsigned mode,std::uint32_t base,std::uint3
         ram.write_u32(0x4104,0x80000002);ram.write_u32(0x4200,4);
         ram.write_u32(0x4300,0x8C004400);ram.write_u8(0x4408,0x80);
         ram.write_u32(0x5100,0x8C005200);ram.write_u32(0x522C,0x8C005300);
+        if(index>=4) {
+            c.r[4]=0x8C007000;
+            ram.write_u32(0x1A440,0x8C007100);ram.write_u32(0x1A640,0x8C007100);
+            ram.write_u32(0x7100,0x8C007200);ram.write_u32(0x1A644,0x3F000000);
+            constexpr std::uint32_t payloads[]{0u,0x80000000u,1u,0x7FC12345u,
+                0x7FA12345u,0x3F800001u,0xBF800001u,0x7F800000u};
+            for(unsigned i=0;i<16;++i) {
+                c.fr[i]=payloads[i%8];c.xf[i]=payloads[(i+3)%8];
+                ram.write_u32(0x7000+4*i,mode==27?payloads[i%8]:0x3F800001u+i);
+                ram.write_u32(0x7200+4*i,mode==27?payloads[(i+2)%8]:0x40000001u+i);
+            }
+        }
     }
     auto ga=a.f.cpu.memory.direct_linear_memory_guard(false),gb=b.f.cpu.memory.direct_linear_memory_guard(false);
     for(auto* o:{&a,&b}) {
@@ -359,6 +371,19 @@ void extended_compare(unsigned index,unsigned mode,std::uint32_t base,std::uint3
             o->guard.add_runtime_executable_range(0x0C00501C,4);
         }
         if(mode==22)o->f.ram->write_u32(0x4300,0xFFFFFFFFu);
+        if(mode==23)o->f.cpu.fpscr|=fpscr_sz_mask;
+        if(mode==24)o->f.cpu.fpscr|=fpscr_sz_mask|fpscr_pr_mask;
+        if(mode==25)o->f.cpu.fpscr|=fpscr_fr_mask;
+        if(mode==26)o->f.cpu.fpscr|=fpscr_exception_enable_mask|0x80000000u;
+        if(mode==27)o->f.cpu.fpscr&=~fpscr_dn_mask;
+        if(mode==28) {
+            o->f.watch(MemoryWatchpointAccess::Write,(base-8u)&0x1FFFFFFFu);
+            o->f.services.on_flush=[o]{o->f.cpu.r[15]=0x8C009000;o->f.cpu.fr[15]=0xCAFEBABEu;};
+        }
+        if(mode==29) {
+            o->guard.reserve_additional_runtime_executable_ranges(1);
+            o->guard.add_runtime_executable_range(0x0C005294,4);
+        }
     }
     if(!stale){ga=a.f.cpu.memory.direct_linear_memory_guard(false);gb=b.f.cpu.memory.direct_linear_memory_guard(false);}
     extended_witnesses[index].original(a,ga,resume);
@@ -415,7 +440,7 @@ int main(int argc,char** argv) {
                 page_compare(base,mode,stale);
         require(!sonic::scalar_writes::requested_capture,"capture scope leaked");
         for(unsigned index=0;index<std::size(extended_witnesses);++index) {
-            for(unsigned mode=0;mode<=22;++mode)for(bool stale:{false,true})
+            for(unsigned mode=0;mode<=29;++mode)for(bool stale:{false,true})
                 for(auto base:{0x8C006000u,0xAC006000u,0x0C006000u,0x8C100000u,
                     0x8C000008u,0x8C000814u,0x8C1FFFFCu,0x8C006001u})
                     extended_compare(index,mode,base,0,stale);
