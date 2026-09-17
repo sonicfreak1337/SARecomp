@@ -103,12 +103,19 @@ std::optional<MeshPlan> build(const MeshPlanRequest& request,MeshPlanReader read
     plan.shared_indices.reserve(plan.triangles.size()*3u);
     for(const auto& triangle:plan.triangles)for(const auto corner:triangle.corners)
         plan.shared_indices.push_back(plan.shared_corners[corner]);
+    if(sonic::model_packet::enabled() && plan.shared_indices.size()<=65536u){
+        std::vector<sonic::model_packet::Corner> corners;
+        corners.reserve(plan.shared_vertices.size());
+        for(const auto& c:plan.shared_vertices)
+            corners.push_back({c.point,uv?plan.uvs[c.corner]:std::array<float,2>{}});
+        plan.model_geometry=sonic::model_packet::Geometry::capture(request.point_count,corners,plan.shared_indices);
+    }
     if(plan.allocation_bytes()>max_plan_bytes)return {};
     return plan;
 }
 }
 std::size_t MeshPlan::allocation_bytes()const noexcept {
-    return sizeof(MeshPlan)+stream_bytes.capacity()+uv_bytes.capacity()+
+    return sizeof(MeshPlan)+(model_geometry?model_geometry->bytes():0u)+stream_bytes.capacity()+uv_bytes.capacity()+
         triangles.capacity()*sizeof(MeshPlanTriangle)+polygons.capacity()*sizeof(MeshPlanPolygon)+uvs.capacity()*sizeof(uvs[0])+
         shared_corners.capacity()*sizeof(shared_corners[0])+
         shared_vertices.capacity()*sizeof(shared_vertices[0])+shared_indices.capacity()*sizeof(shared_indices[0]);

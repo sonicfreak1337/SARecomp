@@ -43,6 +43,15 @@ ON/OFF patch packages remain bound to the D2 executable below; they must not
 be used to downgrade the CPU update. Its internal policy file and developer
 override continue to work normally.
 
+The [September 17 native CPU update](cpu-update-20260917.md) has new, small
+policy-only ON/OFF packages. They admit only its exact executable SHA-256 and
+contain no program delta or decoder. An older or modified build is rejected;
+they cannot downgrade the program. Both switches and repeated OFF were applied
+to the two actual updated Linux launch paths. Executable hashes/inodes/modes,
+manifests and Story/Chao/settings sentinels stayed unchanged. An old September 16
+installation was rejected without changes. Test preferences were restored.
+Evidence: `runs/native-cpu-diagnostics-linux-20260917.log`.
+
 ## Verification and performance
 
 The Linux VM is a TCG software-graphics environment, not a Deck FPS estimate.

@@ -1,4 +1,4 @@
-"""Route authenticated animation/pose owners to shared semantic C++ kernels."""
+"""Route authenticated complete owners to shared semantic C++ kernels."""
 import argparse
 import hashlib
 import json
@@ -28,25 +28,29 @@ def main():
   'unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp':('8C057B00','8C05801A','animation_hierarchy','61216dd422e5f672dcbb90786b3dd58d293b4aac20794a0b63bf35cefbcdfc5a'),
   'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':('8C0417C8','8C041968','pose_blend','68da4ac5973bbb6e33b7ecb4e4066f2ba9fb90b9da2d3601cc57dd49e2c80b6b'),
  }
- owner,return_pc,family,owner_sha=owners[a.input.name]
- pattern=r'(?m)^BlockExit fn_'+owner+r'_runtime_entry\(CpuState& cpu, BlockExecutionContext& context\) \{\n'
- start=re.search(pattern,old).start();end=old.index('\nBlockExit fn_',start+1)+1
- if sha(old[start:end].encode())!=owner_sha:raise ValueError('Owner audit identity')
- start=re.search(pattern,text).start();boundary=text.index('    static_cast<void>(services);',start)
- injection='''    if (sonic::animation_hierarchy::try_dispatch(cpu, services->immutable_write_guard())) {
+ selected=(
+  [('8C605CEC','8C605D46','render_context','8befd05c4adbb5b6a1cc504e8383de06cba0ec9cbc7eb1c243fb02cd75b33e99'),
+   ('8C605D4A','8C605DA4','render_context','d8d51be5938c5ac03a2f13d1739932dad46281b43f15cb6437c75d7de9504a14')]
+  if a.input.name=='unit-v8C604642-8C606E54-2ff8d7f677b95797.cpp' else [owners[a.input.name]])
+ for owner,return_pc,family,owner_sha in selected:
+  pattern=r'(?m)^BlockExit fn_'+owner+r'_runtime_entry\(CpuState& cpu, BlockExecutionContext& context\) \{\n'
+  start=re.search(pattern,old).start();end=old.index('\nBlockExit fn_',start+1)+1
+  if sha(old[start:end].encode())!=owner_sha:raise ValueError('Owner audit identity')
+  start=re.search(pattern,text).start();boundary=text.index('    static_cast<void>(services);',start)
+  injection='''    if (sonic::animation_hierarchy::try_dispatch(cpu, services->immutable_write_guard())) {
         runtime_dispatch_detail::active_exit_source = {0x8C05801Au, 0x0C05801Au};
         runtime_dispatch_detail::active_exit_kind = katana::runtime::BlockEndKind::Return;
         runtime_dispatch_detail::active_exit_site_class = katana::runtime::DynamicDispatchSiteClass::NotDynamic;
         return;
     }
 '''
- injection=injection.replace('animation_hierarchy',family).replace('8C05801A',return_pc).replace('0C05801A',f'{int(return_pc,16)&0x1FFFFFFF:08X}')
- text=text[:boundary]+injection+text[boundary:]
- text='#include "sonic_'+family+'.hpp"\n'+text
+  injection=injection.replace('animation_hierarchy',family).replace('8C05801A',return_pc).replace('0C05801A',f'{int(return_pc,16)&0x1FFFFFFF:08X}')
+  text=text[:boundary]+injection+text[boundary:]
+ for family in sorted({row[2] for row in selected}):text='#include "sonic_'+family+'.hpp"\n'+text
  text=text.replace('#include "../include/','#include "')
  a.output.parent.mkdir(parents=True,exist_ok=True);out=text.encode()
  if not a.output.exists() or a.output.read_bytes()!=out:a.output.write_bytes(out)
- report={'owner':owner,'generation':generation,'input_sha256':sha(data),'original_sha256':sha(original),'output_sha256':sha(out)}
+ report={'owner':owner,'owners':[row[0] for row in selected],'generation':generation,'input_sha256':sha(data),'original_sha256':sha(original),'output_sha256':sha(out)}
  a.output.with_suffix('.json').write_text(json.dumps(report,indent=2)+'\n')
  print('SONIC_ANIMATION_BRIDGE_READY owner='+owner+' retained_fallback=1')
 if __name__=='__main__':main()

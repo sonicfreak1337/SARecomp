@@ -1,4 +1,5 @@
 #include "sonic_motion_sampling.hpp"
+#include "sonic_native_model_memory.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
@@ -35,6 +36,7 @@ struct Execution {
     const bool p0=!(cpu.mmucr&1u) && (!cpu.address_space || cpu.address_space->mode()==AddressTranslationMode::NoMmu);
     unsigned owner;
     std::array<Range,2> writes{};
+    std::optional<sonic::model_memory::ClosedLeafWrites> native_writes;
     bool admitted(Range r)const noexcept {
         const auto p=r.address&0x1FFFFFFFu;
         const bool alias=(r.address&0xC0000000u)==0x80000000u ||
@@ -90,6 +92,7 @@ struct Execution {
         return result;
     }
     void store(std::uint32_t,std::uint32_t a,std::uint32_t value,CodeWriteSource source){
+        if(native_writes && native_writes->try_store(a,value,source))return;
         // All stores stay in the admitted stack/index spans. The only allowed
         // observer cannot inspect/mutate CPU, backing, mappings or scheduling.
         if(!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,value,source))broken();
@@ -179,6 +182,7 @@ bool try_execute(katana::runtime::CpuState& cpu,const katana::runtime::NativePor
         !(cpu.mmucr&1u) && (!cpu.address_space || cpu.address_space->mode()==AddressTranslationMode::NoMmu),
         unsigned(found-entries.begin())};
     if(!execution.preflight())return false;
+    execution.native_writes.emplace(cpu,*immutable,execution.guard);
     return execution.run();
 }
 } // namespace sonic::motion_sampling

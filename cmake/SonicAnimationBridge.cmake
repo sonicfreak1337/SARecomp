@@ -1,8 +1,9 @@
-# Only the two containing units are rebuilt. No AOT regeneration or SDK edit.
+# Only the three containing units are rebuilt. No AOT regeneration or SDK edit.
 option(SARECOMP_NATIVE_ANIMATION_BRIDGE "Compile the internal native animation comparison route" ON)
 if(SARECOMP_NATIVE_ANIMATION_BRIDGE)
     foreach(animation_unit IN ITEMS
         unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp
+        unit-v8C604642-8C606E54-2ff8d7f677b95797.cpp
         unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp)
     set(animation_bridge "${CMAKE_BINARY_DIR}/generated/animation-bridge/${animation_unit}")
     if(TARGET sonic_linux_guest)

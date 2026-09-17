@@ -147,10 +147,10 @@ for dir in "$app_root"/1.0-candidate-*; do
     dirs+=("$dir"); hashes+=("$current"); actions+=("$action")
 done
 if (( ${#dirs[@]} == 0 )); then
-    [[ -n $ready_source ]] || fail 'No supported v5 installation was found. No game data was changed.'
+    [[ -n $ready_source ]] || fail 'No installation supported by this update was found. No game data was changed.'
     success=1; notice 'This performance patch is already installed.'; exit 0
 fi
-[[ -n $reference || -n $ready_source ]] || fail 'The v5 program required for this patch was not found. No reinstallation has been started.'
+[[ -n $reference || -n $ready_source ]] || fail 'The reference program required for this update was not found. No game data was changed.'
 # Steam shortcuts may still name an older version directory. Update every
 # authenticated installed launch path, so the existing Steam entry keeps working.
 for process in /proc/[0-9]*/exe; do
@@ -160,7 +160,7 @@ done
 available=$(df -PB1 -- "$app_root" | awk 'NR==2 {print $4}')
 required_space=67108864
 [[ -n $ready_source ]] || required_space=$((required_space + target_size))
-[[ $available =~ ^[0-9]+$ ]] && (( available > required_space )) || fail 'The initial program update needs about 1.7 GB of free space.'
+[[ $available =~ ^[0-9]+$ ]] && (( available > required_space )) || fail "This update needs at least $((required_space / 1048576 + 1)) MiB of free installation space."
 stage=$(mktemp -d "$app_root/.native-math-patch.XXXXXXXX")
 if [[ -n $ready_source ]]; then
     ln -- "$ready_source" "$stage/game"

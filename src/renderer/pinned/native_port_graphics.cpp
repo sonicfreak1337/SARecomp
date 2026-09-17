@@ -9,6 +9,7 @@
 #include "../../sonic_input.hpp"
 #include "../../sonic_presentation.hpp"
 #include "../../sonic_render_completion.hpp"
+#include "../../sonic_model_packet.hpp"
 #include "../../sonic_internal_diagnostics.hpp"
 #include "../sonic_motion.hpp"
 
@@ -7591,6 +7592,20 @@ class NativePortGraphicsDevice::Impl final {
                 NativePortGraphicsFailure::InvalidDraw,
                 1u,
                 "draw-outside-frame");
+        if(const auto* model=sonic::model_packet::submitted){
+            if(!model->valid() || packet.mesh || !packet.vertices.empty() || !packet.indices.empty() ||
+               packet.topology!=NativePortPrimitiveTopology::TriangleList ||
+               packet.vertex_space!=NativePortVertexSpace::ObjectHomogeneous ||
+               model->geometry->corners.size()>config_.maximum_transient_vertices ||
+               model->geometry->indices.size()>config_.maximum_transient_indices){
+                abort_open_batch();producer_frame_open_=false;
+                throw NativePortGraphicsError(NativePortGraphicsFailure::InvalidDraw,1u,"model-command-contract");
+            }
+            try {
+                model_annotations_.push_back({batch_command_count_,*model});
+                model_budget_bytes_+=model->budget_bytes();
+            }catch(...){abort_open_batch();producer_frame_open_=false;throw;}
+        }
         if(sonic::presentation::Settings::interpolation &&
            (sonic::motion::submitted_draw.enabled||sonic::motion::submitted_draw.world))
             motion_annotations_.push_back({batch_command_count_,{},sonic::motion::submitted_draw});
@@ -8381,6 +8396,10 @@ class NativePortGraphicsDevice::Impl final {
         // be retired before this depth-2 slot can be reused by the producer.
         const auto render_completion = render_completions_[
             static_cast<std::size_t>((sequence - 1u) % render_completions_.size())];
+        // Same release/acquire ownership as the completion slot. Retiring the
+        // prior reply before publication prevents producer/consumer reuse.
+        auto models=std::move(model_published_[static_cast<std::size_t>((sequence-1u)%model_published_.size())]);
+        std::size_t model_index=0u;
         std::vector<sonic::motion::Annotation> annotations;
         if constexpr(sonic::presentation::Settings::interpolation) {
             const std::lock_guard lock(motion_annotations_mutex_);
@@ -8392,7 +8411,19 @@ class NativePortGraphicsDevice::Impl final {
         std::size_t annotation_index=0;
         observe_render_queue_depth();
         NativePortGraphicsCommandReader reader(lease);
-        if (!reader.valid() || reader.size() == 0u) {
+        bool valid_models=true;
+        std::uint64_t previous_model_ordinal=0u;
+        bool first_model=true;
+        for(const auto& model:models){
+            const auto command=reader.at(model.ordinal);
+            if(!command || command->kind!=NativePortGraphicsCommandKind::Draw || !model.draw.valid() ||
+               (!first_model && model.ordinal<=previous_model_ordinal)) {valid_models=false;break;}
+            const auto& packet=std::get<NativePortGraphicsDrawView>(command->payload).packet;
+            if(packet.mesh || !packet.vertices.empty() || !packet.indices.empty()) {valid_models=false;break;}
+            first_model=false;previous_model_ordinal=model.ordinal;
+        }
+        if (!reader.valid() || reader.size() == 0u || !valid_models) {
+            models.clear();
             const auto error = facade_error("render-command-frame");
             lease.fail(NativePortFrameQueueError::InvalidCommandRange);
             observe_render_queue_depth();
@@ -8413,7 +8444,10 @@ class NativePortGraphicsDevice::Impl final {
                 const sonic::motion::Annotation* annotation=nullptr;
                 if(annotation_index<annotations.size()&&annotations[annotation_index].ordinal==ordinal)
                     annotation=&annotations[annotation_index++];
-                shutdown = execute_command(backend, *command,annotation) || shutdown;
+                const sonic::model_packet::Draw* model=nullptr;
+                if(model_index<models.size() && models[model_index].ordinal==ordinal)
+                    model=&models[model_index++].draw;
+                shutdown = execute_command(backend, *command,annotation,model) || shutdown;
                 if (render_completion.ticket && render_completion.ordinal == ordinal) {
                     if (command->kind != NativePortGraphicsCommandKind::Present ||
                         !render_completion.ticket.complete())
@@ -8468,6 +8502,7 @@ class NativePortGraphicsDevice::Impl final {
             }
         }
 
+        models.clear();
         if (first_error.valid) {
             consumer_presentation_faulted_ = true;
             motion_history_.abort();motion_buffering_=false;
@@ -8622,6 +8657,11 @@ class NativePortGraphicsDevice::Impl final {
                 source_failure, 1u, source_operation);
         }
         ++batch_command_count_;
+        if(model_budget_bytes_>config_.maximum_render_payload_bytes_per_frame ||
+           batch_writer_->encoded_payload_bytes()>config_.maximum_render_payload_bytes_per_frame-model_budget_bytes_){
+            abort_open_batch();producer_frame_open_=false;
+            throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceLimit,1u,"model-command-capacity");
+        }
     }
 
     void publish_open_batch(const bool wait_current) {
@@ -8641,12 +8681,16 @@ class NativePortGraphicsDevice::Impl final {
         const auto command_count = batch_command_count_;
         render_completions_[static_cast<std::size_t>(
             (sequence - 1u) % render_completions_.size())] = batch_render_completion_;
+        auto& published_models=model_published_[static_cast<std::size_t>((sequence-1u)%model_published_.size())];
+        published_models=std::move(model_annotations_);
+        model_annotations_.clear();
         if(sonic::presentation::Settings::interpolation && !motion_annotations_.empty()){
             const std::lock_guard lock(motion_annotations_mutex_);
             motion_published_annotations_.emplace(sequence,std::move(motion_annotations_));
             motion_annotations_.clear();
         }
         if (!batch_writer_->publish()) {
+            published_models.clear();
             if constexpr(sonic::presentation::Settings::interpolation) {
                 const std::lock_guard lock(motion_annotations_mutex_);motion_published_annotations_.erase(sequence);
             }
@@ -8661,6 +8705,8 @@ class NativePortGraphicsDevice::Impl final {
         batch_command_count_ = 0u;
 
         batch_render_completion_ = {};
+
+        model_budget_bytes_=0u;
 
         saturating_atomic_add(recorded_commands_, command_count);
         last_recorded_sequence_.store(sequence, std::memory_order_release);
@@ -8683,6 +8729,7 @@ class NativePortGraphicsDevice::Impl final {
 
     void abort_open_batch() noexcept {
         batch_render_completion_ = {};
+        model_annotations_.clear();model_budget_bytes_=0u;
         motion_annotations_.clear();
         if (batch_writer_.has_value()) batch_writer_->abort();
         batch_writer_.reset();
@@ -8952,7 +8999,8 @@ class NativePortGraphicsDevice::Impl final {
     [[nodiscard]] bool execute_command(
         NativePortGraphicsBackend& backend,
         const NativePortGraphicsCommandView& command,
-        const sonic::motion::Annotation* annotation=nullptr) {
+        const sonic::motion::Annotation* annotation=nullptr,
+        const sonic::model_packet::Draw* model=nullptr) {
         if(command.kind==NativePortGraphicsCommandKind::UpdateTexture||
            command.kind==NativePortGraphicsCommandKind::DestroyTexture||
            command.kind==NativePortGraphicsCommandKind::DestroyMesh){
@@ -9031,16 +9079,22 @@ class NativePortGraphicsDevice::Impl final {
             consumer_drawn_frame_open_ = true;
             return false;
         }
-        case NativePortGraphicsCommandKind::Draw:
+        case NativePortGraphicsCommandKind::Draw: {
+            auto packet=std::get<NativePortGraphicsDrawView>(command.payload).packet;
+            if(model){
+                sonic::model_packet::expand(*model,model_vertices_);
+                packet.vertices=model_vertices_;packet.indices=model->geometry->indices;
+            }
             if(sonic::presentation::Settings::interpolation && motion_buffering_){
-                if(motion_history_.add(std::get<NativePortGraphicsDrawView>(command.payload).packet,
+                if(motion_history_.add(packet,
                                       annotation?annotation->draw:sonic::motion::DrawTag{}))return false;
                 drain_motion_prefix(backend);
             }
             draw_backend(
                 backend,
-                std::get<NativePortGraphicsDrawView>(command.payload).packet);
+                packet);
             return false;
+        }
         case NativePortGraphicsCommandKind::FlushType2:
             if(sonic::presentation::Settings::interpolation && motion_buffering_){if(motion_history_.flush())return false;drain_motion_prefix(backend);}
             backend.flush_type2_translucency();
@@ -9156,6 +9210,10 @@ class NativePortGraphicsDevice::Impl final {
     NativePortGraphicsConfig config_;
     std::thread::id producer_thread_;
     std::vector<sonic::motion::Annotation> motion_annotations_;
+    std::vector<sonic::model_packet::Annotation> model_annotations_;
+    std::array<std::vector<sonic::model_packet::Annotation>,native_port_frame_queue_depth> model_published_;
+    std::size_t model_budget_bytes_=0u;
+    std::vector<NativePortVertex> model_vertices_;
     std::mutex motion_annotations_mutex_;
     std::unordered_map<std::uint64_t,std::vector<sonic::motion::Annotation>> motion_published_annotations_;
     sonic::motion::History motion_history_;

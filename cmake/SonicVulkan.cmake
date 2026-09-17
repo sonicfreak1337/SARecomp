@@ -17,6 +17,11 @@ add_executable(sonic_vulkan_present_tests EXCLUDE_FROM_ALL tools/test_vulkan_pre
 target_include_directories(sonic_vulkan_present_tests PRIVATE "${SONIC_ROOT}/src" "${SONIC_ROOT}/third_party/vulkan-headers/include")
 target_compile_options(sonic_vulkan_present_tests PRIVATE /EHsc /utf-8)
 add_library(sonic_graphics OBJECT src/renderer/pinned/native_port_graphics.cpp)
+add_executable(sonic_model_packet_tests EXCLUDE_FROM_ALL tools/test_model_packets.cpp
+    src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)
+target_include_directories(sonic_model_packet_tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic_model_packet_tests PRIVATE /EHsc /fp:strict)
+target_link_libraries(sonic_model_packet_tests PRIVATE sonic_vulkan KatanaRecomp::native_port_runtime)
 target_compile_options(sonic_graphics PRIVATE /EHsc /utf-8 /fp:strict)
 target_link_libraries(sonic_graphics PRIVATE KatanaRecomp::native_port_runtime sonic_startup)
 add_executable(sonic_renderer_tests EXCLUDE_FROM_ALL tools/test_renderers.cpp src/sonic_input.cpp src/sonic_presentation.cpp $<TARGET_OBJECTS:sonic_graphics>)

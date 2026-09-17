@@ -33,3 +33,9 @@ target_include_directories(sonic-linux-submission-benchmark PRIVATE "${SONIC_ROO
 target_compile_options(sonic-linux-submission-benchmark PRIVATE -O2 -g0)
 target_link_libraries(sonic-linux-submission-benchmark PRIVATE sonic_linux_graphics)
 set_target_properties(sonic-linux-submission-benchmark PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")
+add_executable(sonic-linux-model-packet-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_model_packets.cpp"
+    "${SONIC_ROOT}/src/sonic_input.cpp" "${SONIC_ROOT}/src/sonic_presentation.cpp")
+target_include_directories(sonic-linux-model-packet-tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic-linux-model-packet-tests PRIVATE -O2 -g0 -ffp-contract=off)
+target_link_libraries(sonic-linux-model-packet-tests PRIVATE sonic_linux_graphics)
+set_target_properties(sonic-linux-model-packet-tests PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/lib")

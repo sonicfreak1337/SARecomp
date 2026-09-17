@@ -1,4 +1,6 @@
 #include "sonic_palette_lighting.hpp"
+#include "sonic_native_model_memory.hpp"
+#include "sonic_palette_batch.hpp"
 
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -141,6 +143,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
     }
 
     // From here admission is complete: no fallback after any guest mutation.
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,guard);
     const auto load = [&](std::uint32_t address) {
         std::uint32_t value = 0;
         // This SDK helper accepts only P1/P2. Admission above proves that an
@@ -150,6 +153,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         return value; // all addresses and the stable observer contract proven above
     };
     const auto store = [&](std::uint32_t pc, std::uint32_t address, std::uint32_t value) {
+        if(native_writes.try_store(address,value,CodeWriteSource::Cpu))return;
         // The preflight proves untranslated, writable RAM with a stable scalar
         // observer. This is the same Memory helper used by guest_write_u32_at:
         // it commits one store and immediately reports its original physical
@@ -194,19 +198,68 @@ bool try_execute(katana::runtime::CpuState& cpu,
     cpu.r[11] = bank; cpu.r[10] = 3u;
     --cpu.r[7]; normal_word(8u); normal_word(9u); normal_word(10u); cpu.fr[11] = 0x3F800000u;
 
+    thread_local sonic::palette_batch::Result batch;
+    const bool batched=sonic::palette_batch::enabled() &&
+        sonic::palette_batch::prepare(cpu,guard.read_bytes+(normals&0xFFFFFFu),count,
+            cpu.fr.data()+12u,cpu.fr[7],batch);
+    if(batched){++sonic::palette_batch::counts.calls;sonic::palette_batch::counts.vertices+=count;}
+    else if(sonic::palette_batch::enabled())++sonic::palette_batch::counts.declined;
+    if(batched && native_writes.direct()) {
+        // The exact registered product observer cannot inspect transient CPU
+        // registers or alter operands. Commit the two color streams directly,
+        // retaining their original order, then publish the loop's complete
+        // architectural end state once. Arbitrary observers use the loop below.
+        std::uint32_t primary=0,second_color=0,previous_second=0;
+        for(std::uint32_t i=0;i<count;++i){
+            const auto signed_index=std::bit_cast<std::int32_t>(batch.integers[i]);
+            const auto index=std::uint32_t(signed_index<0?0:signed_index>255?255:signed_index);
+            primary=peek(guard,palette+index*8u);
+            previous_second=second_color;
+            second_color=peek(guard,palette+index*8u+4u+bank);
+            native_writes.try_store(positions+12u+i*16u,primary,CodeWriteSource::Cpu);
+            native_writes.try_store(secondary+i*4u,second_color,CodeWriteSource::Cpu);
+        }
+        const auto paired=count&~1u;
+        const auto paired_last=paired-1u;
+        cpu.r[0]=(count&1u)?second_color:previous_second;
+        cpu.r[2]=normals+(paired+1u)*12u;
+        cpu.r[3]=primary;
+        cpu.r[7]=(count&1u)?0u:0xFFFFFFFFu;
+        cpu.r[8]=positions+12u+paired*16u;
+        cpu.r[9]=secondary+paired*4u;
+        cpu.r[14]=(count&1u)?previous_second:second_color;
+        for(unsigned axis=0;axis<3;++axis){
+            cpu.fr[axis]=peek(guard,normals+paired_last*12u+axis*4u);
+            cpu.fr[8u+axis]=peek(guard,normals+paired*12u+axis*4u);
+        }
+        cpu.fr[3]=batch.scaled[paired_last];
+        cpu.fr[11]=(count&1u)?batch.scaled[count-1u]:0x3F800000u;
+        cpu.fpul=batch.integers[count-1u];
+        cpu.t=(count&1u) && std::bit_cast<std::int32_t>(cpu.fpul)>255;
+        cpu.fpscr &= ~fpscr_cause_mask;
+        cpu.pc=cpu.pr;
+        ++sonic::palette_batch::counts.closed_loops;
+        return true;
+    }
+    std::size_t vertex=0;
+
     // 73D2..7434: original paired, pipelined loop, including interleaved stores
     // and the final read-ahead. Replacing it with a count loop loses end state.
     do {
-        fpu_inner_product(cpu, 12u, 8u);
-        normal_word(0u); fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 11u);
-        normal_word(1u); fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 11u);
-        normal_word(2u); fpu_truncate_to_fpul(cpu, 11u);
+        if(!batched)fpu_inner_product(cpu, 12u, 8u);
+        normal_word(0u); if(!batched)fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 11u);
+        normal_word(1u); if(!batched)fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 11u);
+        normal_word(2u);
+        if(batched){cpu.fr[11]=batch.scaled[vertex];cpu.fpul=batch.integers[vertex];}
+        else fpu_truncate_to_fpul(cpu, 11u);
         cpu.r[0] = cpu.fpul; cpu.fr[3] = 0x3F800000u; cpu.t = nonnegative(cpu.r[0]);
-        fpu_inner_product(cpu, 12u, 0u); if (!cpu.t) cpu.r[0] = 0u;
-        fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 3u);
-        cpu.t = above_max(cpu.r[0]); fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 3u);
+        if(!batched)fpu_inner_product(cpu, 12u, 0u); if (!cpu.t) cpu.r[0] = 0u;
+        if(!batched)fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 3u);
+        cpu.t = above_max(cpu.r[0]); if(!batched)fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 3u);
         if (cpu.t) cpu.r[0] = cpu.r[12];
-        fpu_truncate_to_fpul(cpu, 3u); cpu.r[14] = cpu.fpul; cpu.r[0] <<= 3u;
+        if(batched){cpu.fr[3]=batch.scaled[vertex+1];cpu.fpul=batch.integers[vertex+1];}
+        else fpu_truncate_to_fpul(cpu, 3u);
+        cpu.r[14] = cpu.fpul; cpu.r[0] <<= 3u;
         cpu.t = nonnegative(cpu.r[14]); cpu.r[0] += cpu.r[5]; if (!cpu.t) cpu.r[14] = 0u;
         cpu.r[3] = load(cpu.r[0]); cpu.r[0] += 4u;
         cpu.t = above_max(cpu.r[14]); cpu.r[0] = load(cpu.r[0] + cpu.r[11]);
@@ -220,14 +273,19 @@ bool try_execute(katana::runtime::CpuState& cpu,
         normal_word(10u); cpu.r[8] += 16u; cpu.fr[11] = 0x3F800000u;
         cpu.r[7] -= 2u; cpu.t = std::bit_cast<std::int32_t>(cpu.r[7]) > 0;
         cpu.r[9] += 4u; // BT/S delay slot, taken or not
+        vertex+=2;
     } while (cpu.t);
     cpu.t = cpu.r[7] == 0u;
     if (cpu.t) {
         // 743A..745A: odd final record; output pointers are NOT incremented.
-        fpu_inner_product(cpu, 12u, 8u);
-        fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 11u);
-        fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 11u);
-        fpu_truncate_to_fpul(cpu, 11u); cpu.r[0] = cpu.fpul;
+        if(batched){cpu.fr[11]=batch.scaled[vertex];cpu.fpul=batch.integers[vertex];}
+        else {
+            fpu_inner_product(cpu, 12u, 8u);
+            fpu_binary(cpu, FpuBinaryOperation::Multiply, 7u, 11u);
+            fpu_binary(cpu, FpuBinaryOperation::Add, 7u, 11u);
+            fpu_truncate_to_fpul(cpu, 11u);
+        }
+        cpu.r[0] = cpu.fpul;
         cpu.t = nonnegative(cpu.r[0]); if (!cpu.t) cpu.r[0] = 0u;
         cpu.t = above_max(cpu.r[0]); if (cpu.t) cpu.r[0] = cpu.r[12];
         cpu.r[0] <<= 3u; cpu.r[0] += cpu.r[5];
@@ -235,6 +293,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         cpu.r[0] = load(cpu.r[0] + cpu.r[11]);
         store(0x8C037458u, cpu.r[8], cpu.r[3]); store(0x8C03745Au, cpu.r[9], cpu.r[0]);
     }
+    if(batched)cpu.fpscr &= ~fpscr_cause_mask;
     cpu.pc = cpu.pr;
     return true;
 }

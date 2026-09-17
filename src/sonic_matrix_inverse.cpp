@@ -1,4 +1,5 @@
 #include "sonic_matrix_inverse.hpp"
+#include "sonic_native_model_memory.hpp"
 #include "sonic_fpu_body.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -172,12 +173,14 @@ bool try_execute(katana::runtime::CpuState& cpu,
     if (!fp.admitted()) return false;
     // No fallback after admission. Static whole-body translations, with one
     // native internal call and no original dispatch or runtime opcode decoder.
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,guard);
     const auto load32=[&](std::uint32_t address) {
         std::uint32_t value=0;
         (void)direct_linear_guard_read_u32(guard,(address&0x1FFFFFFFu)|0x80000000u,value);
         return value;
     };
     const auto store32=[&](std::uint32_t pc,std::uint32_t address,std::uint32_t value,CodeWriteSource source) {
+        if(native_writes.try_store(address,value,source))return;
         if (!memory.try_write_direct_linear_u32(address&0x1FFFFFFFu,value,source))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},address,value,source);
     };

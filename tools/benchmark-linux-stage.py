@@ -8,6 +8,18 @@ import re
 import subprocess
 import time
 
+def sample_rows(text):
+    result=[]
+    for line in text.splitlines():
+        if not line.startswith('SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE '): continue
+        fields=re.findall(r'(\w+)=([^ ]+)',line)
+        row=dict(fields)
+        if len(fields)!=len(row) or any(not row.get(key,'').isdigit() for key in
+                ('frame','relative_frame','elapsed_ms','monotonic_ns','drawn_frames','game_ticks','final')):
+            continue
+        result.append(row)
+    return result
+
 
 def measurement(samples):
     """Exclude startup and the first sample; never equate presents with new draws."""
@@ -50,10 +62,18 @@ p.add_argument('--scenario', default='emerald-coast',
     help='Reviewed performance scenarios; IDs match the private stage table exactly')
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
-p.add_argument('--native-animation', choices=('off','on'), default='off',
+p.add_argument('--native-animation', choices=('off','on','installed'), default='installed',
                help='Same-executable comparison of the complete native animation hierarchy')
-p.add_argument('--native-pose', choices=('off','on'), default='off',
+p.add_argument('--native-pose', choices=('off','on','installed'), default='installed',
                help='Same-executable comparison of the complete native pose mixer')
+p.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
+p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
+p.add_argument('--collision-scope', choices=('gameplay','all','installed'), default='installed')
+p.add_argument('--async-audio-status', choices=('off','on','installed'), default='installed')
+p.add_argument('--sound-metadata', choices=('off','on','verify'), default='off')
+p.add_argument('--deferred-midi-notes', choices=('off','on'), default='off')
 p.add_argument('--math-scope', choices=('gameplay','all'), default='all',
                help='Compare the former scene gate against independently admitted native leaves')
 p.add_argument('--phase', choices=('gameplay','stage-entry'), default='gameplay',
@@ -106,6 +126,7 @@ display.write_text('setup_complete=1\n'+viewport+
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env.update({
     'SARECOMP_NATIVE_POSE_BLEND':'1' if a.native_pose=='on' else '0',
+    'SARECOMP_NATIVE_COLLISION_ALL_SCENES':'1' if a.collision_scope=='all' else '0',
     'SARECOMP_INTERNAL_DIAGNOSTICS':'1' if a.diagnostics=='on' else '0',
     'SARECOMP_PREPARED_TRANSFERS':'0' if a.transfer_plans=='original' else '1',
     'SARECOMP_PREPARED_TRANSFERS_VERIFY':'1' if a.transfer_plans=='verify' else '0',
@@ -124,6 +145,15 @@ env.update({
     'SARECOMP_GAMEPLAY_MATH_RETAINED':'1' if a.gameplay_math=='retained' else '0',
     'SARECOMP_NATIVE_MATH_GAMEPLAY_ONLY':str(int(a.math_scope=='gameplay')),
     'SARECOMP_NATIVE_ANIMATION_HIERARCHY':str(int(a.native_animation=='on')),
+    'SARECOMP_NATIVE_MODEL_PACKETS':str(int(a.native_model_packets!='off')),
+    'SARECOMP_NATIVE_MODEL_PACKETS_VERIFY':str(int(a.native_model_packets=='verify')),
+    'SARECOMP_NATIVE_CLOSED_MEMORY':str(int(a.native_closed_memory=='on')),
+    'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
+    'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
+    'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
+    'SARECOMP_SOUND_METADATA_CACHE':str(int(a.sound_metadata!='off')),
+    'SARECOMP_SOUND_METADATA_VERIFY':str(int(a.sound_metadata=='verify')),
+    'SARECOMP_DEFERRED_MIDI_NOTES':str(int(a.deferred_midi_notes=='on')),
     'KATANA_PORT_FINAL_PROGRESS':'1',
     'KATANA_NATIVE_PERFORMANCE_TELEMETRY':'1' if a.telemetry=='on' else '0',
     'KATANA_NATIVE_GRAPHICS_DIAGNOSTICS_MODE':'off',
@@ -134,6 +164,16 @@ env.update({
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'1200000',
 })
 log_path = run/'game.log'
+for name, selection in (
+    ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', a.native_animation),
+    ('SARECOMP_NATIVE_POSE_BLEND', a.native_pose),
+    ('SARECOMP_NATIVE_CLOSED_MEMORY', a.native_closed_memory),
+    ('SARECOMP_NATIVE_RENDER_CONTEXT', a.native_render_context),
+    ('SARECOMP_NATIVE_PALETTE_BATCH', a.native_palette_batch),
+    ('SARECOMP_NATIVE_COLLISION_ALL_SCENES', a.collision_scope),
+    ('SARECOMP_ASYNC_AUDIO_STATUS', a.async_audio_status),
+):
+    if selection == 'installed': env.pop(name, None)
 if a.diagnostics=='installed':env.pop('SARECOMP_INTERNAL_DIAGNOSTICS',None)
 if a.transfer_plans=='installed':env.pop('SARECOMP_PREPARED_TRANSFERS',None)
 if a.ram_regions=='installed':env.pop('SARECOMP_RAM_REGIONS',None)
@@ -154,9 +194,7 @@ with log_path.open('w') as log:
         while game.poll() is None:
             time.sleep(1)
             text = log_path.read_text(errors='replace')
-            samples = [dict(re.findall(r'(\w+)=([^ ]+)', line))
-                       for line in text.splitlines()
-                       if line.startswith('SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')]
+            samples = sample_rows(text)
             if len(samples) > last_count:
                 last_count = len(samples)
                 print('SONIC_LINUX_PROBE_SAMPLE elapsed_ms=' + samples[-1]['elapsed_ms'] +
@@ -216,9 +254,7 @@ with exe.open('rb') as stream:
         raise RuntimeError('The profiled executable changed during the run')
 text = log_path.read_text(errors='replace')
 frontiers = re.findall(r'^KATANA_RUNTIME_STOP_FRONTIER (.+)$', text, re.MULTILINE)
-samples = [dict(re.findall(r'(\w+)=([^ ]+)', line))
-           for line in text.splitlines()
-           if line.startswith('SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ')]
+samples = sample_rows(text)
 stop_reason = json.loads(frontiers[-1]).get('stop_reason') if frontiers else None
 # NativePortStopReason::HostDeadline is 2; a completed probe alone must not
 # hide a later failure during shutdown.
@@ -237,10 +273,18 @@ if a.end_frame:
         and all(int(s.get('frame_window_begin','0'))==a.begin_frame
                 and int(s.get('frame_window_end','0'))==a.end_frame for s in measured_samples))
 result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile, 'callgraph':a.callgraph,
+          'host_cpu_count':os.cpu_count(), 'software_raster_threads':env.get('LP_NUM_THREADS'),
           'exe':str(exe), 'exe_sha256':exe_sha256, 'scenario':a.scenario, 'aspect':a.aspect,
           'gameplay_timing':a.gameplay_timing, 'gameplay_math':a.gameplay_math,
           'math_scope':a.math_scope, 'phase':a.phase,
           'native_animation':a.native_animation,
+          'native_model_packets':a.native_model_packets,
+          'native_closed_memory':a.native_closed_memory,
+          'native_render_context':a.native_render_context,
+          'native_palette_batch':a.native_palette_batch,
+          'collision_scope':a.collision_scope,
+          'async_audio_status':a.async_audio_status,
+          'sound_metadata':a.sound_metadata,'deferred_midi_notes':a.deferred_midi_notes,
           'native_pose':a.native_pose,
           'diagnostics':a.diagnostics,
           'transfer_plans':a.transfer_plans,

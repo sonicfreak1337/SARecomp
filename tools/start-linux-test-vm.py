@@ -1,5 +1,6 @@
 """Start only the owned, headless Linux test machine, with localhost-only SSH."""
 from pathlib import Path
+import argparse
 import json
 import os
 import subprocess
@@ -10,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 VM = ROOT / '.local/linux-test-vm'
 sys.path.insert(0, str(VM / 'python'))
 import pycdlib
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--cpus', type=int, choices=(2, 4), default=2,
+                    help='Virtual CPUs; record this when comparing measurements')
+args = parser.parse_args()
 
 VM.mkdir(parents=True, exist_ok=True)
 key = VM / 'id_ed25519'
@@ -52,12 +58,13 @@ if pid_file.exists():
     # The PID is evidence for cleanup, not authority to stop/reuse a process.
     raise SystemExit('VM has already been started; inspect vm.json and its process before restarting.')
 argv = [str(qemu_root / 'qemu-system-x86_64.exe'), '-accel', 'tcg,thread=multi', '-cpu', 'max',
-        '-machine', 'q35,hpet=off', '-smp', '2', '-m', '6144', '-display', 'none', '-monitor', 'none',
+        '-machine', 'q35,hpet=off', '-smp', str(args.cpus), '-m', '6144', '-display', 'none', '-monitor', 'none',
         '-serial', 'file:' + str(VM / 'serial.log'), '-no-reboot',
         '-drive', 'file=' + str(disk) + ',format=qcow2,if=virtio',
         '-drive', 'file=' + str(seed) + ',format=raw,media=cdrom,readonly=on',
         '-nic', 'user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:22230-:22']
 with (VM / 'qemu.log').open('ab') as log:
     process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, creationflags=0x08000000)
-pid_file.write_text(json.dumps({'pid': process.pid, 'executable': argv[0], 'ssh_port': 22230}, indent=2) + '\n')
+pid_file.write_text(json.dumps({'pid': process.pid, 'executable': argv[0], 'ssh_port': 22230,
+                                'cpu_count': args.cpus, 'ram_mib': 6144}, indent=2) + '\n')
 print('SONIC_LINUX_TEST_VM_STARTED pid=' + str(process.pid) + ' ssh=127.0.0.1:22230')

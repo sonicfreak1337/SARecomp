@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import zipfile
 
 MEMORY_SHA = '56806312c7d8fcdd5d5d33c0678397757ba0c52830566333f872cc8ba63db6f5'
 RUNTIME_SHA = '50b7ce3809dd6c20ef190ed792616209fa41752b1f0074460875f73c6ee2c5f9'
@@ -75,18 +76,27 @@ def transform(source):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--memory-source', type=Path, required=True)
+    p.add_argument('--memory-source', type=Path)
+    p.add_argument('--sdk-zip', type=Path)
     p.add_argument('--runtime-source', type=Path, required=True)
-    p.add_argument('--source-root', type=Path, required=True)
-    p.add_argument('--units-file', type=Path, required=True)
+    p.add_argument('--source-root', type=Path)
+    p.add_argument('--units-file', type=Path)
+    p.add_argument('--runtime-only', action='store_true', help='Bind closed native owners without changing guest units')
     p.add_argument('--destination', type=Path, required=True)
     p.add_argument('--mode', choices=('scalar','stack','region'), default='scalar')
     p.add_argument('--guard-probe', action='store_true', help='Private sampled RAM-miss diagnosis, never distribution')
     a = p.parse_args()
-    out = a.destination.resolve(); root = a.source_root.resolve()
-    if out == root or out in root.parents or root in out.parents:
+    if bool(a.memory_source) == bool(a.sdk_zip): p.error('Select memory source or pinned SDK zip')
+    if not a.runtime_only and (not a.source_root or not a.units_file):
+        p.error('Guest transformations require source root and unit list')
+    out = a.destination.resolve(); root = a.source_root.resolve() if a.source_root else None
+    if root and (out == root or out in root.parents or root in out.parents):
         raise ValueError('Prepared sources must be separate')
-    memory = qualified_source(a.memory_source, MEMORY_SHA)
+    if a.sdk_zip:
+        with zipfile.ZipFile(a.sdk_zip) as archive: data = archive.read('src/runtime/memory.cpp')
+        if digest(data) != MEMORY_SHA: raise ValueError('Pinned memory source identity changed')
+        memory = data.decode().replace('\r\n', '\n')
+    else: memory = qualified_source(a.memory_source, MEMORY_SHA)
     memory = once(memory, '    if (write && guest_write_observer_) return {};',
         '    if (write && guest_write_observer_ &&\n'
         '        !sonic::scalar_writes::capture_admitted(this, guest_write_observer_generation_)) return {};')
@@ -99,6 +109,12 @@ def main():
         '    if (context_ && context_->cpu) sonic::scalar_writes::unbind(&context_->cpu->memory, immutable_guard_);\n')
     write(out/'memory.cpp', (HEADER+memory).encode())
     write(out/'native_port_runtime.cpp', (HEADER+runtime).encode())
+    if a.runtime_only:
+        report = {'schema':'sarecomp-native-memory-capability-v1', 'guest_units_changed':0,
+                  'memory_sha256':MEMORY_SHA, 'runtime_sha256':RUNTIME_SHA}
+        write(out/'preparation.json', (json.dumps(report,indent=2)+'\n').encode())
+        print('SONIC_NATIVE_MEMORY_CAPABILITY_READY guest_units_changed=0')
+        return
     lines = (root/'.katana-generated-artifacts').read_text().splitlines()
     if lines[0] != 'katana-codegen-artifacts-v2' or lines[1] != 'generation\tsha256:'+digest(('\n'.join(lines[2:])+'\n').encode()):
         raise ValueError('Invalid retained source manifest')

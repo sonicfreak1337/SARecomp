@@ -4,6 +4,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic-native-event-adx-catalog.inc sonic_native_input_policy.hpp
     sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp sonic_palette_lighting.hpp sonic_palette_lighting.cpp
     sonic_vertex_normals.hpp sonic_vertex_normals.cpp
+    sonic_palette_batch.hpp sonic_palette_batch.cpp sonic_palette_batch_simd.cpp
     sonic_matrix_stack.hpp sonic_matrix_stack.cpp
     sonic_matrix_vectors.hpp sonic_matrix_vectors.cpp
     sonic_big_hud.hpp
@@ -18,7 +19,9 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_motion_sampling.hpp sonic_motion_sampling.cpp ../tools/prepare_motion_sampling.py
     sonic_animation_hierarchy.hpp sonic_animation_hierarchy.cpp ../tools/prepare-animation-hierarchy.py
     sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
-    sonic_mesh_plan.hpp sonic_mesh_plan.cpp
+    sonic_render_context.hpp sonic_render_context.cpp ../tools/prepare-render-context.py
+    sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py
+    sonic_mesh_plan.hpp sonic_mesh_plan.cpp sonic_model_packet.hpp
     sonic_atan_math.hpp sonic_atan_math.cpp
     sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp
     sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp
@@ -39,6 +42,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_tutorial_art.hpp sonic_tutorial_art.cpp sonic_tutorial_control_spans.inc sonic_tutorial_page_adapter.inc
     sonic_configuration_lock.hpp sonic_audio_settings.hpp sonic_movie_audio.hpp sonic_subtitles.hpp
     sonic_audio_device.hpp sonic_audio_recovery.inc sonic_recovery_status.hpp sonic_host_resume.hpp ../tools/prepare-audio-output.py ../tools/prepare-audio-buses.py
+    sonic_audio_status.hpp sonic_audio_status.cpp sonic_sound_commands.hpp
     sonic_menu.hpp sonic_menu.cpp sonic_menu_image.cpp sonic_menu_text.hpp sonic_menu_text.cpp
     sonic_menu_runtime.hpp sonic_menu_runtime.cpp sonic_menu_test_input.hpp sonic_menu_policy.hpp sonic_options_display.cpp
     sonic_profiles.hpp sonic_profiles.cpp sonic_restart.hpp sonic_restart.cpp

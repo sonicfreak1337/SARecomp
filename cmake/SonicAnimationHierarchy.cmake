@@ -44,3 +44,6 @@ target_sources(${animation_title} PRIVATE "${SONIC_ROOT}/src/sonic_pose_blend.cp
 target_sources(sonic-animation-hierarchy-tests PRIVATE "${SONIC_ROOT}/src/sonic_pose_blend.cpp" "${pose_identity}")
 target_include_directories(${animation_title} PRIVATE "${animation_dir}")
 target_include_directories(sonic-animation-hierarchy-tests PRIVATE "${SONIC_ROOT}/src" "${animation_dir}")
+include("${SONIC_ROOT}/cmake/SonicClosedMemory.cmake")
+include("${SONIC_ROOT}/cmake/SonicPaletteBatch.cmake")
+include("${SONIC_ROOT}/cmake/SonicRenderContext.cmake")

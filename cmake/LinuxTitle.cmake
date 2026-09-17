@@ -1,4 +1,6 @@
 # Consume the already reviewed C++ input pack. End users never execute this.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${SONIC_ROOT}/tools/prepare-linux-title-inputs.py")
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-linux-title-inputs.py"
     "${SONIC_ROOT}" "${CMAKE_BINARY_DIR}/generated"
     RESULT_VARIABLE title_inputs_result OUTPUT_VARIABLE title_inputs_status ERROR_VARIABLE title_inputs_error)
@@ -61,8 +63,11 @@ list(TRANSFORM linux_services_sources APPEND ".cpp")
 add_library(sonic_linux_services STATIC ${linux_services_sources}
     "${CMAKE_BINARY_DIR}/generated/audio-buses/native_port_sound_bank.cpp")
 target_include_directories(sonic_linux_services PRIVATE "${SONIC_ROOT}/src")
+set_source_files_properties("${CMAKE_BINARY_DIR}/generated/audio-buses/native_port_sound_bank.cpp"
+    PROPERTIES INCLUDE_DIRECTORIES "${SONIC_LINUX_SDK}/src/runtime")
 target_compile_options(sonic_linux_services PRIVATE -O2 -g0 -ffunction-sections -fdata-sections)
 target_link_libraries(sonic_linux_services PUBLIC sonic_linux_graphics sonic_linux_movie sonic_linux_aot_runtime)
+include("${SONIC_ROOT}/cmake/SonicAudioStatus.cmake")
 
 add_executable(game "${SONIC_ROOT}/launcher/main.cpp"
     "${CMAKE_BINARY_DIR}/generated/motion-dispatch/native-port-dispatch.cpp"
@@ -98,7 +103,7 @@ include("${SONIC_ROOT}/cmake/LinuxScalarWrites.cmake")
 include("${SONIC_ROOT}/cmake/LinuxFpuRegisterCache.cmake")
 include("${SONIC_ROOT}/cmake/LinuxCodeAddressPages.cmake")
 include("${SONIC_ROOT}/cmake/LinuxProcedureRegisters.cmake")
-option(SARECOMP_LINUX_PERFORMANCE_DEFAULTS "Enable the measured RAM/transfer paths at normal startup" OFF)
+option(SARECOMP_LINUX_PERFORMANCE_DEFAULTS "Enable the measured RAM/transfer paths at normal startup" ON)
 if(SARECOMP_LINUX_PERFORMANCE_DEFAULTS)
     if(NOT SARECOMP_LINUX_RAM_REGIONS OR NOT SARECOMP_LINUX_TRANSFER_PLANS)
         message(FATAL_ERROR "Performance defaults require compiled RAM regions and transfer plans")

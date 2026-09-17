@@ -41,6 +41,8 @@
 #include "sonic_menu_runtime.hpp"
 #include "sonic_profiles.hpp"
 #include "sonic_audio_settings.hpp"
+#include "sonic_audio_status.hpp"
+#include "sonic_sound_commands.hpp"
 #include "sonic_audio_device.hpp"
 #include "sonic_host_resume.hpp"
 #include "sonic_movie_audio.hpp"
@@ -48,6 +50,7 @@
 #include "sonic_sdk_color.hpp"
 #include "sonic_model_uv.hpp"
 #include "sonic_corner_indices.hpp"
+#include "sonic_model_packet.hpp"
 #include "sonic_fpu_scratch.hpp"
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
@@ -55,8 +58,10 @@
 #include "sonic_execution_clock.hpp"
 #include "sonic_update_timing_probe.hpp"
 #include "sonic_internal_diagnostics.hpp"
+#include "sonic_native_cpu_policy.hpp"
 #include "sonic_render_completion.hpp"
 #include "sonic_palette_lighting.hpp"
+#include "sonic_native_model_memory.hpp"
 #include "sonic_vertex_normals.hpp"
 #include "sonic_matrix_stack.hpp"
 #include "sonic_collision_math.hpp"
@@ -66,6 +71,8 @@
 #include "sonic_motion_sampling.hpp"
 #include "sonic_animation_hierarchy.hpp"
 #include "sonic_pose_blend.hpp"
+#include "sonic_render_context.hpp"
+#include "sonic_palette_batch.hpp"
 #include "sonic_mesh_plan.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
@@ -1466,6 +1473,7 @@ struct SonicNativePendingDraw final {
     std::vector<std::uint32_t> indices;
     katana::runtime::NativePortDrawPacket state;
     sonic::motion::DrawTag motion;
+    sonic::model_packet::Draw model_packet;
     std::uint64_t submission_ordinal = 0u;
     std::uint32_t source_pc = 0u;
     std::uint32_t source_pr = 0u;
@@ -1891,7 +1899,9 @@ struct SonicNativeGameplayProbe final {
     std::array<std::uint64_t,2u> inverse_native_calls{};
     std::uint64_t triangle_contacts_native_calls=0u;
     std::uint64_t triangle_contacts_original_calls=0u;
+    std::uint64_t triangle_contacts_scope_blocked_calls=0u;
     std::uint64_t collision_candidates_native_calls=0u;
+    std::uint64_t collision_candidates_scope_blocked_calls=0u;
     std::uint64_t collision_candidates_original_calls=0u;
     std::uint64_t motion_sampling_native_calls=0u;
     std::uint64_t motion_sampling_original_calls=0u;
@@ -2168,6 +2178,7 @@ struct SonicNativeTitleState final {
     std::uint32_t title_audio_trace_primary_handle = 0u;
     std::uint32_t title_audio_trace_secondary_handle = 0u;
     std::unique_ptr<katana::runtime::NativePortAudioEngine> audio_engine;
+    std::unique_ptr<sonic::audio::StatusPublisher> audio_status;
     std::unique_ptr<katana::runtime::NativePortSoundBankEngine>
         sound_bank_engine;
     std::vector<SonicNativeLoadedSoundCollection> loaded_sound_collections;
@@ -2368,6 +2379,16 @@ thread_local SonicNativeTitleState sonic_native_title_state;
     if (retained) return false;
     return (gameplay_only || sonic_sixty_frame_fixture_enabled())
         ? sonic_native_gameplay_math_active() : true;
+}
+
+[[nodiscard]] bool sonic_native_collision_owner_active() noexcept {
+    // These complete owners retain their own code, memory and callback
+    // admission. Compare their scene-independent semantics separately from
+    // the historical gameplay-only policy; never change the title clock.
+    static const bool all_scenes =
+        sonic::native_cpu::enabled("SARECOMP_NATIVE_COLLISION_ALL_SCENES");
+    return all_scenes ? sonic_native_leaf_math_active()
+                      : sonic_native_gameplay_math_active();
 }
 
 // These tests publish synthetic gamepad snapshots inside the hidden process;
@@ -4545,7 +4566,8 @@ sonic_screen_space_transform() noexcept {
 
 [[nodiscard]] std::size_t native_draw_geometry_capacity(
     const SonicNativePendingDraw& draw) noexcept {
-    return draw.vertices.capacity() * sizeof(katana::runtime::NativePortVertex) +
+    return (draw.model_packet ? draw.model_packet.budget_bytes() : 0u) +
+           draw.vertices.capacity() * sizeof(katana::runtime::NativePortVertex) +
            draw.indices.capacity() * sizeof(std::uint32_t);
 }
 
@@ -5317,6 +5339,7 @@ void flush_native_draw_queues(katana::runtime::NativePortContext& context) {
             packet.indices = pending.indices;
         }
         const sonic::motion::Submission motion_submission(sonic::motion::submitted_draw,pending.motion);
+        const sonic::model_packet::Submission model_submission(pending.model_packet ? &pending.model_packet : nullptr);
         context.graphics->draw(packet);
         ++flush_ordinal;
     };
@@ -5367,6 +5390,10 @@ void flush_native_draw_queues(katana::runtime::NativePortContext& context) {
             auto& pending = *iterator;
             pending.vertices.clear();
             pending.indices.clear();
+            if(pending.model_packet){
+                sonic_native_title_state.draw_geometry_capacity_bytes-=pending.model_packet.budget_bytes();
+                pending.model_packet={};
+            }
             pending.state = {};
             pending.submission_ordinal = 0u;
             pending.source_pc = 0u;
@@ -6809,7 +6836,8 @@ sonic_render_state(
         std::nullopt,
     const sonic::presentation::Role presentation_role = sonic::presentation::Role::Interface,
     const sonic::motion::DrawTag motion_tag = {},
-    const std::span<const std::uint32_t> transient_indices = {})
+    const std::span<const std::uint32_t> transient_indices = {},
+    const sonic::model_packet::Draw* compact_model = nullptr)
     noexcept {
     if (!valid_sonic_native_context(context))
         return graphics_abort(sonic_native_graphics_error_context);
@@ -6849,7 +6877,7 @@ sonic_render_state(
         const bool collect_graphics_diagnostics =
             sonic_native_graphics_diagnostics_enabled();
         packet.mesh = mesh;
-        if (!packet.mesh) {
+        if (!packet.mesh && !compact_model) {
             packet.vertices = sonic_native_title_state.transient_vertices;
             packet.indices = transient_indices;
         }
@@ -7318,7 +7346,9 @@ sonic_render_state(
                 : SonicNativeRenderQueue::Count;
         if (render_queue == SonicNativeRenderQueue::Count)
             return graphics_abort(sonic_native_graphics_error_model_draw);
-        const auto queued_elements = packet.mesh
+        const auto queued_elements = compact_model
+                                         ? compact_model->geometry->corners.size()+compact_model->geometry->indices.size()
+                                     : packet.mesh
                                          ? 0u
                                          : packet.vertices.size() +
                                                packet.indices.size();
@@ -7333,6 +7363,12 @@ sonic_render_state(
         if (!reusable.empty()) {
             pending = std::move(reusable.back());
             reusable.pop_back();
+        }
+        if(compact_model){
+            if(!compact_model->valid() || !make_native_draw_storage_room(compact_model->budget_bytes()))
+                return graphics_abort(sonic_native_graphics_error_budget);
+            pending.model_packet=*compact_model;
+            sonic_native_title_state.draw_geometry_capacity_bytes+=pending.model_packet.budget_bytes();
         }
         auto& queue = sonic_native_title_state.pending_draws[
             static_cast<std::size_t>(render_queue)];
@@ -18060,11 +18096,31 @@ void emit_sonic_native_gameplay_probe_sample(
               << " matrix_inverse_native_calls=" << probe.inverse_native_calls[0]
               << " triangle_contacts_native_calls=" << probe.triangle_contacts_native_calls
               << " triangle_contacts_original_calls=" << probe.triangle_contacts_original_calls
+              << " triangle_contacts_scope_blocked_calls=" << probe.triangle_contacts_scope_blocked_calls
               << " collision_candidates_native_calls=" << probe.collision_candidates_native_calls
+              << " collision_candidates_scope_blocked_calls=" << probe.collision_candidates_scope_blocked_calls
               << " collision_candidates_original_calls=" << probe.collision_candidates_original_calls
               << " motion_sampling_native_calls=" << probe.motion_sampling_native_calls
               << " motion_sampling_original_calls=" << probe.motion_sampling_original_calls
               << " animation_hierarchy_native_calls=" << sonic::animation_hierarchy::statistics().native_calls
+              << " model_packets=" << sonic_native_title_state.model_source_plans.stats.model_packets
+              << " model_snapshots=" << sonic_native_title_state.model_source_plans.stats.model_snapshots
+              << " model_packet_verified=" << sonic_native_title_state.model_source_plans.stats.model_packet_verified
+              << " model_packet_vertices=" << sonic_native_title_state.model_source_plans.stats.model_packet_vertices
+              << " closed_memory_calls=" << sonic::model_memory::closed_leaf_counts.calls
+              << " closed_memory_words=" << sonic::model_memory::closed_leaf_counts.words
+              << " render_context_captures=" << sonic::render_context::statistics().captures
+              << " render_context_commits=" << sonic::render_context::statistics().commits
+              << " render_context_fallbacks=" << sonic::render_context::statistics().fallbacks
+              << " render_context_direct_calls=" << sonic::render_context::statistics().direct_calls
+              << " palette_batch_calls=" << sonic::palette_batch::counts.calls
+              << " palette_batch_vertices=" << sonic::palette_batch::counts.vertices
+              << " palette_batch_declined=" << sonic::palette_batch::counts.declined
+              << " palette_batch_closed_loops=" << sonic::palette_batch::counts.closed_loops
+              << " sound_metadata_hits=" << sonic::audio::sound_command_counts.metadata_hits
+              << " sound_metadata_misses=" << sonic::audio::sound_command_counts.metadata_misses
+              << " sound_metadata_verified=" << sonic::audio::sound_command_counts.metadata_verified
+              << " deferred_midi_notes=" << sonic::audio::sound_command_counts.deferred_notes
               << " animation_hierarchy_original_calls=" << sonic::animation_hierarchy::statistics().original_calls
               << " animation_hierarchy_nodes=" << sonic::animation_hierarchy::statistics().nodes
               << " animation_direct_write_calls=" << sonic::animation_hierarchy::statistics().direct_write_calls
@@ -22893,6 +22949,8 @@ constexpr std::uint32_t sonic_native_adxt_volume_offset = 0x40u;
 
 void release_native_adx_voice(SonicNativeAdxStream& stream) {
     if (!stream.voice.has_value()) return;
+    if (sonic_native_title_state.audio_status)
+        sonic_native_title_state.audio_status->unwatch(*stream.voice);
     if (sonic_native_title_state.audio_engine) {
         sonic_native_title_state.audio_engine->stop(*stream.voice);
         sonic_native_title_state.audio_engine->release(*stream.voice);
@@ -22949,13 +23007,20 @@ void publish_native_adx_state(katana::runtime::NativePortContext& context,
     stream.published_state = state;
 }
 
+[[nodiscard]] sonic::audio::StatusPublisher::Status native_adx_snapshot(
+    const katana::runtime::NativePortAudioVoiceHandle voice) {
+    if (sonic_native_title_state.audio_status)
+        return sonic_native_title_state.audio_status->read(voice);
+    const auto snapshot = sonic_native_title_state.audio_engine->voice_snapshot(voice);
+    return {snapshot.state, snapshot.mixed_output_frames, snapshot.played_output_frames};
+}
+
 void synchronize_native_adx_streams(
     katana::runtime::NativePortContext& context) {
     if (!sonic_native_title_state.audio_engine) return;
     for (auto& stream : sonic_native_title_state.adx_streams) {
         if (!stream.bound || !stream.voice.has_value()) continue;
-        const auto snapshot =
-            sonic_native_title_state.audio_engine->voice_snapshot(*stream.voice);
+        const auto snapshot = native_adx_snapshot(*stream.voice);
         std::uint8_t state = sonic_native_adxt_state_decoder_info;
         switch (snapshot.state) {
         case katana::runtime::NativePortAudioVoiceState::Ready:
@@ -23008,6 +23073,7 @@ void ensure_native_title_audio(
     // stores a reference to this exact audio backend, so neither object may be
     // published until both constructors and endpoint initialization succeed.
     std::unique_ptr<katana::runtime::NativePortAudioEngine> audio_candidate;
+    std::unique_ptr<sonic::audio::StatusPublisher> status_candidate;
     if (!sonic_native_title_state.audio_engine) {
         katana::runtime::NativePortAudioEngineConfig audio_config;
         audio_config.output_format = {
@@ -23034,6 +23100,9 @@ void ensure_native_title_audio(
                             : audio_candidate.get();
     if (audio == nullptr)
         throw std::runtime_error("native-audio-backend-missing");
+    if (!sonic_native_title_state.audio_status && sonic::audio::async_status_enabled())
+        status_candidate = std::make_unique<sonic::audio::StatusPublisher>(
+            *audio, katana::runtime::NativePortAudioEngineConfig{});
 
     std::unique_ptr<katana::runtime::NativePortSoundBankEngine>
         sound_bank_candidate;
@@ -23052,6 +23121,8 @@ void ensure_native_title_audio(
 
     if (audio_candidate)
         sonic_native_title_state.audio_engine = std::move(audio_candidate);
+    if (status_candidate)
+        sonic_native_title_state.audio_status = std::move(status_candidate);
     if (sound_bank_candidate)
         sonic_native_title_state.sound_bank_engine =
             std::move(sound_bank_candidate);
@@ -23139,6 +23210,7 @@ void destroy_native_title_audio_provider() {
     } else {
         clear_native_title_audio_collection_bindings();
     }
+    sonic_native_title_state.audio_status.reset();
     sonic_native_title_state.audio_engine.reset();
 }
 
@@ -23166,6 +23238,7 @@ void reset_native_title_audio_provider_fail_closed() noexcept {
         // the private mirror.  Destroy the dependent backend first; the audio
         // backend destructor then closes any voices the failed reset missed.
         sonic_native_title_state.sound_bank_engine.reset();
+        sonic_native_title_state.audio_status.reset();
         sonic_native_title_state.audio_engine.reset();
         sonic_native_title_state.native_audio_foundation_refcount = 0u;
         sonic_native_title_state.native_audio_processor_running = false;
@@ -23319,6 +23392,7 @@ sonic_native_audio_foundation_shutdown(
 
         reset_native_title_audio_provider();
         sonic_native_title_state.sound_bank_engine.reset();
+        sonic_native_title_state.audio_status.reset();
         sonic_native_title_state.audio_engine.reset();
         sonic_native_title_state.native_audio_control_word = 0u;
         sonic_native_title_state.native_audio_processor_running = false;
@@ -24117,6 +24191,8 @@ sonic_native_adxt_start_file(
             stream.gain = gain;
             stream.pan = pan;
             stream.bound = true;
+            if (sonic_native_title_state.audio_status)
+                sonic_native_title_state.audio_status->watch(*stream.voice);
             publish_native_adx_state(
                 context, stream, sonic_native_adxt_state_playing);
             if (context.crash_capsule != nullptr)
@@ -24288,6 +24364,8 @@ sonic_native_adxt_start_afs(
             stream.gain = gain;
             stream.pan = pan;
             stream.bound = true;
+            if (sonic_native_title_state.audio_status)
+                sonic_native_title_state.audio_status->watch(*stream.voice);
             publish_native_adx_state(
                 context, stream, sonic_native_adxt_state_playing);
             if (context.crash_capsule != nullptr)
@@ -24402,9 +24480,7 @@ extern "C" katana::runtime::NativePortHookResult sonic_native_adxt_time(
             if (!sonic_native_title_state.audio_engine)
                 throw std::runtime_error("native-adx-engine-missing");
             synchronize_native_adx_streams(context);
-            const auto snapshot =
-                sonic_native_title_state.audio_engine->voice_snapshot(
-                    *stream->voice);
+            const auto snapshot = native_adx_snapshot(*stream->voice);
             if (snapshot.state ==
                 katana::runtime::NativePortAudioVoiceState::Failed)
                 throw std::runtime_error("native-adx-decoder-failed");
@@ -25206,10 +25282,10 @@ extern "C" katana::runtime::NativePortHookResult sonic_native_midi_note_on(
             throw std::runtime_error("native-sound-midi-note-on-range");
         const auto index = context.cpu->r[4];
         const auto port = require_native_midi_port(index);
-        static_cast<void>(sonic_native_title_state.sound_bank_engine->midi_note_on(
+        sonic::audio::start_note_without_handle(*sonic_native_title_state.sound_bank_engine,
             port,
             static_cast<std::uint8_t>(context.cpu->r[5]),
-            static_cast<std::uint8_t>(context.cpu->r[6])));
+            static_cast<std::uint8_t>(context.cpu->r[6]));
         sonic_native_title_state.sound_active_notes[index] =
             static_cast<std::uint8_t>(context.cpu->r[5]);
         context.cpu->r[0] = 0u;
@@ -25381,11 +25457,10 @@ extern "C" katana::runtime::NativePortHookResult sonic_native_sound_play(
                 logical_port,
                 static_cast<std::uint8_t>(bank),
                 static_cast<std::uint8_t>(program));
-            static_cast<void>(
-                sonic_native_title_state.sound_bank_engine->midi_note_on(
+            sonic::audio::start_note_without_handle(*sonic_native_title_state.sound_bank_engine,
                     port,
                     static_cast<std::uint8_t>(authored_note),
-                    127u));
+                    127u);
             sonic_native_title_state.sound_active_notes[logical_port] =
                 static_cast<std::uint8_t>(authored_note);
             if (diagnostic) {
@@ -28885,6 +28960,7 @@ void restore_sonic_native_development_state(
         gameplay_probe.active = false;
         gameplay_probe.interrupted = true;
     }
+    sonic_native_title_state.audio_status.reset();
     auto audio = std::move(sonic_native_title_state.audio_engine);
     auto sound_bank = std::move(sonic_native_title_state.sound_bank_engine);
     sonic_native_title_state = {};
@@ -29023,6 +29099,7 @@ void restore_sonic_native_development_state(
     }
 
     sonic_native_title_state.sound_bank_engine->restore_development_state(saved.services.sound_bank);
+    sonic_native_title_state.audio_status.reset();
     sonic_native_title_state.audio_engine->restore_development_state(saved.services.audio);
     sonic_native_title_state.postpal_main_textures_pending = saved.services.postpal_main_textures_pending;
     sonic_native_title_state.private_stage_tuple_override = saved.services.private_stage_tuple_override;
@@ -29095,6 +29172,11 @@ void restore_sonic_native_development_state(
         const auto content = restore_content(source.path);
         target.guest_path = content == nullptr ? std::string_view{} : content->guest_path;
     }
+    ensure_native_title_audio(context);
+    if (sonic_native_title_state.audio_status)
+        for (const auto& stream : sonic_native_title_state.adx_streams)
+            if (stream.bound && stream.voice)
+                sonic_native_title_state.audio_status->watch(*stream.voice);
     const auto now = context.host->monotonic_time_nanoseconds();
     auto& state = sonic_native_title_state;
     state.timer_epoch_nanoseconds =
@@ -29360,6 +29442,7 @@ void release_sonic_native_title_host_providers(
         // Preserve dependency order even when an explicit stop/reset failed;
         // the provider destructors are the guaranteed fail-closed fallback.
         state.sound_bank_engine.reset();
+        state.audio_status.reset();
         state.audio_engine.reset();
         clear_native_title_audio_collection_bindings();
         for (auto& stream : state.adx_streams) stream = {};
@@ -34484,8 +34567,12 @@ extern "C" katana::runtime::NativePortHookResult
 sonic_native_triangle_contacts(katana::runtime::NativePortContext& context) noexcept {
     using namespace katana::runtime;
     auto& probe=sonic_native_title_state.gameplay_probe;
-    if (!sonic_native_gameplay_math_active() || !context.cpu)
+    if (!context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
+    if (!sonic_native_collision_owner_active()) {
+        ++probe.triangle_contacts_scope_blocked_calls;
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    }
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_TRIANGLE_CONTACTS");
         return !flag || std::string_view(flag)!="0";
@@ -34542,8 +34629,12 @@ static bool sonic_candidates_retained_call(void* opaque,
 extern "C" katana::runtime::NativePortHookResult
 sonic_native_collision_candidates(katana::runtime::NativePortContext& context) noexcept {
     using namespace katana::runtime;
-    if(!sonic_native_gameplay_math_active() || !context.cpu)
+    if(!context.cpu)
         return {NativePortHookAction::ContinueOriginal,0u,0u};
+    if(!sonic_native_collision_owner_active()) {
+        ++sonic_native_title_state.gameplay_probe.collision_candidates_scope_blocked_calls;
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    }
     static const bool enabled=[] {
         const auto* flag=std::getenv("SARECOMP_NATIVE_COLLISION_CANDIDATES");
         return !flag || std::string_view(flag)!="0";
@@ -36287,6 +36378,7 @@ sonic_native_ninja_model_draw_impl(
         std::uint32_t final_parameter_control = renderer_state->parameter_control;
         std::uint32_t final_texture_shading = 0u;
         std::uint32_t final_material_state = 0u;
+        std::shared_ptr<const sonic::model_packet::Attributes> model_attributes;
 
         for (std::uint32_t mesh_index = 0u;
              mesh_index < meshset_count; ++mesh_index) {
@@ -37704,7 +37796,38 @@ sonic_native_ninja_model_draw_impl(
                     return corner.point < sonic_native_title_state.transformed_point_clipped.size() &&
                         sonic_native_title_state.transformed_point_clipped[corner.point] == 0u;
                 });
-            if(bulk_shared_mesh){
+            sonic::model_packet::Draw compact_model;
+            if(bulk_shared_mesh && source_plan->model_geometry && !indexed_corners_verify &&
+               !sonic::diagnostics::runtime_checks_enabled() && !report_graphics_authority &&
+               (_mm_getcsr()&0x1F80u)==0x1F80u){
+                if(!model_attributes){
+                    model_attributes=sonic::model_packet::Attributes::capture(
+                        model_point_scratch,model_normal_scratch,transformed_primary_colors,transformed_secondary_colors);
+                    ++source_plan_cache.stats.model_snapshots;
+                }
+                compact_model={source_plan->model_geometry,model_attributes,ignore_lighting,
+                    native_material.use_secondary_color,
+                    renderer_state->fog.mode==katana::runtime::NativePortFogMode::VertexFactor,
+                    _mm_getcsr()&0xE040u};
+                static const bool verify=[] {const auto* p=std::getenv("SARECOMP_NATIVE_MODEL_PACKETS_VERIFY");
+                    return p && std::string_view(p)=="1";}();
+                if(verify){
+                    std::vector<katana::runtime::NativePortVertex> expanded;
+                    sonic::model_packet::expand(compact_model,expanded);
+                    for(const auto& corner:source_plan->shared_vertices)
+                        if(!append_corner(static_cast<std::uint16_t>(corner.point),corner.corner))
+                            return graphics_abort(context,sonic_native_graphics_error_layout);
+                    if(vertices.size()!=expanded.size() || std::memcmp(vertices.data(),expanded.data(),vertices.size()*sizeof(vertices[0])))
+                        return graphics_abort(context,sonic_native_graphics_error_layout);
+                    vertices.clear();
+                    ++source_plan_cache.stats.model_packet_verified;
+                }
+                ++source_plan_cache.stats.model_packets;
+                source_plan_cache.stats.model_packet_vertices+=compact_model.geometry->corners.size();
+                ++source_plan_cache.stats.bulk_meshes;
+                corner_cursor=source_plan->corner_count;
+                stream_offset=source_plan->stream_bytes.size();
+            }else if(bulk_shared_mesh){
                 // The source plan already owns exact triangle order and UV
                 // seams. With every referenced point inside the near plane,
                 // build each current vertex once and copy its logical index
@@ -37908,7 +38031,7 @@ sonic_native_ninja_model_draw_impl(
                 return graphics_abort(context,sonic_native_graphics_error_layout);
             }
 
-            if (vertices.empty()) {
+            if (vertices.empty() && !compact_model) {
                 record_graphics_decision(
                     context, SonicNativeGraphicsDecisionReason::AdapterCull,
                     model, mesh_address, material_index, polygon_stream,
@@ -38068,8 +38191,8 @@ sonic_native_ninja_model_draw_impl(
             if (indexed_corners) {
                 ++corner_indices.meshes;
                 if(mesh_shared_corners)++source_plan_cache.stats.shared_meshes;
-                corner_indices.logical_corners += corner_indices.indices.size();
-                corner_indices.stored_vertices += vertices.size();
+                corner_indices.logical_corners += compact_model ? compact_model.geometry->indices.size() : corner_indices.indices.size();
+                corner_indices.stored_vertices += compact_model ? compact_model.geometry->corners.size() : vertices.size();
             }
             if (indexed_corners || environment_mapping) {
                 // Indexed corner reuse is intentionally transient and cannot
@@ -38217,7 +38340,8 @@ sonic_native_ninja_model_draw_impl(
                      ? std::optional{katana::runtime::NativePortDrawBatchClass::Scene3D}
                      : std::nullopt,
                  sonic::presentation::Role::World,motion_tag,
-                 indexed_corners ? std::span<const std::uint32_t>(corner_indices.indices) : std::span<const std::uint32_t>{});
+                 indexed_corners ? std::span<const std::uint32_t>(corner_indices.indices) : std::span<const std::uint32_t>{},
+                 compact_model ? &compact_model : nullptr);
             if (result.action != katana::runtime::NativePortHookAction::Return)
                 return result;
             if (sonic_native_texlist_binding_diagnostic_enabled()) {
@@ -38237,7 +38361,7 @@ sonic_native_ninja_model_draw_impl(
             } else {
                 ++cache_telemetry.transient_draws;
                 cache_telemetry.transient_uploaded_bytes +=
-                    vertices.size() *
+                    (compact_model ? compact_model.geometry->corners.size() : vertices.size()) *
                     sizeof(katana::runtime::NativePortVertex);
             }
         }

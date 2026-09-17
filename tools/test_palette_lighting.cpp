@@ -1,4 +1,5 @@
 #include "sonic_palette_lighting.hpp"
+#include "sonic_palette_batch.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -242,7 +243,10 @@ int main(int argc, char** argv) {
         unsigned cases = 0;
         for (unsigned count : {2u, 3u, 4u, 5u, 16u, 17u, 128u})
             for (unsigned bank = 0; bank < 3u; ++bank)
-                for (unsigned mode : {0u, 1u, fpscr_fr_mask, fpscr_fr_mask | 1u}) {
+                for (unsigned mode : {0u, 1u, fpscr_fr_mask, fpscr_fr_mask | 1u,
+                        fpscr_flag_inexact_mask, fpscr_flag_inexact_mask | 1u,
+                        fpscr_flag_inexact_mask | fpscr_fr_mask,
+                        fpscr_flag_inexact_mask | fpscr_fr_mask | 1u}) {
                     Fixture native(boot, count, bank, mode, bank % 2u);
                     Fixture reference(boot, count, bank, mode, bank % 2u);
                     compare(native, reference); ++cases;
@@ -374,7 +378,9 @@ int main(int argc, char** argv) {
             f.immutable.observe_write(GuestWriteEvent{0x0C037350u, 4u, CodeWriteSource::Cpu, true});
             decline(f, &f.immutable); ++cases;
         }
-        std::cout << "SONIC_PALETTE_LIGHTING_PASS cases=" << cases
+        if(sonic::palette_batch::enabled())require(sonic::palette_batch::counts.calls>0,"batch never exercised");
+        std::cout << "SONIC_PALETTE_LIGHTING_PASS batch_calls=" << sonic::palette_batch::counts.calls
+                  << " batch_vertices=" << sonic::palette_batch::counts.vertices << " cases=" << cases
             << " reference=sha_bound_retail_sh4 architectural_registers=exact RAM=exact stores=ordered"
             << " reference_ftrc_source_corrections=" << corrected_reference_ftrc
             << " accounting=native_hook_policy\n";

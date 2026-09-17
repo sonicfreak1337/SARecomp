@@ -1,4 +1,4 @@
-option(SARECOMP_LINUX_TRANSFER_PLANS "Reuse successful indirect transfer plans across unchanged executable epochs" OFF)
+option(SARECOMP_LINUX_TRANSFER_PLANS "Reuse successful indirect transfer plans across unchanged executable epochs" ON)
 if(SARECOMP_LINUX_TRANSFER_PLANS)
     if(SARECOMP_LINUX_CONSTINIT_DISPATCH OR SARECOMP_LINUX_PRELOADED_READS OR
        SARECOMP_LINUX_READ_GROUPS OR SARECOMP_LINUX_AOT_STATISTICS OR

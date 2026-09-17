@@ -1,4 +1,5 @@
 #include "sonic_matrix_vectors.hpp"
+#include "sonic_native_model_memory.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
@@ -81,12 +82,14 @@ bool try_execute(katana::runtime::CpuState& cpu,
     if(leaf==3u && cpu.r[4] && !admitted(g,p0,{cpu.r[4],60u})) return false;
     // All possible loads and stores have been admitted. No callback, MMIO,
     // safepoint or original fallback may be introduced below this boundary.
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable,g);
     const auto load=[&](std::uint32_t a) {
         std::uint32_t value=0u;
         (void)direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,value);
         return value;
     };
     const auto store=[&](std::uint32_t pc,std::uint32_t a,std::uint32_t value) {
+        if(native_writes.try_store(a,value,CodeWriteSource::Fpu))return;
         if(!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,value,CodeWriteSource::Fpu))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},a,value,CodeWriteSource::Fpu);
     };

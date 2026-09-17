@@ -1,4 +1,5 @@
 #include "sonic_matrix_stack.hpp"
+#include "sonic_native_model_memory.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
@@ -89,12 +90,14 @@ static bool try_push(katana::runtime::CpuState& cpu,
         // input/input or input/code aliasing is harmless and remains admitted.
     }
     // No original fallback can occur after this point.
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,g);
     const auto load=[&](std::uint32_t a) {
         std::uint32_t v=0u;
         (void)direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,v);
         return v;
     };
     const auto store=[&](std::uint32_t pc,std::uint32_t a,std::uint32_t v,CodeWriteSource source) {
+        if(native_writes.try_store(a,v,source))return;
         if (!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,v,source))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},a,v,source);
     };
@@ -121,7 +124,7 @@ static bool try_push(katana::runtime::CpuState& cpu,
         cpu.write_fpscr(cpu.read_fpscr()^fpscr_sz_mask);
     };
     const auto save_matrix=[&](std::uint32_t movca_pc,std::uint32_t pair_pc) {
-        if (!batch_stores || (!memory.has_guest_write_batch_observer() && memory.has_guest_write_observer())) {
+        if (native_writes.direct() || !batch_stores || (!memory.has_guest_write_batch_observer() && memory.has_guest_write_observer())) {
             // Avoid initializing the SDK's two fixed arrays when a known
             // scalar-only observer already makes batch admission impossible.
             save_matrix_using(movca_pc,pair_pc,store);
@@ -206,12 +209,14 @@ static bool try_pop(katana::runtime::CpuState& cpu,
         // The two original global RMW words are distinct. Matrix/code read
         // aliasing remains valid, but matrix data cannot alias either writer.
     }
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,g);
     const auto load=[&](std::uint32_t a) {
         std::uint32_t v=0u;
         (void)direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,v);
         return v;
     };
     const auto store=[&](std::uint32_t pc,std::uint32_t a,std::uint32_t v) {
+        if(native_writes.try_store(a,v,CodeWriteSource::Cpu))return;
         if (!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,v,CodeWriteSource::Cpu))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},a,v,CodeWriteSource::Cpu);
     };

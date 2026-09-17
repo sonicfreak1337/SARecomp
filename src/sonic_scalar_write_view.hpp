@@ -1,6 +1,7 @@
 #pragma once
 #include "katana/runtime/native_port_aot_runtime.hpp"
 #include "sonic_internal_diagnostics.hpp"
+#include "sonic_native_cpu_policy.hpp"
 #include <array>
 #include <bit>
 #include <cstdlib>
@@ -48,9 +49,21 @@ inline bool ram_regions_enabled() noexcept {
     return value && !diagnostics::runtime_checks_enabled();
 }
 
+inline bool whole_owners_enabled() noexcept {
+    static const bool value = [] {
+        for (const char* name : {"SARECOMP_NATIVE_CLOSED_MEMORY",
+                "SARECOMP_NATIVE_ANIMATION_HIERARCHY", "SARECOMP_NATIVE_POSE_BLEND",
+                "SARECOMP_NATIVE_RENDER_CONTEXT"}) {
+            if (native_cpu::enabled(name)) return true;
+        }
+        return false;
+    }();
+    return value && !diagnostics::runtime_checks_enabled();
+}
+
 inline void bind(Memory& memory, const NativePortImmutableWriteGuard& guard,
                  std::uint64_t observer_generation) noexcept {
-    if (!enabled() && !stack_frames_enabled() && !ram_regions_enabled()) return;
+    if (!enabled() && !stack_frames_enabled() && !ram_regions_enabled() && !whole_owners_enabled()) return;
     for (auto& slot : bindings) {
         if (slot.memory == &memory) return; // Duplicate registration fails closed.
     }
@@ -84,8 +97,8 @@ inline bool capture_admitted(const Memory* memory,
 class View final {
   public:
     View(Memory& memory, const NativePortImmutableWriteGuard* immutable,
-         bool stack_frame = false, bool ram_region = false) noexcept {
-        if (!(ram_region ? ram_regions_enabled() :
+         bool stack_frame = false, bool ram_region = false, bool whole_owner = false) noexcept {
+        if (!(whole_owner ? whole_owners_enabled() : ram_region ? ram_regions_enabled() :
               stack_frame ? stack_frames_enabled() : enabled()) || !immutable) return;
         for (const auto& slot : bindings) {
             if (slot.memory != &memory || slot.immutable != immutable ||

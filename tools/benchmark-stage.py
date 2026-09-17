@@ -35,6 +35,7 @@ parser.add_argument('--native-collision-math', action='store_true', help='Privat
 parser.add_argument('--native-matrix-inverse', action='store_true', help='Private complete native matrix inverse/determinant family')
 parser.add_argument('--native-triangle-contacts', action='store_true', help='Private complete native triangle contact owner')
 parser.add_argument('--collision-candidates', choices=('native','retained'), default='native', help='Matched complete TOUCH-POLY owner comparison')
+parser.add_argument('--collision-scope', choices=('gameplay','all','installed'), default='installed', help='Compare complete collision owners outside the gameplay scene gate')
 parser.add_argument('--motion-sampling', choices=('native','retained'), default='native', help='Matched complete motion/keyframe and SRT owner comparison')
 parser.add_argument('--mesh-plan', choices=('cached','retained','verify'), default='cached', help='Matched authored topology/UV source-plan cache')
 parser.add_argument('--native-atan-math', action='store_true', help='Private complete native atan/quotient/polynomial/scale family')
@@ -59,8 +60,15 @@ parser.add_argument('--vulkan-descriptor-cache', choices=('on','off'), default='
 parser.add_argument('--vulkan-state-cache', choices=('on','off'), default='on')
 parser.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 parser.add_argument('--gameplay-math', choices=('native','retained'), default='native')
-parser.add_argument('--native-animation', choices=('on','off'), default='off')
-parser.add_argument('--native-pose', choices=('on','off'), default='off')
+parser.add_argument('--native-animation', choices=('on','off','installed'), default='installed')
+parser.add_argument('--native-pose', choices=('on','off','installed'), default='installed')
+parser.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
+parser.add_argument('--async-audio-status', choices=('off','on','installed'), default='installed')
+parser.add_argument('--sound-metadata', choices=('off','on','verify'), default='off')
+parser.add_argument('--deferred-midi-notes', choices=('off','on'), default='off')
+parser.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
 # Render interpolation was withdrawn; benchmark the original frame stream.
 parser.add_argument('--vsync', type=int, choices=(1,2), default=2)
@@ -103,6 +111,7 @@ display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheig
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env['SARECOMP_NATIVE_MATRIX_VECTORS']='1' if args.matrix_vectors=='native' else '0'
 env['SARECOMP_NATIVE_COLLISION_CANDIDATES']='1' if args.collision_candidates=='native' else '0'
+env['SARECOMP_NATIVE_COLLISION_ALL_SCENES']='1' if args.collision_scope=='all' else '0'
 env['SARECOMP_NATIVE_MOTION_SAMPLING']='1' if args.motion_sampling=='native' else '0'
 env['SARECOMP_MESH_SOURCE_PLAN']='0' if args.mesh_plan=='retained' else '1'
 env['SARECOMP_MESH_SOURCE_PLAN_VERIFY']='1' if args.mesh_plan=='verify' else '0'
@@ -145,6 +154,25 @@ if args.hardware_input=='isolated': env['SARECOMP_BENCHMARK_ISOLATED_INPUT']='1'
 env['SARECOMP_GAMEPLAY_MATH_RETAINED']='1' if args.gameplay_math=='retained' else '0'
 env['SARECOMP_NATIVE_ANIMATION_HIERARCHY']='1' if args.native_animation=='on' else '0'
 env['SARECOMP_NATIVE_POSE_BLEND']='1' if args.native_pose=='on' else '0'
+env['SARECOMP_NATIVE_CLOSED_MEMORY']='1' if args.native_closed_memory=='on' else '0'
+env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
+env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
+env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'
+env['SARECOMP_SOUND_METADATA_CACHE']='1' if args.sound_metadata!='off' else '0'
+env['SARECOMP_SOUND_METADATA_VERIFY']='1' if args.sound_metadata=='verify' else '0'
+env['SARECOMP_DEFERRED_MIDI_NOTES']='1' if args.deferred_midi_notes=='on' else '0'
+env['SARECOMP_NATIVE_MODEL_PACKETS']='0' if args.native_model_packets=='off' else '1'
+env['SARECOMP_NATIVE_MODEL_PACKETS_VERIFY']='1' if args.native_model_packets=='verify' else '0'
+for name, selection in (
+    ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', args.native_animation),
+    ('SARECOMP_NATIVE_POSE_BLEND', args.native_pose),
+    ('SARECOMP_NATIVE_CLOSED_MEMORY', args.native_closed_memory),
+    ('SARECOMP_NATIVE_RENDER_CONTEXT', args.native_render_context),
+    ('SARECOMP_NATIVE_PALETTE_BATCH', args.native_palette_batch),
+    ('SARECOMP_NATIVE_COLLISION_ALL_SCENES', args.collision_scope),
+    ('SARECOMP_ASYNC_AUDIO_STATUS', args.async_audio_status),
+):
+    if selection == 'installed': env.pop(name, None)
 if args.wait_for_gameplay: env['SARECOMP_PROBE_WAIT_FOR_GAMEPLAY']='1'
 if args.end_frame: env.update(SARECOMP_PROBE_BEGIN_FRAME=str(args.begin_frame), SARECOMP_PROBE_END_FRAME=str(args.end_frame))
 exe = (root/args.exe).resolve(strict=True)
@@ -160,7 +188,20 @@ def cpu_ms(process):
         raise c.WinError(c.get_last_error())
     return sum((t.dwHighDateTime<<32)|t.dwLowDateTime for t in times[2:])/10000
 def rows(text, prefix):
-    return [dict(re.findall(r'(\w+)=([^ ]+)',line)) for line in text.splitlines() if line.startswith(prefix)]
+    result=[]
+    for line in text.splitlines():
+        if not line.startswith(prefix): continue
+        fields=re.findall(r'(\w+)=([^ ]+)',line)
+        row=dict(fields)
+        if prefix=='SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE ':
+            # A worker log can interleave an unfinished stderr record. Never
+            # let its duplicate elapsed_ms replace the title's clock, or use
+            # a partial record as a measurement boundary.
+            if len(fields)!=len(row) or any(not row.get(key,'').isdigit() for key in
+                    ('frame','relative_frame','elapsed_ms','monotonic_ns','drawn_frames','game_ticks','final')):
+                continue
+        result.append(row)
+    return result
 samples=[]
 started=time.monotonic()
 forced=False

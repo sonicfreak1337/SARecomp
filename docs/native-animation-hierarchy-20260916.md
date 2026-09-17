@@ -11,8 +11,9 @@ than generated instruction labels. One invocation captures typed node/track
 inputs before mutation and processes the complete tree without guest calls.
 Reusable invocation storage avoids per-node allocation. Both Windows and
 Linux compile the same implementation. The internal environment variable
-`SARECOMP_NATIVE_ANIMATION_HIERARCHY=1` enables the comparison candidate;
-absence/0 preserves the retained owner. No installer/default has changed.
+`SARECOMP_NATIVE_ANIMATION_HIERARCHY=0` retains the old owner for diagnosis.
+The September 17 shared native CPU candidate enables the qualified implementation
+by default; see `native-cpu-defaults-20260917.md` for combined measurements.
 
 The preparation scripts authenticate the PAL source closure and the retained
 AOT owner, then insert one call at its public entry. Direct callers inside
@@ -66,14 +67,15 @@ Component success is correctness evidence, not an FPS result. The initial
 hierarchy-only Gamma pair was slower: 344.663 versus 330.398 execution CPU
 ms/update in the VM, with 20 updates each and a three-tick intro offset.
 The axis-scope follow-up measured 345.073 ms/update and also provides no CPU
-gain. Both are retained internally for the broader native-model work, not
-promoted into a release/default.
+gain. Those early variants were retained internally for the broader native-model
+work; they were not promoted on the basis of that measurement.
 
 ## Complete pose blending and memory publication
 
 `sonic_pose_blend.cpp` additionally replaces complete PAL owner `8C0417C8`:
 two-pose blending, translation, authored ZYX/YXZ rotation and scaling.
-`SARECOMP_NATIVE_POSE_BLEND=1` enables it; the default remains OFF. This is
+It now defaults ON in the September 17 group; `SARECOMP_NATIVE_POSE_BLEND=0`
+retains the previous owner for diagnosis. This is
 the same implementation on Windows and Linux. Preserve the authored
 mixed-scale reads from the position arrays; they are not a transcription
 error. Unsupported callback selections are rejected before any mutation.
@@ -131,7 +133,9 @@ ticks/XYZ/HUD: 2.75% less thread CPU time and 2.62% fewer execution cycles
 Evidence: `runs/gamma-native-model-{on,off}-20260916.json` and
 `runs/native-model-windows-{on,off}-a/result.json`. The Windows executable is
 `230ae0bdb9ea854307302d3ced22bbca00a12d8f9edb47765f6adf15c7138515`.
-Both internal native-owner flags remain OFF by default pending broader work.
+At that measurement checkpoint both flags remained OFF. The subsequent
+combined qualification and September 17 default policy are documented in
+`native-cpu-defaults-20260917.md`.
 
 The additional Linux Original-timing Chaos 4 pair covers the boss introduction
 (main 4 / scene 4), not the complete fight. Original PAL50/release2/delta2

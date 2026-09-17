@@ -16,7 +16,12 @@ import subprocess
 subprocess.run([sys.executable,str(root/'tools/prepare-motion-dispatch.py'),
     str(root/'.local/working-product/generated/code/native-port-dispatch.cpp'),
     str(source/'motion-dispatch/native-port-dispatch.cpp')],check=True)
-groups=('audio-buses','collision-candidates','motion-sampling','fpu-body',
+# SoundBank has active port-local changes. Generate it directly for Linux;
+# copying the last Windows output can silently leave Linux one revision behind.
+subprocess.run([sys.executable,str(root/'tools/prepare-audio-buses.py'),
+    str(root/'.local/baseline/r354/katana-source-178448be.zip'),
+    str(output/'audio-buses')],check=True)
+groups=('collision-candidates','motion-sampling','fpu-body',
         'fpu-calls-inverse','inverse-arithmetic','fpu-runtime','minicart','motion-dispatch')
 files=[]
 for group in groups:
@@ -29,6 +34,10 @@ for path in sorted(files):
     target.parent.mkdir(parents=True,exist_ok=True)
     if not target.exists() or target.read_bytes()!=data:target.write_bytes(data)
     records.append({'file':relative.as_posix(),'size':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+audio=output/'audio-buses/native_port_sound_bank.cpp'
+records.append({'file':audio.relative_to(output).as_posix(),'size':audio.stat().st_size,
+                'sha256':hashlib.sha256(audio.read_bytes()).hexdigest()})
+records.sort(key=lambda r:r['file'])
 manifest={'candidate':'57210a04d58d1d6efa71d6be46135ca335e27236','kind':'retained-cxx-inputs-only',
           'fpu_calls':'inverse','fpu_runtime':'fast','files':records}
 report=json.dumps(manifest,indent=2)+'\n';target=output/'linux-title-inputs.json'

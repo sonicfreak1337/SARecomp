@@ -23,9 +23,26 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
     endforeach()
 else()
+    option(SARECOMP_NATIVE_MEMORY_CAPABILITY "Admit closed native owner RAM publication on Windows" ON)
+    set(sonic_internal_runtime "${sonic_internal_diagnostics_dir}/native_port_runtime.cpp")
+    set(sonic_native_memory_sources)
+    if(SARECOMP_NATIVE_MEMORY_CAPABILITY)
+        set(native_memory_dir "${CMAKE_BINARY_DIR}/generated/native-memory")
+        add_custom_command(OUTPUT "${native_memory_dir}/memory.cpp"
+            "${native_memory_dir}/native_port_runtime.cpp" "${native_memory_dir}/preparation.json"
+            COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-scalar-writes.py"
+                --sdk-zip "${SONIC_BASE}/katana-source-178448be.zip"
+                --runtime-source "${sonic_internal_runtime}" --runtime-only
+                --destination "${native_memory_dir}"
+            DEPENDS "${SONIC_ROOT}/tools/prepare-scalar-writes.py"
+                "${SONIC_ROOT}/src/sonic_scalar_write_view.hpp" "${sonic_internal_runtime}"
+                "${SONIC_BASE}/katana-source-178448be.zip" VERBATIM)
+        set(sonic_internal_runtime "${native_memory_dir}/native_port_runtime.cpp")
+        list(APPEND sonic_native_memory_sources "${native_memory_dir}/memory.cpp")
+    endif()
     add_library(sonic_internal_diagnostics STATIC
         "${sonic_internal_diagnostics_dir}/native_bringup_dispatch.cpp"
-        "${sonic_internal_diagnostics_dir}/native_port_runtime.cpp")
+        "${sonic_internal_runtime}" ${sonic_native_memory_sources})
     target_include_directories(sonic_internal_diagnostics PRIVATE "${SONIC_ROOT}/src")
     target_compile_options(sonic_internal_diagnostics PRIVATE /O2 /EHsc /utf-8)
     target_link_libraries(sonic_internal_diagnostics PRIVATE KatanaRecomp::native_port_runtime)

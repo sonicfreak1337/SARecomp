@@ -1,6 +1,6 @@
 option(SARECOMP_LINUX_SCALAR_WRITES "Fuse native scalar RAM write proofs and stores" OFF)
 option(SARECOMP_LINUX_STACK_FRAMES "Fuse complete checked integer/PR stack sequences" OFF)
-option(SARECOMP_LINUX_RAM_REGIONS "Execute mixed RAM/ALU prefixes with shared bookkeeping" OFF)
+option(SARECOMP_LINUX_RAM_REGIONS "Execute mixed RAM/ALU prefixes with shared bookkeeping" ON)
 option(SARECOMP_LINUX_RAM_GUARD_PROBE "Private bounded RAM-miss diagnosis" OFF)
 set(SARECOMP_LINUX_SCALAR_WRITE_SCOPE "PROFILE" CACHE STRING "Scalar write replacement scope: PROFILE or ALL")
 set_property(CACHE SARECOMP_LINUX_SCALAR_WRITE_SCOPE PROPERTY STRINGS PROFILE ALL)

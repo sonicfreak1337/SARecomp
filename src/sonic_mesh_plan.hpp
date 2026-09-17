@@ -6,6 +6,7 @@
 #include <span>
 #include <unordered_map>
 #include <vector>
+#include "sonic_model_packet.hpp"
 namespace katana::runtime { struct CpuState; }
 namespace sonic::geometry {
 // Only the descriptor, authored topology and UVs are cached. No transformed
@@ -41,12 +42,14 @@ struct MeshPlan {
     std::vector<MeshPlanSharedCorner> shared_vertices;
     std::vector<std::uint32_t> shared_indices;
     std::uint32_t shared_corner_count{};
+    std::shared_ptr<const sonic::model_packet::Geometry> model_geometry;
     [[nodiscard]] std::size_t allocation_bytes()const noexcept;
 };
 struct MeshPlanStats {
     std::uint64_t lookups{},hits{},misses{},builds{},changes{},declines{},evictions{};
     std::uint64_t verified_triangles{},verified_uvs{};
     std::uint64_t shared_meshes{},bulk_meshes{},verified_shared_vertices{};
+    std::uint64_t model_packets{},model_snapshots{},model_packet_verified{},model_packet_vertices{};
 };
 class MeshPlanCache final {
 public:

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "sonic_audio_device.hpp"
 #include "sonic_audio_settings.hpp"
+#include "sonic_sound_commands.hpp"
 #include "sonic_qsound_reverb_medium.hpp"
 #include "katana/runtime/native_port_audio_engine.hpp"
 #include "katana/runtime/native_port_ffmpeg_codec.hpp"
@@ -50,7 +51,7 @@ std::uint64_t cpu_time(){
     return ((std::uint64_t(kernel.dwHighDateTime)<<32)|kernel.dwLowDateTime)+((std::uint64_t(user.dwHighDateTime)<<32)|user.dwLowDateTime);
 }
 Result render(NativePortPlatformServices& platform,const NativePortContentFileBinding& binding,
-              unsigned bank,unsigned program,unsigned voice,unsigned effects,unsigned master,bool restore,bool play=true){
+              unsigned bank,unsigned program,unsigned voice,unsigned effects,unsigned master,bool restore,bool play=true,bool deferred=false){
     auto settings=sonic::presentation::settings();settings.voice_volume=voice;settings.effects_volume=effects;settings.master_volume=master;
     sonic::presentation::apply_live(settings);clock_frames=0;
     {std::lock_guard guard(output_lock);output.clear();}
@@ -63,7 +64,14 @@ Result render(NativePortPlatformServices& platform,const NativePortContentFileBi
         {std::lock_guard guard(output_lock);output.clear();}
         NativePortSoundMidiPortConfig port_config;port_config.program_bank=std::uint8_t(bank);port_config.program=std::uint8_t(program);
         const auto port=sound.open_midi_port(collection,port_config);
-        if(play)(void)sound.midi_note_on(port,60,127);
+        if(play){
+            if(deferred)sonic::audio::start_note_without_handle(sound,port,60,127);
+            else (void)sound.midi_note_on(port,60,127);
+            // The synthetic audio clock stays fixed until both command paths
+            // reach the same boundary. This compares resulting PCM, not queue
+            // latency or uncontrollable wall-clock scheduling.
+            (void)sound.midi_port_snapshot(port);
+        }
         if(restore){
             audio.set_output_paused(true);
             const auto state=sound.capture_development_state();
@@ -80,6 +88,7 @@ int main(int argc,char** argv){try{
     check(argc==9,"content root, fresh data root, logical id, file, SHA, size, bank, program required");
     const auto root=fs::absolute(argv[2]);check(!fs::exists(root),"test directory must be new");fs::create_directories(root);
     _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
+    _putenv_s("SARECOMP_DEFERRED_MIDI_NOTES","1");
     _putenv_s("SARECOMP_DISPLAY_CONFIG",(root/"sonic-display.ini").string().c_str());
     sonic::audio_device::Api api;api.open=open;api.close=close;api.reset=reset;api.prepare=prepare;api.unprepare=unprepare;
     api.write=write;api.position=position;api.pause=pause;api.restart=restart;api.now=now;api.observe_pcm=observe;
@@ -100,6 +109,9 @@ int main(int argc,char** argv){try{
     const auto quiet=render(platform,binding,bank,program,100,100,100,false,false);
     const auto quiet_restored=render(platform,binding,bank,program,100,100,100,true,false);
     const auto master_muted=render(platform,binding,bank,program,100,100,0,false);
+    const auto deferred=render(platform,binding,bank,program,100,100,100,false,true,true);
+    check(deferred.pcm==full.pcm,"deferred note changed fixed-clock PCM");
+    std::cout<<"DEFERRED_NOTE_PCM exact=1 samples="<<deferred.pcm.size()<<'\n';
     const auto render_cpu_ms=(cpu_time()-cpu_started)*.0001;
     std::cout<<"PCM_FINGERPRINTS";
     for(const auto* result:{&full,&voices,&effects,&half,&restored,&quiet,&quiet_restored,&master_muted})std::cout<<' '<<fingerprint(*result);

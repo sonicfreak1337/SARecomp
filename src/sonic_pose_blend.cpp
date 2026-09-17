@@ -98,7 +98,7 @@ bool try_execute(katana::runtime::CpuState& cpu,const katana::runtime::NativePor
     return true;
 }
 bool try_dispatch(CpuState& cpu,const NativePortImmutableWriteGuard* immutable){
-    static const bool enabled=[] {const auto* flag=std::getenv("SARECOMP_NATIVE_POSE_BLEND");return flag && flag[0]=='1';}();
+    static const bool enabled=native_cpu::enabled("SARECOMP_NATIVE_POSE_BLEND");
     if(!enabled || cpu.pc!=entry)return false;
     if(try_execute(cpu,immutable)){++counters.native_calls;return true;}
     ++counters.original_calls;return false;
