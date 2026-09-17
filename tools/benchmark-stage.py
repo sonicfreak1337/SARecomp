@@ -70,12 +70,13 @@ parser.add_argument('--async-audio-status', choices=('off','on','installed'), de
 parser.add_argument('--sound-metadata', choices=('off','on','verify'), default='off')
 parser.add_argument('--deferred-midi-notes', choices=('off','on'), default='off')
 parser.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
-parser.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
+parser.add_argument('--native-projection-batch', choices=('off','on','verify','installed'), default='installed')
 parser.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 parser.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
 parser.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 parser.add_argument('--native-collision-closure', choices=('off','on'), default='off')
-parser.add_argument('--native-model-pipeline', choices=('off','on'), default='off')
+parser.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
 parser.add_argument('--capture-frame', type=int, default=-1, help='Private exact-image check, excluded from performance qualification')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
@@ -174,6 +175,7 @@ env['SARECOMP_NATIVE_CLOSED_MEMORY']='1' if args.native_closed_memory=='on' else
 env['SARECOMP_NATIVE_COLLISION_MEMORY']='1' if args.native_collision_memory=='on' else '0'
 env['SARECOMP_NATIVE_COLLISION_CLOSURE']='1' if args.native_collision_closure=='on' else '0'
 env['SARECOMP_NATIVE_MODEL_PIPELINE']='1' if args.native_model_pipeline=='on' else '0'
+env['SARECOMP_NATIVE_OBJECT_ACTIVATION']='1' if args.native_object_activation=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
 env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
 env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'
@@ -191,6 +193,9 @@ if args.ram_regions != 'installed':
 for name, selection in (
     ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', args.native_animation),
     ('SARECOMP_NATIVE_POSE_BLEND', args.native_pose),
+    ('SARECOMP_NATIVE_OBJECT_ACTIVATION', args.native_object_activation),
+    ('SARECOMP_NATIVE_MODEL_PIPELINE', args.native_model_pipeline),
+    ('SARECOMP_NATIVE_PROJECTION_BATCH', args.native_projection_batch),
     ('SARECOMP_NATIVE_CLOSED_MEMORY', args.native_closed_memory),
     ('SARECOMP_NATIVE_RENDER_CONTEXT', args.native_render_context),
     ('SARECOMP_NATIVE_PALETTE_BATCH', args.native_palette_batch),

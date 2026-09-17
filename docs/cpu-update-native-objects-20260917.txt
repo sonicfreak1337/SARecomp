@@ -1,0 +1,19 @@
+Sonic Adventure Recompiled - Native CPU Groups Update, September 17, 2026
+
+Requires the CPU Update released earlier on September 17.
+Close the game and run this .run file in Desktop Mode as your normal user.
+No sudo, GDI, reinstallation or additional packages are required.
+Continue using your existing Steam or desktop shortcut.
+
+This update replaces common object activation, distance and lifetime work
+with native routines and enables model ownership with SIMD projection together.
+Both Original and Recompiled timing use these paths;
+game speed and authored activation distances remain unchanged.
+Steam Deck performance is being evaluated with this build.
+
+Saves, Chao data, settings, installed content and diagnostics preferences
+are preserved. The previous program and manifest remain as rollback backups.
+About 1.8 GB of free installation space is needed after extracting the patch.
+Use the matching Native CPU Groups diagnostics switches if diagnostics are needed.
+
+Zstandard 1.5.7, BSD license; https://github.com/facebook/zstd/tree/v1.5.7

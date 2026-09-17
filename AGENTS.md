@@ -345,6 +345,53 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   `docs/native-object-activation-next-20260917.md`; preserve mutable callback
   boundaries and exact distance/activation semantics. Its benefit is unproved.
 
+- Native object activation/lifetime/distance is now implemented as a shared
+  internal-OFF family; see `docs/native-object-activation-20260917.md`. The
+  finite-kernel revision E passes 1,250 cases on both platforms. Its matched
+  Linux Gamma pair saves 8.12% CPU/update / gains 5.82% images, but Chaos-4
+  entry costs 5.15% CPU / loses 2.13% images. Windows saves only 1.57% CPU
+  with essentially unchanged cycles. Do not present E as a global win or
+  promote it. Revision F folds the two proved read-only stage/character
+  queries into the activation owner, retaining real constructor/release
+  bridges and their exact mutable boundaries. F passes 1,262 Windows cases
+  plus all 242 affected Linux cases. F's matched Windows Gamma pair saves
+  6.30% CPU time / 3.96% cycles; Original and Recompiled checks pass. Linux
+  F Gamma saves 1.71% Linux CPU but loses 1.58% image throughput. Chaos-4's
+  raw -22.49% CPU/+30.50% images is NOT qualified: it starts one update apart
+  with different player Y and animation counters. No global/Deck gain is claimed.
+  The user explicitly requests a new patch for a Deck test. Revision F now
+  joins the normal native CPU group; private override 0 and diagnostics retain
+  original owners. For this delivery, Linux EXTENDED and PREPARED_ACCESS are
+  disabled, preserving previously shipped BASE RAM/transfer paths. Windows
+  returns to retained RAM policy. All other unqualified experiments stay OFF.
+  See `docs/cpu-update-native-objects-20260917.md` for actual delivery evidence.
+  The earlier September 17 package, baseline and personal saves stay intact.
+  The F arithmetic is unchanged from E; do not repeat the unchanged distance
+  and lifetime suites. If F is unhelpful, the next substantial owner scope is
+  `docs/native-movement-resolver-next-20260917.md`, not an unchanged repetition.
+
+- Subsequent user steering explicitly requests testing related optimizations
+  together. Complete model ownership and SIMD projection now form the default-ON
+  `SARECOMP_NATIVE_MODEL_GROUP`, with global/per-feature zero overrides retained.
+  On the release BASE-RAM configuration, their shared Gamma Linux run saves
+  8.29% execution CPU/update versus the same object-enabled executable with both
+  model features OFF. Versus the delivered Sep17 CPU patch, the combined object
+  and model groups save 10.64% CPU/update and gain only 0.78% VM images/s; all 19
+  endpoint fields match. This supersedes the separate model/projection OFF
+  conclusions above for this jointly tested configuration, not for arbitrary
+  combinations. Collision closure was additionally measured with the model
+  group: exact endpoints, -0.68% execution CPU, +1.09% process CPU and -0.80%
+  images/s. It remains OFF without a clear additional end-to-end gain. Never
+  report any of these VM results as measured Steam Deck FPS. See
+  `docs/cpu-update-native-objects-20260917.md` for the follow-up patch. Its final
+  incremental Windows/Linux builds and installed Linux update pass both timing
+  modes; Recompiled dual-path checks verify 23,130/20,003 projection batches.
+  The update is `out/patches/SonicAdventureRecompiled-CPU-Update-2026-09-17-v2.run`,
+  with separately named matching ON/OFF diagnostics switches. Actual application,
+  idempotence, original-program backup and Story/Chao/settings preservation pass.
+  Do not confuse this target with the intermediate 901962 test executable or
+  overwrite the completed morning Sep17 update. The 20–25 ms Deck goal stays open.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

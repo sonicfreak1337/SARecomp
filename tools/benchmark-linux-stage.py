@@ -67,12 +67,13 @@ p.add_argument('--native-animation', choices=('off','on','installed'), default='
 p.add_argument('--native-pose', choices=('off','on','installed'), default='installed',
                help='Same-executable comparison of the complete native pose mixer')
 p.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
-p.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
+p.add_argument('--native-projection-batch', choices=('off','on','verify','installed'), default='installed')
 p.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 p.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
 p.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 p.add_argument('--native-collision-closure', choices=('off','on'), default='off')
-p.add_argument('--native-model-pipeline', choices=('off','on'), default='off')
+p.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -161,6 +162,7 @@ env.update({
     'SARECOMP_NATIVE_COLLISION_MEMORY':str(int(a.native_collision_memory=='on')),
     'SARECOMP_NATIVE_COLLISION_CLOSURE':str(int(a.native_collision_closure=='on')),
     'SARECOMP_NATIVE_MODEL_PIPELINE':str(int(a.native_model_pipeline=='on')),
+    'SARECOMP_NATIVE_OBJECT_ACTIVATION':str(int(a.native_object_activation=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
     'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
@@ -180,6 +182,9 @@ log_path = run/'game.log'
 for name, selection in (
     ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', a.native_animation),
     ('SARECOMP_NATIVE_POSE_BLEND', a.native_pose),
+    ('SARECOMP_NATIVE_OBJECT_ACTIVATION', a.native_object_activation),
+    ('SARECOMP_NATIVE_MODEL_PIPELINE', a.native_model_pipeline),
+    ('SARECOMP_NATIVE_PROJECTION_BATCH', a.native_projection_batch),
     ('SARECOMP_NATIVE_CLOSED_MEMORY', a.native_closed_memory),
     ('SARECOMP_NATIVE_RENDER_CONTEXT', a.native_render_context),
     ('SARECOMP_NATIVE_PALETTE_BATCH', a.native_palette_batch),
@@ -299,6 +304,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_collision_memory':a.native_collision_memory,
           'native_collision_closure':a.native_collision_closure,
           'native_model_pipeline':a.native_model_pipeline,
+          'native_object_activation':a.native_object_activation,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,
           'collision_scope':a.collision_scope,

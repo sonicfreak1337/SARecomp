@@ -179,7 +179,7 @@ inline constexpr std::string_view
         // Private slow-host probes wait for active gameplay; normal cadence,
         // drawing and instruction coverage are unchanged. The two optional
         // model-owner bindings retain their original bodies when disabled.
-        "sha256:37e837a429ae443f26c93725fd6c29a7e1eecf4a4ac7413e67992dd28fb96404"};
+        "sha256:3ee6e15d33e7e324059714ec00fbe229cb9002e0e4804627f13a9654484db188"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(

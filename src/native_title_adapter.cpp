@@ -62,6 +62,7 @@
 #include "sonic_render_completion.hpp"
 #include "sonic_palette_lighting.hpp"
 #include "sonic_model_pipeline.hpp"
+#include "sonic_object_activation.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -18122,6 +18123,16 @@ void emit_sonic_native_gameplay_probe_sample(
               << " model_pipeline_normals=" << sonic::model_pipeline::statistics().normal_reuses
               << " model_pipeline_draws=" << sonic::model_pipeline::statistics().draw_reuses
               << " model_pipeline_direct_outputs=" << sonic::model_pipeline::statistics().direct_outputs
+              << " object_distance_calls=" << sonic::object_activation::counts.distance_calls
+              << " object_distance_native=" << sonic::object_activation::counts.distance_native
+              << " object_distance_fallback=" << sonic::object_activation::counts.distance_fallback
+              << " object_activation_calls=" << sonic::object_activation::counts.activation_calls
+              << " object_lifetime_calls=" << sonic::object_activation::counts.lifetime_calls
+              << " object_records=" << sonic::object_activation::counts.records
+              << " object_created=" << sonic::object_activation::counts.created
+              << " object_retired=" << sonic::object_activation::counts.retired
+              << " object_declined=" << sonic::object_activation::counts.declined
+              << " object_slow_accesses=" << sonic::object_activation::counts.slow_accesses
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -35003,11 +35014,9 @@ sonic_native_ninja_model_transform(
         // Each 16-byte SDK cache record owns three floats. The fourth word is
         // not written by the original store-queue routine, so retain the
         // existing title-RAM value instead of inventing hardware residue.
-        static const bool projection_batch_enabled=[] {
-            const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH");
-            return value && std::strcmp(value,"1")==0 &&
-                sonic::native_cpu::enabled("SARECOMP_NATIVE_PROJECTION_BATCH");
-        }();
+        static const bool projection_batch_enabled=
+            sonic::native_cpu::model_group_enabled("SARECOMP_NATIVE_PROJECTION_BATCH") &&
+            !sonic::diagnostics::runtime_checks_enabled();
         const auto previous_output = projection_batch_enabled
             ? reader.direct_bytes(output, output_size)
             : std::span<const std::uint8_t>{};
@@ -38514,6 +38523,30 @@ sonic_native_ninja_model_draw(
 
 extern "C" katana::runtime::NativePortHookResult
 sonic_native_widescreen_model_cull(katana::runtime::NativePortContext&) noexcept;
+// Native activation owns ordinary loops, but task construction/release remains
+// at the retained callback boundary. The guest CPU is already published there.
+static bool sonic_object_activation_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
+    using namespace katana::runtime;
+    auto& context=*static_cast<NativePortContext*>(opaque);
+    if(!context.aot.invoke_callback)return false;
+    const auto continuation=cpu.pr;
+    struct Depth {Depth(){++sonic_native_host_service_depth;}~Depth(){--sonic_native_host_service_depth;}} depth;
+    const auto result=context.aot.invoke_callback(context,entry);
+    return result.action==NativePortHookAction::Return && cpu.pc==continuation &&
+        context.stop_reason==NativePortStopReason::None;
+}
+bool sonic::object_activation::try_dispatch(katana::runtime::CpuState& cpu,
+                                            katana::runtime::NativePortAotServices& services){
+    using namespace katana::runtime;
+    auto& context=services.context();
+    if(context.cpu!=&cpu || !sonic_native_leaf_math_active())return false;
+    const auto result=execute(cpu,services.immutable_write_guard(),{&context,sonic_object_activation_call});
+    if(result==Outcome::Declined)return false;
+    if(result==Outcome::Complete)return true;
+    // Never restart an owner after it has changed RAM or called a task callback.
+    // The established AOT exception boundary retains the exact failure frontier.
+    throw std::runtime_error("native-object-activation-interrupted");
+}
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;
     auto& context=*static_cast<NativePortContext*>(opaque);

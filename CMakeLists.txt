@@ -646,3 +646,4 @@ target_link_libraries(sonic_legacy_video_tests PRIVATE
     "${SONIC_ROOT}/.local/toolchain/katana_runtime_core.lib"
     KatanaRecomp::native_port_runtime)
 include("${SONIC_ROOT}/cmake/SonicAnimationBridge.cmake")
+include("${SONIC_ROOT}/cmake/SonicObjectActivationBridge.cmake")

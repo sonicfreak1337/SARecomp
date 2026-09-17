@@ -32,9 +32,8 @@ struct Scope {
 };
 }
 bool enabled() noexcept {
-    static const bool on=[] {const char* p=std::getenv("SARECOMP_NATIVE_MODEL_PIPELINE");return p && std::strcmp(p,"1")==0;}();
-    return on && sonic::native_cpu::enabled("SARECOMP_NATIVE_MODEL_PIPELINE") &&
-        !sonic::diagnostics::runtime_checks_enabled();
+    static const bool on=sonic::native_cpu::model_group_enabled("SARECOMP_NATIVE_MODEL_PIPELINE");
+    return on && !sonic::diagnostics::runtime_checks_enabled();
 }
 Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Calls calls) {
     ++counts.declined;
