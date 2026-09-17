@@ -84,9 +84,12 @@ def main():
     p.add_argument('--runtime-only', action='store_true', help='Bind closed native owners without changing guest units')
     p.add_argument('--destination', type=Path, required=True)
     p.add_argument('--mode', choices=('scalar','stack','region'), default='scalar')
+    p.add_argument('--region-extended', action='store_true', help='Private extended RAM/ALU region qualification')
     p.add_argument('--guard-probe', action='store_true', help='Private sampled RAM-miss diagnosis, never distribution')
     a = p.parse_args()
     if bool(a.memory_source) == bool(a.sdk_zip): p.error('Select memory source or pinned SDK zip')
+    if a.region_extended and (a.mode != 'region' or a.runtime_only):
+        p.error('Extended regions require region guest transformation')
     if not a.runtime_only and (not a.source_root or not a.units_file):
         p.error('Guest transformations require source root and unit list')
     out = a.destination.resolve(); root = a.source_root.resolve() if a.source_root else None
@@ -137,7 +140,8 @@ def main():
             raise ValueError('Guest source identity changed: '+unit)
         frames=[]
         if stack:
-            transformed,frames=stack.transform(data.decode())
+            transformed,frames=(stack.transform(data.decode(), extended=True) if a.region_extended
+                                else stack.transform(data.decode()))
             count=0
         else:transformed, count = transform(data.decode())
         if a.guard_probe and unit == 'unit-v8C056ED4-8C0585E0-d3674ae50a86c851.cpp':
@@ -168,6 +172,7 @@ def main():
         report['units'].append({'unit':unit,'source_sha256':digest(data),
                                'output_sha256':digest(output),'write_helpers':count,'frame_sequences':frames})
     report['guard_probe']=a.guard_probe
+    if a.region_extended: report['extended_regions']=True
     write(out/'preparation.json',(json.dumps(report,indent=2)+'\n').encode())
     print('SONIC_SCALAR_WRITES_READY units='+str(len(units))+' helpers='+str(sum(u['write_helpers'] for u in report['units']))+
           ' stack_frames='+str(sum(len(u['frame_sequences']) for u in report['units'])))

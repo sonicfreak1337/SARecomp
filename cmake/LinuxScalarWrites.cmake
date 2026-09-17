@@ -1,6 +1,10 @@
 option(SARECOMP_LINUX_SCALAR_WRITES "Fuse native scalar RAM write proofs and stores" OFF)
 option(SARECOMP_LINUX_STACK_FRAMES "Fuse complete checked integer/PR stack sequences" OFF)
 option(SARECOMP_LINUX_RAM_REGIONS "Execute mixed RAM/ALU prefixes with shared bookkeeping" ON)
+option(SARECOMP_LINUX_RAM_REGIONS_EXTENDED "Private extended RAM/ALU prefix qualification" OFF)
+if(SARECOMP_LINUX_RAM_REGIONS_EXTENDED AND NOT SARECOMP_LINUX_RAM_REGIONS)
+    message(FATAL_ERROR "Extended region qualification requires RAM regions")
+endif()
 option(SARECOMP_LINUX_RAM_GUARD_PROBE "Private bounded RAM-miss diagnosis" OFF)
 set(SARECOMP_LINUX_SCALAR_WRITE_SCOPE "PROFILE" CACHE STRING "Scalar write replacement scope: PROFILE or ALL")
 set_property(CACHE SARECOMP_LINUX_SCALAR_WRITE_SCOPE PROPERTY STRINGS PROFILE ALL)
@@ -24,6 +28,9 @@ if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES OR SARECOMP_LINUX
         message(FATAL_ERROR "Scalar writes require unchanged guest sources")
     endif()
     set(scalar_dir "${CMAKE_BINARY_DIR}/generated/${scalar_mode}-writes")
+    if(SARECOMP_LINUX_RAM_REGIONS_EXTENDED)
+        set(scalar_dir "${CMAKE_BINARY_DIR}/generated/region-extended-writes")
+    endif()
     get_target_property(scalar_guest_sources sonic_linux_guest SOURCES)
     if(SARECOMP_LINUX_SCALAR_WRITE_SCOPE STREQUAL "PROFILE")
         include("${SONIC_ROOT}/cmake/LinuxPreloadedReadUnits.cmake")
@@ -58,6 +65,9 @@ if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES OR SARECOMP_LINUX
     string(JOIN "\n" scalar_unit_list ${scalar_units})
     file(GENERATE OUTPUT "${scalar_dir}/units.txt" CONTENT "${scalar_unit_list}\n")
     set(scalar_probe_args)
+    if(SARECOMP_LINUX_RAM_REGIONS_EXTENDED)
+        list(APPEND scalar_probe_args --region-extended)
+    endif()
     if(SARECOMP_LINUX_RAM_GUARD_PROBE)
         list(APPEND scalar_probe_args --guard-probe)
     endif()
@@ -111,6 +121,15 @@ if(SARECOMP_LINUX_SCALAR_WRITES OR SARECOMP_LINUX_STACK_FRAMES OR SARECOMP_LINUX
         target_compile_options(sonic-linux-ram-region-tests PRIVATE -O2 -g0)
         target_link_options(sonic-linux-ram-region-tests PRIVATE -Wl,--gc-sections)
         target_link_libraries(sonic-linux-ram-region-tests PRIVATE sonic_linux_services)
+        set(extended_test_source "${SONIC_WORKING}/generated/code/unit-v8C01995E-8C01AAE0-6cf3d8aa9df0e7a3.cpp")
+        set(extended_test_witness "${scalar_dir}/ram_region_extended_fixture.inc")
+        add_custom_command(OUTPUT "${extended_test_witness}"
+            COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-ram-extended-test.py"
+                --source "${extended_test_source}" --output "${extended_test_witness}"
+            DEPENDS "${SONIC_ROOT}/tools/prepare-ram-extended-test.py"
+                "${SONIC_ROOT}/tools/prepare-ram-regions.py" "${extended_test_source}"
+            VERBATIM)
+        target_sources(sonic-linux-ram-region-tests PRIVATE "${extended_test_witness}")
     endif()
     if(SARECOMP_LINUX_STACK_FRAMES)
         add_executable(sonic-linux-stack-frame-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_stack_frames.cpp")

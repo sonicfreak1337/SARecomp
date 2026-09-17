@@ -18,10 +18,12 @@ def main():
  if records.get('code/'+a.input.name,[])[1:3]!=[str(len(original)),'sha256:'+sha(original)]:raise ValueError('Retained unit identity')
  old=original.decode().replace('\r\n','\n');data=a.input.read_bytes();text=data.decode().replace('\r\n','\n')
  if data!=original:
-  if a.input.parent.name!='region-writes':raise ValueError('Unreviewed input preparation')
+  if a.input.parent.name not in ('region-writes','region-extended-writes'):
+   raise ValueError('Unreviewed input preparation')
   prior=json.loads((a.input.parent/'preparation.json').read_text())
   entries=[e for e in prior['units'] if e['unit']==a.input.name]
   if (prior['generation']!=generation or prior['mode']!='region' or prior.get('guard_probe',False) or
+      prior.get('extended_regions',False)!=(a.input.parent.name=='region-extended-writes') or
       len(entries)!=1 or entries[0]['source_sha256']!=sha(original) or entries[0]['output_sha256']!=sha(data)):
    raise ValueError('RAM region provenance')
  owners={

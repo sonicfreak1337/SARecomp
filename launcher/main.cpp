@@ -1137,6 +1137,14 @@ int run_game(int argc, char** argv) {
 }
 
 int main(int argc,char** argv){
+#if defined(SARECOMP_WINDOWS_RAM_REGIONS_DEFAULT) && defined(_WIN32)
+    // A prepared build must use its CPU path on ordinary startup as well as
+    // under the benchmark. Keep an explicit internal 0 override for diagnosis.
+    if (std::getenv("SARECOMP_RAM_REGIONS") == nullptr)
+        ::_putenv_s("SARECOMP_RAM_REGIONS", "1");
+    std::cerr << "SONIC_CPU_PATH_DEFAULTS version=20260917 ram_regions="
+              << (std::getenv("SARECOMP_RAM_REGIONS") ? std::getenv("SARECOMP_RAM_REGIONS") : "unset") << '\n';
+#endif
 #if defined(SARECOMP_LINUX_PERFORMANCE_DEFAULTS) && !defined(_WIN32)
     // Set once before any worker or cached environment lookup. Explicit
     // developer overrides still select the original path for comparisons.

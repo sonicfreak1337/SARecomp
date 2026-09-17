@@ -19,6 +19,7 @@ for before, after in changes:
     source = source.replace(before, after)
 options=sys.argv[3:]
 allowed={'--ram-read-experiment':'sonic_ram_reads', '--fpu-call-experiment':'sonic_fpu_calls',
+    '--ram-regions':'sonic_ram_regions',
     '--compact-aot-control':'sonic_compact_aot_control',
     '--compact-aot-compact':'sonic_compact_aot_compact',
     '--fpu-runtime-fast':'sonic_fpu_runtime',

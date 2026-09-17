@@ -211,6 +211,25 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   benchmark summaries record CPU count and LP_NUM_THREADS. See the delivery
   report before comparing to older two-vCPU data.
 
+- The post-delivery RAM extension is isolated; see
+  `docs/native-ram-extended-20260917.md`. It adds exact GPR/PR stack operations,
+  T tests and fixed shifts to the existing callback-free regions. Both Windows
+  and Linux pass 3,004 component cases; 41 units cover 1,413 prefixes. Matched
+  Linux Gamma/Chaos-4 endpoints save 5.04%/2.43% execution CPU, but images/s
+  change +3.13%/-1.50%. Do not claim a large global or Deck FPS gain.
+  The Windows counterpart passes map ownership for 894 entries. Original
+  Gamma/Chaos-4 pairs save 8.92%/10.47% CPU, with matching endpoint state.
+  Final ordinary-start Original and Recompiled Gamma also pass; Recompiled
+  produces 59.996 new images/s on this desktop. The Windows comparison includes
+  the whole RAM prefix path, which was absent from its control, rather than
+  just the Linux extension. New options still default OFF. The development
+  caches explicitly retain Linux EXTENDED=ON / Windows EXTENDED, and the new
+  Windows test executable enables the compiled path at normal startup while
+  respecting internal override 0. The delivered binaries and Sep17 patch are
+  unchanged. Treat `build-linux/game` and `out/ram-extended-windows-20260917`
+  as experiments, never as implicit release-promotion candidates. Continue
+  from the documented comparisons; do not rerun all component cases unchanged.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

@@ -39,19 +39,80 @@ def scalar_operation(body):
     return None
 
 
-def classify(block):
+def extended_alu(body):
+    """Callback-free integer shapes absent from the initial region pilot."""
+    body = body.strip()
+    if body == '/* nop */':
+        return dict(operation=';', memory=False, store=False)
+    m = re.fullmatch(r'(katana_registers\[(?:[0-9]|1[0-5])\]) (<<=|>>=) (1|2|8|16)u;', body)
+    if m:
+        return dict(operation=body, memory=False, store=False)
+    m = re.fullmatch(r'katana_registers\.t\(\) = (.+) (==|!=|>=|<=|>|<) (.+);', body)
+    if m and expression(m[1]) and expression(m[3]):
+        return dict(operation=body, memory=False, store=False)
+    return None
+
+
+def extended_memory(body):
+    """Keep postincrement/predecrement publication after the successful access."""
+    gpr = r'katana_registers\[(?:[0-9]|1[0-5])\]'
+    value = r'(?:' + gpr + r'|katana_registers\.pr\(\))'
+    m = re.fullmatch(
+        r'\{\s*const bool same_register = (true|false);\s*'
+        r'const std::uint32_t address = (' + gpr + r');\s*'
+        r'const std::uint32_t value =\s*katana_direct_ram_read_u32\(guest_origin, address, katana_guarded_unknown_ram_reads\);\s*'
+        r'(' + gpr + r') = value;\s*if \(!same_register\) \{\s*'
+        r'(' + gpr + r') = address \+ 4u;\s*\}\s*\}', body.strip())
+    if m and m[2] == m[4] and (m[1] == 'true') == (m[2] == m[3]):
+        return dict(operation=f'access.read<32>(sonic_address, {m[3]})',
+                    before=f'const auto sonic_address = {m[2]};',
+                    after=f'{m[2]} = sonic_address + 4u;' if m[1] == 'false' else '',
+                    memory=True, store=False, extended_kind='postincrement')
+    m = re.fullmatch(
+        r'\{\s*const std::uint32_t value = (' + value + r');\s*'
+        r'const std::uint32_t address = (' + gpr + r') - 4u;\s*'
+        r'katana_direct_ram_write_u32\(katana_direct_ram_writes, guest_origin, address, value, '
+        r'katana::runtime::CodeWriteSource::Cpu, katana_guarded_unknown_ram_writes\);\s*'
+        r'(' + gpr + r') = address;\s*\}', body.strip())
+    if m and m[2] == m[3]:
+        return dict(operation=f'access.write<32>(sonic_address, {m[1]})',
+                    before=f'const auto sonic_address = {m[2]} - 4u;',
+                    after=f'{m[2]} = sonic_address;', memory=True, store=True,
+                    extended_kind='predecrement')
+    m = re.fullmatch(
+        r'\{\s*const std::uint32_t address = (' + gpr + r');\s*'
+        r'const std::uint32_t value = katana_direct_ram_read_u32\(guest_origin, address, katana_guarded_unknown_ram_reads\);\s*'
+        r'(' + gpr + r') = address \+ 4u;\s*katana_registers\.pr\(\) = value;\s*\}', body.strip())
+    if m and m[1] == m[2]:
+        return dict(operation='access.read<32>(sonic_address, sonic_value)',
+                    before=f'const auto sonic_address = {m[1]}; std::uint32_t sonic_value = 0;',
+                    after=f'{m[1]} = sonic_address + 4u; katana_registers.pr() = sonic_value;',
+                    memory=True, store=False, extended_kind='pr_postincrement')
+    return None
+
+
+def classify(block, extended=False):
     # No delay-slot, branch or nested accounting group can match. The
     # instruction comments themselves are never sufficient.
     attempts = re.findall(r'ExplicitGuestInstructionAttempt guest_instruction_attempt\(\s*cpu, (?:katana_instruction_runtime_pc|katana::runtime::relocate_code_address_inline\(0x[0-9A-F]+u\)), (\d+)u\);', block)
     inner = block[block.index('\n', block.index('// katana-guest'))+1:block.rfind('}')].strip()
     if not attempts:
         if 'ExplicitGuestInstructionAttempt' in block: return None
-        result = scalar_operation(inner)
+        result = scalar_operation(inner) or (extended_alu(inner) if extended else None)
         if result and not result['memory'] and 'cpu.fr' not in inner:
             return dict(result, cycles=1, attempt=False, fmov=False)
         return None
     if len(attempts) != 1 or block.count('guest_instruction_attempt.complete();') != 1:
         return None
+    if extended and attempts == ['1']:
+        simple = re.fullmatch(
+            r'katana::runtime::ExplicitGuestInstructionAttempt guest_instruction_attempt\(\s*'
+            r'cpu, katana::runtime::relocate_code_address_inline\(0x[0-9A-F]{8}u\), 1u\);\s*'
+            r'(.+?)\s*guest_instruction_attempt\.complete\(\);', inner, re.S)
+        if simple:
+            result = scalar_operation(simple[1]) or extended_alu(simple[1])
+            if result and not result['memory'] and 'cpu.fr' not in simple[1]:
+                return dict(result, cycles=1, attempt=True, fmov=False, extended_kind='simple_attempt')
     # Exact ordinary arithmetic envelope. In the admitted scalar DN=1 mode,
     # with enables clear, these original helpers cannot call out or trap.
     fp_call = (r'katana::runtime::fpu_(?:binary\(cpu, katana::runtime::FpuBinaryOperation::'
@@ -98,7 +159,7 @@ def classify(block):
                 result['operation']=result['operation'].replace(m[1]+',','sonic_address,',1)
                 return dict(result,cycles=2,attempt=True,fmov=True,
                             before=f'const auto sonic_address = {m[1]};',after=f'{m[3]} = sonic_address + 4u;')
-        result = scalar_operation(body)
+        result = scalar_operation(body) or (extended_memory(body) if extended and not fmov else None)
         if not result or not result['memory']: return None
         if result['store'] and 'if (katana_guest_write_exit_requested)' not in block: return None
         if block.count('flush_pending_guest_cycles(') > 1: return None
@@ -173,7 +234,7 @@ goto katana_block_{first:08X}_fmov_group_end;
     return result
 
 
-def instructions(source):
+def instructions(source, extended=False):
     special=read_groups(source)
     nodes = list(special)
     for m in START.finditer(source):
@@ -182,7 +243,7 @@ def instructions(source):
         if close < 0: raise ValueError('Unclosed instruction')
         end = close + 2 + len(m[1])
         block = source[m.start():end]
-        shape = classify(block)
+        shape = classify(block, extended)
         node = dict(shape or {}, valid=bool(shape), start=m.start(), end=end,
                     indent=m[1], pc=int(m[2],16), accounting=None)
         account = ACCOUNT.match(source, end)
@@ -210,6 +271,7 @@ def instructions(source):
 
 def localize(text, live_fpu=False):
     text = re.sub(r'katana_registers\[(\d+)\]',r'r\1',text)
+    text = re.sub(r'katana_registers\.(pr|t)\(\)', r's_\1', text)
     return text if live_fpu else re.sub(r'cpu\.fr\[(\d+)\]',r'f\1',text)
 
 
@@ -218,6 +280,7 @@ def emit(group, key):
     joined='\n'.join(i.get('before','')+i['operation']+i.get('after','') for i in group)
     gprs=sorted(set(map(int,re.findall(r'katana_registers\[(\d+)\]',joined))))
     fprs=sorted(set(map(int,re.findall(r'cpu\.fr\[(\d+)\]',joined))))
+    scalars=sorted(set(re.findall(r'katana_registers\.(pr|t)\(\)',joined)))
     live_fpu=any(i.get('arithmetic',False) for i in group)
     fp_guard = (' && sonic::ram_regions::arithmetic_admitted(cpu)' if live_fpu else
                 ' && (cpu.sr & katana::runtime::sr_fd_mask) == 0u && (cpu.fpscr & katana::runtime::fpscr_sz_mask) == 0u' if fprs else '')
@@ -227,6 +290,7 @@ def emit(group, key):
                '        !cpu.trap_pending && !katana_guest_write_exit_requested && katana_direct_ram_writes == nullptr'+
                fp_guard+') {']
     prefix += [f'        auto r{r} = katana_registers[{r}];' for r in gprs]
+    prefix += [f'        auto s_{name} = katana_registers.{name}();' for name in scalars]
     if not live_fpu: prefix += [f'        auto f{r} = cpu.fr[{r}];' for r in fprs]
     prefix += ['        sonic::ram_regions::Access access(cpu,katana_direct_ram,katana_direct_ram_code_tracker);',
                '        const auto stopped = [&]() -> unsigned {']
@@ -245,6 +309,7 @@ def emit(group, key):
         pcs.append(last)
     prefix += [f'            return {len(group)}u;', '        }();']
     prefix += [f'        katana_registers[{r}] = r{r};' for r in gprs]
+    prefix += [f'        katana_registers.{name}() = s_{name};' for name in scalars]
     if not live_fpu: prefix += [f'        cpu.fr[{r}] = f{r};' for r in fprs]
     prefix += ['        static constexpr unsigned cycles[] = {'+','.join(map(str,cycles))+'};',
                '        static constexpr unsigned counts[] = {'+','.join(map(str,counts))+'};',
@@ -264,12 +329,12 @@ def emit(group, key):
     return code,labels
 
 
-def transform(source):
+def transform(source, extended=False):
     reads.validate_preloaded_helpers(source)
     if 'static constexpr bool katana_guarded_unknown_ram_writes = false;' in source:
         raise ValueError('Original store permission differs')
     groups=[]
-    for atom in instructions(source):
+    for atom in instructions(source, extended):
         if groups and sum(n.get('weight',1) for n in groups[-1]+atom)<=128 and gap_ok(source,groups[-1][-1],atom[0]):
             groups[-1].extend(atom)
         else: groups.append(list(atom))

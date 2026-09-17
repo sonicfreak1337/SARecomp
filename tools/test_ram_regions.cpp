@@ -26,6 +26,7 @@ struct Owned {
     ~Owned(){sonic::scalar_writes::unbind(&f.cpu.memory,&guard);}
 };
 #include "ram_region_aot_fixture.inc"
+#include "ram_region_extended_fixture.inc"
 constexpr unsigned length=13;
 constexpr bool alu(unsigned i){return i==0||i==4||i==10||i==12;}
 constexpr bool store(unsigned i){return i==2||i==5||i==9;}
@@ -333,6 +334,44 @@ void page_compare(std::uint32_t base,unsigned mode,bool stale) {
     ++cases;
 }
 
+void extended_compare(unsigned index,unsigned mode,std::uint32_t base,std::uint32_t resume,bool stale) {
+    Owned a(0x100000),b(0x100000);
+    for(auto* o:{&a,&b}) {
+        auto& c=o->f.cpu;auto& ram=*o->f.ram;
+        c.r[15]=base;c.r[12]=0x8C004300;c.r[13]=0x8C005000;c.r[14]=0x8C005100;
+        c.t=true;c.pr=0xCAFEBABEu;c.fpscr=fpscr_dn_mask;
+        ram.write_u32(0x19A68,0x8C004000);ram.write_u32(0x4000,mode==20?0:7);
+        ram.write_u32(0x19A74,0x8C004100);ram.write_u32(0x19A78,0x8C004104);
+        ram.write_u32(0x19A7C,0x8C004108);ram.write_u32(0x4100,0x8C004200);
+        ram.write_u32(0x4104,0x80000002);ram.write_u32(0x4200,4);
+        ram.write_u32(0x4300,0x8C004400);ram.write_u8(0x4408,0x80);
+        ram.write_u32(0x5100,0x8C005200);ram.write_u32(0x522C,0x8C005300);
+    }
+    auto ga=a.f.cpu.memory.direct_linear_memory_guard(false),gb=b.f.cpu.memory.direct_linear_memory_guard(false);
+    for(auto* o:{&a,&b}) {
+        mutate(*o,mode);
+        if(mode==19) {
+            o->f.watch(MemoryWatchpointAccess::Read,0x0C004000);
+            o->f.services.on_flush=[o]{o->f.cpu.r[15]=0x8C009000;o->f.cpu.pr=0xDEADBEEFu;o->f.cpu.t=false;};
+        }
+        if(mode==21) {
+            o->guard.reserve_additional_runtime_executable_ranges(1);
+            o->guard.add_runtime_executable_range(0x0C00501C,4);
+        }
+        if(mode==22)o->f.ram->write_u32(0x4300,0xFFFFFFFFu);
+    }
+    if(!stale){ga=a.f.cpu.memory.direct_linear_memory_guard(false);gb=b.f.cpu.memory.direct_linear_memory_guard(false);}
+    extended_witnesses[index].original(a,ga,resume);
+    extended_witnesses[index].extended(b,gb,resume);
+    require(state(a.f.cpu)==state(b.f.cpu),"extended prefix CPU/PR/T/resume differs");
+    require(provenance(a.f.cpu)==provenance(b.f.cpu),"extended prefix fault differs");
+    require(counts(a.f.cpu.memory)==counts(b.f.cpu.memory),"extended prefix counters differ");
+    require(a.f.log==b.f.log&&!a.f.log.overflow,"extended prefix callbacks differ");
+    require(std::ranges::equal(a.f.ram->bytes(),b.f.ram->bytes()),"extended prefix RAM differs");
+    require(a.guard.generation()==b.guard.generation()&&a.guard.write_detected()==b.guard.write_detected(),"extended prefix immutable state differs");
+    ++cases;
+}
+
 template<class Access>
 void page_benchmark(const char* name) {
     Owned o;
@@ -375,6 +414,18 @@ int main(int argc,char** argv) {
                 0x8C0009F0u,0x8C000A10u,0x8C00FFF0u,0x8C01FFF0u,0x8C000001u,0xFFFFFFFFu})
                 page_compare(base,mode,stale);
         require(!sonic::scalar_writes::requested_capture,"capture scope leaked");
+        for(unsigned index=0;index<std::size(extended_witnesses);++index) {
+            for(unsigned mode=0;mode<=22;++mode)for(bool stale:{false,true})
+                for(auto base:{0x8C006000u,0xAC006000u,0x0C006000u,0x8C100000u,
+                    0x8C000008u,0x8C000814u,0x8C1FFFFCu,0x8C006001u})
+                    extended_compare(index,mode,base,0,stale);
+            for(auto resume:extended_witnesses[index].resumes)if(resume)
+                for(unsigned mode:{0u,1u,4u,19u})extended_compare(index,mode,0x8C006000,resume,false);
+            require(extended_completed[index]!=0,"extended witness never completed natively");
+            require(extended_partial[index]!=0,"extended witness never exercised partial completion");
+            std::cout<<"SONIC_RAM_EXTENDED_WITNESS index="<<index<<" complete="<<extended_completed[index]
+                     <<" partial="<<extended_partial[index]<<'\n';
+        }
         for(const auto& b:sonic::scalar_writes::bindings)require(!b.memory,"binding leaked");
         std::cout<<"SONIC_RAM_REGIONS_OK cases="<<cases<<" complete="<<complete_hits<<" partial="<<partial_hits
                  <<" state=exact counters=exact aliases=exact faults=exact observers=exact scheduler=exact\n";
