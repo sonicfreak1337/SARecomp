@@ -284,6 +284,21 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   and CPU state publication next; preserve callback/generation boundaries and
   distinguish that work from the rejected observer-permission cache.
 
+- Function-local prepared RAM capabilities remain compile-time and runtime OFF;
+  see `docs/native-ram-prepared-access-20260917.md`. Both platforms pass 5,377
+  comparisons. In matched Original runs, Linux Gamma CPU/update changes -1.28%
+  and Chaos 4 +1.93%, with -0.45%/+0.04% new-image throughput; Windows is also
+  marginal/mixed. Do not ship, expand or repeat this unchanged experiment.
+  OFF generation is proven identical to the previous source across 41 units;
+  only development caches enable the pilot, with runtime default OFF. Final
+  `build-linux/game` and `out/ram-prepared-windows-20260917/game.exe` are separate
+  from the measured hashes documented in that report. The final Windows
+  Recompiled Gamma probe passes; the final Linux relink has no repeated gameplay
+  claim. September 17 delivery stays unchanged. Next inspect shared native
+  collision stores and repeated source identities. Guard generation does not
+  cover module range removal/addition, and tracks_address is overlap rather
+  than complete coverage; do not build an identity cache on those assumptions.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

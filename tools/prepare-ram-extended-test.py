@@ -19,7 +19,7 @@ spec = importlib.util.spec_from_file_location('regions', Path(__file__).with_nam
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
 source = data.decode()
-changed, report = r.transform(source, extended=True)
+changed, report = r.transform(source, extended=True, prepared=True)
 nodes = [n for atom in r.instructions(source, True) for n in atom]
 result = 'static unsigned extended_completed[7]{}, extended_partial[7]{};\n'
 records = []
@@ -61,6 +61,7 @@ for index, (first, last, size) in enumerate((
     bool katana_guest_write_exit_requested=false;
     const auto* katana_direct_ram_code_tracker=&o.guard;
     auto katana_direct_ram=entry;
+    sonic::ram_regions::PreparedWrites sonic_ram_prepared;
     Memory::DirectLinearWriteBatch* const katana_direct_ram_writes=nullptr;
 ''' + helpers + resume_code + '\n' + body + '\n}\n'
     records.append({'first': first, 'last': last, 'size': size, 'resumes': resumes})

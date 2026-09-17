@@ -110,6 +110,7 @@ class View final {
             requested_capture = previous;
             if (!direct_ || !direct_.write_bytes) return;
             immutable_ = immutable;
+            binding_ = &slot;
             // Memory is non-const and owns these mutable accounting fields.
             // Keep the same counters as try_write_direct_linear_u8/u16/u32.
             counters_ = &const_cast<MemoryPerformanceCounters&>(memory.performance_counters());
@@ -121,10 +122,23 @@ class View final {
         return immutable_ && direct_.write_bytes && static_cast<bool>(direct_);
     }
 
-    // Only for an admitted callback-free region. The copy must be discarded
-    // before any scheduler, guest call, observer or original fallback runs.
+    // Only for an admitted callback-free region. Discard an unvalidated copy
+    // before a callback. A function-local prepared View may retain the hint,
+    // but must use revalidated_snapshot before each subsequent closed region.
     [[nodiscard]] DirectLinearMemoryGuard closed_region_snapshot() const noexcept {
         return available() ? direct_ : DirectLinearMemoryGuard{};
+    }
+
+    [[nodiscard]] const DirectLinearMemoryGuard* revalidated_snapshot(
+            Memory& memory, const NativePortImmutableWriteGuard* immutable) const noexcept {
+        // Registration slots are stable storage, not permanent permissions.
+        // Recheck their owner and current observer pair as well as Memory's
+        // generation. Immutable page/range proofs are deliberately NOT cached.
+        if (!binding_ || immutable_ != immutable || binding_->memory != &memory ||
+            binding_->immutable != immutable ||
+            !memory.direct_linear_memory_guard_current(direct_, false) ||
+            !memory.guest_write_observer_pair_current(binding_->observer_generation)) return nullptr;
+        return &direct_;
     }
 
     template<std::size_t N>
@@ -172,5 +186,6 @@ class View final {
     DirectLinearMemoryGuard direct_{};
     const NativePortImmutableWriteGuard* immutable_ = nullptr;
     MemoryPerformanceCounters* counters_ = nullptr;
+    const Binding* binding_ = nullptr;
 };
 } // namespace sonic::scalar_writes

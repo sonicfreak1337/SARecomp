@@ -316,7 +316,7 @@ def localize(text, live_fpu=False):
     return text if live_fpu else re.sub(r'cpu\.fr\[(\d+)\]',r'f\1',text)
 
 
-def emit(group, key):
+def emit(group, key, prepared=False):
     indent=group[0]['indent']; prefix=[]
     joined='\n'.join(i.get('before','')+i['operation']+i.get('after','') for i in group)
     gprs=sorted(set(map(int,re.findall(r'katana_registers\[(\d+)\]',joined))))
@@ -333,7 +333,8 @@ def emit(group, key):
     prefix += [f'        auto r{r} = katana_registers[{r}];' for r in gprs]
     prefix += [f'        auto s_{name} = katana_registers.{name}();' for name in scalars]
     if not live_fpu: prefix += [f'        auto f{r} = cpu.fr[{r}];' for r in fprs]
-    prefix += ['        sonic::ram_regions::Access access(cpu,katana_direct_ram,katana_direct_ram_code_tracker);',
+    prepared_argument=',&sonic_ram_prepared' if prepared else ''
+    prefix += ['        sonic::ram_regions::Access access(cpu,katana_direct_ram,katana_direct_ram_code_tracker'+prepared_argument+');',
                '        const auto stopped = [&]() -> unsigned {']
     if live_fpu: prefix += ['            katana::runtime::HostFpuExecutionEpoch sonic_epoch(cpu);']
     cycles=[0]; pcs=[0]; counts=[0]; last=0
@@ -370,7 +371,7 @@ def emit(group, key):
     return code,labels
 
 
-def transform(source, extended=False):
+def transform(source, extended=False, prepared=False):
     reads.validate_preloaded_helpers(source)
     if 'static constexpr bool katana_guarded_unknown_ram_writes = false;' in source:
         raise ValueError('Original store permission differs')
@@ -379,7 +380,7 @@ def transform(source, extended=False):
         if groups and sum(n.get('weight',1) for n in groups[-1]+atom)<=128 and gap_ok(source,groups[-1][-1],atom[0]):
             groups[-1].extend(atom)
         else: groups.append(list(atom))
-    edits=[];report=[]
+    edits=[];report=[];prepared_owners=set()
     for group in groups:
         size=sum(i.get('weight',1) for i in group)
         memory=sum(i.get('weight',1) for i in group if i['memory'])
@@ -388,8 +389,14 @@ def transform(source, extended=False):
         owner=source.rfind('\nBlockExit fn_',0,first['start'])
         # Every admitted owner uses the authenticated native read/write helpers.
         if owner<0 or 'bool katana_guest_write_exit_requested = false;' not in source[owner:first['start']]: continue
+        if prepared and owner not in prepared_owners:
+            declaration='    auto katana_direct_ram = cpu.memory.direct_linear_memory_guard(false);\n'
+            where=source.find(declaration,owner,first['start'])
+            if where<0: raise ValueError('Missing authenticated owner RAM capture')
+            edits.append((where+len(declaration),0,'    sonic::ram_regions::PreparedWrites sonic_ram_prepared;\n'))
+            prepared_owners.add(owner)
         key=f'{first["pc"]:08X}_{len(report)}'
-        prefix,labels=emit(group,key)
+        prefix,labels=emit(group,key,prepared)
         # Stable ordering at equal source offsets puts the prefix BEFORE the
         # original instruction label, allowing a miss to bypass it entirely.
         edits.append((first['start'],0,prefix))

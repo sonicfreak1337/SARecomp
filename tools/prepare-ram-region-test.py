@@ -19,7 +19,7 @@ if len(record)!=1 or record[0][1:3]!=[str(len(data)),'sha256:'+hashlib.sha256(da
     raise ValueError('Original test witness changed')
 spec=importlib.util.spec_from_file_location('regions',Path(__file__).with_name('prepare-ram-regions.py'))
 regions=importlib.util.module_from_spec(spec);spec.loader.exec_module(regions)
-source=data.decode(); changed,report=regions.transform(source)
+source=data.decode(); changed,report=regions.transform(source,prepared=True)
 if not any(g['pc']=='8C0CC090' and g['instructions']==83 for g in report):
     raise ValueError('Required mixed witness did not qualify')
 helpers=source[source.index('    const auto katana_direct_ram_translate ='):source.index('    if (katana::runtime::unrelocate_code_address_inline(cpu.pc) ==')]
@@ -50,6 +50,7 @@ for name,body in [('retained_region',original),('transformed_region',candidate)]
     bool katana_guest_write_exit_requested=false;
     const auto* katana_direct_ram_code_tracker=&o.guard;
     auto katana_direct_ram=entry;
+    sonic::ram_regions::PreparedWrites sonic_ram_prepared;
     Memory::DirectLinearWriteBatch* const katana_direct_ram_writes=nullptr;
 '''+helpers+'''
     if(resume==0x8C0CC098u)goto katana_block_8C0CC098_resume;
@@ -62,7 +63,7 @@ mixed_data=a.mixed_source.read_bytes()
 record=[l.split('\t') for l in manifest if l.startswith('code/'+a.mixed_source.name+'\t')]
 if len(record)!=1 or record[0][1:3]!=[str(len(mixed_data)),'sha256:'+hashlib.sha256(mixed_data).hexdigest()]:
     raise ValueError('Original arithmetic witness changed')
-mixed=mixed_data.decode(); changed,report=regions.transform(mixed)
+mixed=mixed_data.decode(); changed,report=regions.transform(mixed,prepared=True)
 if not any(g['pc']=='8C036F66' and g['instructions']==35 and g['arithmetic']==2 for g in report):
     raise ValueError('Required arithmetic witness did not qualify')
 start=re.search(r'(?m)^ +\{\n +// katana-guest 0x8C036F66u',mixed).start()
@@ -83,6 +84,7 @@ for name,body in [('retained_mixed_region',original),('transformed_mixed_region'
     bool katana_guest_write_exit_requested=false;
     const auto* katana_direct_ram_code_tracker=&o.guard;
     auto katana_direct_ram=entry;
+    sonic::ram_regions::PreparedWrites sonic_ram_prepared;
     Memory::DirectLinearWriteBatch* const katana_direct_ram_writes=nullptr;
 '''+mixed_helpers+'''
     if(resume==0x8C036F94u)goto katana_block_8C036F94_resume;
@@ -95,7 +97,7 @@ for path,stem,first,last,size in (
     record=[l.split('\t') for l in manifest if l.startswith('code/'+path.name+'\t')]
     if len(record)!=1 or record[0][1:3]!=[str(len(data)),'sha256:'+hashlib.sha256(data).hexdigest()]:
         raise ValueError('Original vector witness changed')
-    source=data.decode();changed,report=regions.transform(source)
+    source=data.decode();changed,report=regions.transform(source,prepared=True)
     if not any(g['pc']==f'{first:08X}' and g['instructions']==size for g in report):
         raise ValueError('Required vector witness did not qualify')
     nodes=[n for atom in regions.instructions(source) for n in atom if first<=n['pc']<=last]
@@ -114,6 +116,7 @@ for path,stem,first,last,size in (
     bool katana_guest_write_exit_requested=false;
     const auto* katana_direct_ram_code_tracker=&o.guard;
     auto katana_direct_ram=entry;
+    sonic::ram_regions::PreparedWrites sonic_ram_prepared;
     Memory::DirectLinearWriteBatch* const katana_direct_ram_writes=nullptr;
 '''+helpers+body+'\n}\n'
 

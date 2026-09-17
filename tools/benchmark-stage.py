@@ -71,6 +71,7 @@ parser.add_argument('--deferred-midi-notes', choices=('off','on'), default='off'
 parser.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
 parser.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
 parser.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
+parser.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
@@ -170,6 +171,7 @@ env['SARECOMP_NATIVE_MODEL_PACKETS_VERIFY']='1' if args.native_model_packets=='v
 env['SARECOMP_NATIVE_PROJECTION_BATCH']=str(int(args.native_projection_batch!='off'))
 env['SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY']=str(int(args.native_projection_batch=='verify'))
 env['SARECOMP_NATIVE_MATRIX_BULK']=str(int(args.native_matrix_bulk=='on'))
+env['SARECOMP_RAM_PREPARED_ACCESS']=str(int(args.ram_prepared_access=='on'))
 if args.ram_regions != 'installed':
     env['SARECOMP_RAM_REGIONS'] = '1' if args.ram_regions == 'on' else '0'
 for name, selection in (

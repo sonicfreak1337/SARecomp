@@ -105,10 +105,10 @@ void original(Owned& o,const DirectLinearMemoryGuard& entry,unsigned start=0) {
     }
 }
 
-unsigned prefix(Owned& o,const DirectLinearMemoryGuard& entry) {
+unsigned prefix(Owned& o,const DirectLinearMemoryGuard& entry,sonic::ram_regions::PreparedWrites* prepared=nullptr) {
     auto& c=o.f.cpu;
     if(!sonic::scalar_writes::ram_regions_enabled()||c.trap_pending||(c.sr&sr_fd_mask)||(c.fpscr&fpscr_sz_mask))return 0;
-    sonic::ram_regions::Access access(c,entry,&o.guard);
+    sonic::ram_regions::Access access(c,entry,&o.guard,prepared);
     auto r=c.r;auto f=c.fr;
     unsigned i=0,cycles=0,last=0;
     for(;i<length;++i) {
@@ -292,8 +292,12 @@ void generated_vector_compare(unsigned mode,bool gbr) {
 }
 
 template<class Access>
-std::array<std::uint32_t,20> page_sequence(Owned& o,const DirectLinearMemoryGuard& entry,std::uint32_t base) {
-    Access access(o.f.cpu,entry,&o.guard);
+std::array<std::uint32_t,20> page_sequence(Owned& o,const DirectLinearMemoryGuard& entry,std::uint32_t base,
+        sonic::ram_regions::PreparedWrites* prepared=nullptr) {
+    Access access=[&] {
+        if constexpr(std::is_same_v<Access,sonic::ram_regions::Access>) return Access(o.f.cpu,entry,&o.guard,prepared);
+        else return Access(o.f.cpu,entry,&o.guard);
+    }();
     std::array<std::uint32_t,20> result{};
     result[0]=access.template read<32>(base,result[1]);
     result[2]=access.template write<32>(base+4,result[1]);
@@ -397,15 +401,99 @@ void extended_compare(unsigned index,unsigned mode,std::uint32_t base,std::uint3
     ++cases;
 }
 
+// The reusable capability must survive ordinary callbacks only as a hint.
+// Warm it, cross a real scheduler boundary, mutate admission, then compare the
+// next prefix plus original fallback with the independent scalar instruction oracle.
+void prepared_compare(unsigned mode,bool stale,std::uint32_t base) {
+    Owned a,b;
+    sonic::ram_regions::PreparedWrites prepared(true);
+    a.f.cpu.r[0]=b.f.cpu.r[0]=0x8C000100u;
+    auto ga=a.f.cpu.memory.direct_linear_memory_guard(false),gb=b.f.cpu.memory.direct_linear_memory_guard(false);
+    for(unsigned i=0;i<2;++i) {
+        original(a,ga);
+        const auto stop=prefix(b,gb,&prepared);
+        require(stop==length,"prepared warmup did not execute native prefix");
+    }
+    require(counts(a.f.cpu.memory)==counts(b.f.cpu.memory),"prepared counters not published at boundary");
+    for(auto* o:{&a,&b}) {
+        o->f.cpu.r[0]=base;
+        o->f.services.on_flush=[o,mode] {
+            if(mode<=18)mutate(*o,mode);
+            if(mode==19)sonic::scalar_writes::unbind(&o->f.cpu.memory,&o->guard);
+            if(mode==20)o->f.cpu.memory.clear_guest_write_batch_observer();
+            if(mode==21)o->f.cpu.memory.set_lookup_mode(MemoryLookupMode::Reference);
+            if(mode==22){o->f.watch(MemoryWatchpointAccess::Write);o->f.cpu.memory.clear_watchpoints();}
+            if(mode==23)o->f.ram->write_u32(0x100,0x01234567u);
+            if(mode==24){
+                sonic::scalar_writes::unbind(&o->f.cpu.memory,&o->guard);
+                sonic::scalar_writes::bind(o->f.cpu.memory,o->guard,o->f.cpu.memory.guest_write_observer_generation());
+            }
+            if(mode==25)o->f.cpu.memory.bind_direct_linear_alias_window(0x0C000000u,0x10000u,*o->f.ram);
+            if(mode==26){
+                o->guard.reserve_additional_runtime_executable_ranges(1);
+                o->guard.add_runtime_executable_range(0x0C000100,256);
+            }
+            if(mode==27){
+                o->guard.reserve_additional_runtime_executable_ranges(1);
+                o->guard.add_runtime_executable_range(0x0C000100,256);
+                o->guard.remove_runtime_executable_range(0x0C000100,256);
+            }
+        };
+        flush_pending_guest_cycles(o->f.cpu,o->f.services);
+    }
+    if(!stale){ga=a.f.cpu.memory.direct_linear_memory_guard(false);gb=b.f.cpu.memory.direct_linear_memory_guard(false);}
+    original(a,ga);
+    const auto stop=prefix(b,gb,&prepared);original(b,gb,stop);
+    require(state(a.f.cpu)==state(b.f.cpu),"prepared callback CPU state differs");
+    require(provenance(a.f.cpu)==provenance(b.f.cpu),"prepared callback fault provenance differs");
+    require(counts(a.f.cpu.memory)==counts(b.f.cpu.memory),"prepared callback memory accounting differs");
+    require(a.f.log==b.f.log&&!a.f.log.overflow,"prepared callback order differs");
+    require(std::ranges::equal(a.f.ram->bytes(),b.f.ram->bytes()),"prepared callback RAM differs");
+    require(a.guard.generation()==b.guard.generation()&&a.guard.write_detected()==b.guard.write_detected(),
+        "prepared callback code invalidation differs");
+    ++cases;
+}
+
+void prepared_owners() {
+    Owned a,b;
+    sonic::ram_regions::PreparedWrites prepared(true),nested(true);
+    const auto ga=a.f.cpu.memory.direct_linear_memory_guard(false),gb=b.f.cpu.memory.direct_linear_memory_guard(false);
+    const auto ca=counts(a.f.cpu.memory),cb=counts(b.f.cpu.memory);
+    // Different live Memory instances may have identical numeric generations.
+    for(auto* o:{&a,&b,&a,&b}) {
+        const auto& entry=o==&a?ga:gb;
+        const auto& alien=o==&a?gb:ga;
+        {
+            sonic::ram_regions::Access access(o->f.cpu,alien,&o->guard,&prepared);
+            std::uint32_t value=sentinel;
+            require(!access.read<32>(0x8C000100,value)&&value==sentinel,"alien read guard accepted");
+            require(!access.write<32>(0x8C000104,sentinel),"alien write guard accepted");
+        }
+        {
+            sonic::ram_regions::Access access(o->f.cpu,entry,&o->guard,&prepared);
+            require(access.write<32>(0x8C000104,0x2468ACE0u),"owner recapture failed");
+        }
+        {
+            sonic::ram_regions::Access access(o->f.cpu,entry,&o->guard,&nested);
+            std::uint32_t value=0;
+            require(access.read<32>(0x8C000104,value)&&value==0x2468ACE0u,"nested owner saw stale data");
+        }
+    }
+    require(counts(a.f.cpu.memory)[0]==ca[0]+4&&counts(b.f.cpu.memory)[0]==cb[0]+4,"owner counter attribution differs");
+    require(!sonic::scalar_writes::requested_capture,"prepared capture scope leaked");
+    ++cases;
+}
+
 template<class Access>
-void page_benchmark(const char* name) {
+void page_benchmark(const char* name,bool prepare=false) {
     Owned o;
     const auto entry=o.f.cpu.memory.direct_linear_memory_guard(false);
     const auto begin=std::clock();
     std::uint64_t checksum=0;
     constexpr unsigned iterations=100000;
+    sonic::ram_regions::PreparedWrites prepared(prepare);
     for(unsigned i=0;i<iterations;++i) {
-        const auto result=page_sequence<Access>(o,entry,0x8C002000+(i&3)*64);
+        const auto result=page_sequence<Access>(o,entry,0x8C002000+(i&3)*64,&prepared);
         checksum+=result[1]+static_cast<std::uint64_t>(result[15])+result[7]+result[12];
     }
     const auto elapsed=1000.0*(std::clock()-begin)/CLOCKS_PER_SEC;
@@ -418,6 +506,7 @@ int main(int argc,char** argv) {
         if(argc==2&&std::string_view(argv[1])=="--benchmark") {
             page_benchmark<sonic::ram_regions::CheckedAccess>("checked");
             page_benchmark<sonic::ram_regions::Access>("snapshot");
+            page_benchmark<sonic::ram_regions::Access>("prepared",true);
             return 0;
         }
         for(unsigned mode=0;mode<=18;++mode)for(bool stale:{false,true})
@@ -451,6 +540,10 @@ int main(int argc,char** argv) {
             std::cout<<"SONIC_RAM_EXTENDED_WITNESS index="<<index<<" complete="<<extended_completed[index]
                      <<" partial="<<extended_partial[index]<<'\n';
         }
+        for(unsigned mode=0;mode<=27;++mode)for(bool stale:{false,true})
+            for(auto base:{0x8C000100u,0xAC000100u,0x0C000100u,0x8C010100u,0x8C000001u,0x8C00FFFCu})
+                prepared_compare(mode,stale,base);
+        prepared_owners();
         for(const auto& b:sonic::scalar_writes::bindings)require(!b.memory,"binding leaked");
         std::cout<<"SONIC_RAM_REGIONS_OK cases="<<cases<<" complete="<<complete_hits<<" partial="<<partial_hits
                  <<" state=exact counters=exact aliases=exact faults=exact observers=exact scheduler=exact\n";

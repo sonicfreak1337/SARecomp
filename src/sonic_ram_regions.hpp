@@ -2,9 +2,41 @@
 #include "sonic_scalar_write_view.hpp"
 #include "katana/runtime/code_address_inline.hpp"
 #include "katana/runtime/fpu.hpp"
+#include <optional>
 
 namespace sonic::ram_regions {
 using namespace katana::runtime;
+
+inline bool prepared_writes_enabled() noexcept {
+    static const bool value = [] {
+        const char* p = std::getenv("SARECOMP_RAM_PREPARED_ACCESS");
+        return p && std::strcmp(p, "1") == 0;
+    }();
+    return value && !diagnostics::runtime_checks_enabled();
+}
+
+// One owner invocation, never TLS/global and never longer-lived than Memory.
+// A cached View is only a hint across callbacks. Generation, registration and
+// observer admission are checked on reuse; each Access starts fresh page proofs.
+class PreparedWrites final {
+public:
+    explicit PreparedWrites(bool enabled = prepared_writes_enabled()) noexcept : enabled_(enabled) {}
+    PreparedWrites(const PreparedWrites&) = delete;
+    PreparedWrites& operator=(const PreparedWrites&) = delete;
+    bool enabled() const noexcept { return enabled_ && !diagnostics::runtime_checks_enabled(); }
+    const DirectLinearMemoryGuard* snapshot(Memory& memory,
+            const NativePortImmutableWriteGuard* immutable) noexcept {
+        if (view_) {
+            if (const auto* current = view_->revalidated_snapshot(memory, immutable)) return current;
+        }
+        view_.emplace(memory, immutable, false, true);
+        return view_->revalidated_snapshot(memory, immutable);
+    }
+private:
+    // Disengaged optional avoids clearing an unused guard on the OFF path.
+    std::optional<scalar_writes::View> view_;
+    bool enabled_;
+};
 
 // DN=1 excludes unmaskable denormal exceptions; the ordinary masked scalar
 // helpers then affect only FR/FPSCR. GPR/provenance may remain in the prefix.
@@ -89,7 +121,7 @@ private:
 class Access final {
 public:
     Access(CpuState& cpu, const DirectLinearMemoryGuard& entry,
-           const NativePortImmutableWriteGuard* immutable) noexcept
+           const NativePortImmutableWriteGuard* immutable, PreparedWrites* prepared = nullptr) noexcept
         : privileged_(cpu.privileged_mode_inline()), mmu_(cpu.mmucr & 1u) {
         if (!entry || !cpu.memory.direct_linear_memory_guard_current(entry, false)) return;
         read_bytes_ = entry.read_bytes;
@@ -97,9 +129,18 @@ public:
         span_ = entry.physical_span;
         mask_ = entry.backing_mask;
         counters_ = &const_cast<MemoryPerformanceCounters&>(cpu.memory.performance_counters());
-        if (!cpu.memory.guest_write_observer_allows_prevalidated_linear_writes()) return;
-        const scalar_writes::View view(cpu.memory, immutable, false, true);
-        const auto writable = view.closed_region_snapshot();
+        if (prepared && prepared->enabled()) {
+            if (const auto* writable = prepared->snapshot(cpu.memory, immutable))
+                admit_writes(*writable, entry, immutable);
+        } else {
+            if (!cpu.memory.guest_write_observer_allows_prevalidated_linear_writes()) return;
+            const scalar_writes::View view(cpu.memory, immutable, false, true);
+            admit_writes(view.closed_region_snapshot(), entry, immutable);
+        }
+    }
+private:
+    void admit_writes(const DirectLinearMemoryGuard& writable, const DirectLinearMemoryGuard& entry,
+                      const NativePortImmutableWriteGuard* immutable) noexcept {
         // The entry read proof also governs every store's scheduler preflight.
         if (writable.write_bytes == read_bytes_ && writable.generation == entry.generation &&
             writable.physical_base == base_ && writable.physical_span == span_ &&
@@ -108,6 +149,7 @@ public:
             immutable_ = immutable;
         }
     }
+public:
     Access(const Access&) = delete;
     Access& operator=(const Access&) = delete;
     ~Access() {
