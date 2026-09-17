@@ -416,6 +416,24 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   historical reports may no longer exist. Current v2 patches and matching
   diagnostic switches are retained; user archives, baseline and saves are intact.
 
+- The complete movement/contact owner `073018/0730A0..074214` is implemented
+  as an internal-OFF group, including the full candidate/contact/position path.
+  See `docs/native-movement-resolver-20260917.md`: Windows and Linux pass 216
+  component cases and ten actual-AOT bridge cases each. Local restarts preserve
+  the sparse global entry table, exact instruction/exception boundaries and
+  callback-visible CPU/RAM. Windows gameplay ON/OFF and Linux ON/OFF pass.
+  A matched Linux Gamma pair has the same 19 endpoint fields and 68 updates;
+  execution CPU/update falls 2.52%, but process CPU rises 0.67% and new images/s
+  fall 4.56%. Keep it OFF; do not claim a global gain, ship it enabled or repeat
+  the unchanged pair. Related contact classification is inventoried but has low
+  historical exclusive weight; no blind tiny-child expansion is justified.
+  The next substantial alternative is the collision-list/hierarchy/polygon
+  construction owner group described in the movement scope document.
+  `out/native-objects-windows-20260917/game.exe` now contains this default-OFF
+  code and is no longer the former Windows v2 comparison executable. The new
+  Windows test installer explicitly records that distinction. Linux/Deck test
+  installers and delivered v2 patch retain their previously qualified runtime.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

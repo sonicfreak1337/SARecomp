@@ -1,0 +1,65 @@
+# One complete movement owner; the internal feature defaults OFF.
+foreach(movement_unit IN ITEMS
+    unit-v8C073018-8C073018-457a60bdbd02a56b.cpp)
+    set(movement_bridge "${CMAKE_BINARY_DIR}/generated/movement-bridge/${movement_unit}")
+    if(TARGET sonic_linux_guest)
+        set(movement_target sonic_linux_guest)
+    elseif(TARGET sonic_ram_regions)
+        set(movement_target sonic_ram_regions)
+    else()
+        set(movement_target sonic_dispatch)
+    endif()
+    if(movement_target STREQUAL "sonic_dispatch")
+        if(NOT SARECOMP_COMPACT_AOT_EXPERIMENT STREQUAL "OFF" OR
+           (DEFINED SARECOMP_RAM_READ_EXPERIMENT AND NOT SARECOMP_RAM_READ_EXPERIMENT STREQUAL "OFF"))
+            message(FATAL_ERROR "Native movement requires retained Windows units")
+        endif()
+        set(movement_input "${SONIC_WORKING}/generated/code/${movement_unit}")
+        target_sources(sonic_dispatch PRIVATE "${movement_bridge}")
+    else()
+        get_target_property(movement_sources ${movement_target} SOURCES)
+        set(movement_matches)
+        foreach(source IN LISTS movement_sources)
+            get_filename_component(name "${source}" NAME)
+            if(name STREQUAL movement_unit)
+                list(APPEND movement_matches "${source}")
+            endif()
+        endforeach()
+        list(LENGTH movement_matches count)
+        if(NOT count EQUAL 1)
+            message(FATAL_ERROR "Movement unit must have exactly one active owner")
+        endif()
+        list(GET movement_matches 0 movement_input)
+        list(REMOVE_ITEM movement_sources "${movement_input}")
+        set_property(TARGET ${movement_target} PROPERTY SOURCES ${movement_sources} "${movement_bridge}")
+        get_source_file_property(movement_includes "${movement_input}" INCLUDE_DIRECTORIES)
+        if(movement_includes)
+            set_source_files_properties("${movement_bridge}" PROPERTIES INCLUDE_DIRECTORIES "${movement_includes};${SONIC_ROOT}/src")
+        else()
+            set_source_files_properties("${movement_bridge}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src")
+        endif()
+    endif()
+    if(NOT TARGET sonic_linux_guest)
+        set_source_files_properties("${movement_bridge}" PROPERTIES COMPILE_OPTIONS "/fp:strict;/bigobj")
+    endif()
+    add_custom_command(OUTPUT "${movement_bridge}"
+        COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-movement-bridge.py"
+            --source-root "${SONIC_WORKING}/generated" --input "${movement_input}" --output "${movement_bridge}"
+            --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
+        DEPENDS "${SONIC_ROOT}/tools/prepare-movement-bridge.py" "${movement_input}"
+            "${SONIC_ROOT}/tools/prepare-movement-resolver.py"
+            "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
+endforeach()
+
+# Compile the actual locally resumable AOT owner against isolated RAM fixtures.
+get_target_property(movement_test_sources sonic-movement-tests SOURCES)
+list(REMOVE_ITEM movement_test_sources "${SONIC_ROOT}/tools/test_movement_resolver.cpp")
+add_executable(sonic-movement-aot-tests EXCLUDE_FROM_ALL
+    "${SONIC_ROOT}/tools/test_movement_aot.cpp" ${movement_test_sources} "${movement_bridge}")
+foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITIONS LINK_LIBRARIES LINK_OPTIONS)
+    get_target_property(value sonic-movement-tests ${property})
+    if(value)
+        set_property(TARGET sonic-movement-aot-tests PROPERTY ${property} "${value}")
+    endif()
+endforeach()
+target_include_directories(sonic-movement-aot-tests PRIVATE "${SONIC_WORKING}/generated/include")

@@ -77,6 +77,7 @@ parser.add_argument('--native-collision-memory', choices=('off','on'), default='
 parser.add_argument('--native-collision-closure', choices=('off','on'), default='off')
 parser.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-movement', choices=('off','on'), default='off')
 parser.add_argument('--capture-frame', type=int, default=-1, help='Private exact-image check, excluded from performance qualification')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
@@ -176,6 +177,7 @@ env['SARECOMP_NATIVE_COLLISION_MEMORY']='1' if args.native_collision_memory=='on
 env['SARECOMP_NATIVE_COLLISION_CLOSURE']='1' if args.native_collision_closure=='on' else '0'
 env['SARECOMP_NATIVE_MODEL_PIPELINE']='1' if args.native_model_pipeline=='on' else '0'
 env['SARECOMP_NATIVE_OBJECT_ACTIVATION']='1' if args.native_object_activation=='on' else '0'
+env['SARECOMP_NATIVE_MOVEMENT']='1' if args.native_movement=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
 env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
 env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'

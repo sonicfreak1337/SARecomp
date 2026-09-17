@@ -129,3 +129,4 @@ target_link_options(sonic-linux-procedure-register-tests PRIVATE -Wl,--gc-sectio
 target_link_libraries(sonic-linux-procedure-register-tests PRIVATE sonic_linux_services)
 include("${SONIC_ROOT}/cmake/SonicAnimationBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicObjectActivationBridge.cmake")
+include("${SONIC_ROOT}/cmake/SonicMovementBridge.cmake")

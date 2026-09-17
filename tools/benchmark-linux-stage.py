@@ -74,6 +74,7 @@ p.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 p.add_argument('--native-collision-closure', choices=('off','on'), default='off')
 p.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-movement', choices=('off','on'), default='off')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -163,6 +164,7 @@ env.update({
     'SARECOMP_NATIVE_COLLISION_CLOSURE':str(int(a.native_collision_closure=='on')),
     'SARECOMP_NATIVE_MODEL_PIPELINE':str(int(a.native_model_pipeline=='on')),
     'SARECOMP_NATIVE_OBJECT_ACTIVATION':str(int(a.native_object_activation=='on')),
+    'SARECOMP_NATIVE_MOVEMENT':str(int(a.native_movement=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
     'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
@@ -304,6 +306,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_collision_memory':a.native_collision_memory,
           'native_collision_closure':a.native_collision_closure,
           'native_model_pipeline':a.native_model_pipeline,
+          'native_movement':a.native_movement,
           'native_object_activation':a.native_object_activation,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,

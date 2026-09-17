@@ -63,6 +63,7 @@
 #include "sonic_palette_lighting.hpp"
 #include "sonic_model_pipeline.hpp"
 #include "sonic_object_activation.hpp"
+#include "sonic_movement_resolver.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -18133,6 +18134,10 @@ void emit_sonic_native_gameplay_probe_sample(
               << " object_retired=" << sonic::object_activation::counts.retired
               << " object_declined=" << sonic::object_activation::counts.declined
               << " object_slow_accesses=" << sonic::object_activation::counts.slow_accesses
+              << " movement_calls=" << sonic::movement::counts.calls
+              << " movement_declined=" << sonic::movement::counts.declined
+              << " movement_callbacks=" << sonic::movement::counts.callbacks
+              << " movement_reentries=" << sonic::movement::counts.slow_accesses
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -38546,6 +38551,17 @@ bool sonic::object_activation::try_dispatch(katana::runtime::CpuState& cpu,
     // Never restart an owner after it has changed RAM or called a task callback.
     // The established AOT exception boundary retains the exact failure frontier.
     throw std::runtime_error("native-object-activation-interrupted");
+}
+sonic::movement::Outcome sonic::movement::try_dispatch(katana::runtime::CpuState& cpu,
+                                                       katana::runtime::NativePortAotServices& services){
+    auto& context=services.context();
+    if(context.cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
+    const auto result=execute(cpu,services.immutable_write_guard(),{&context,sonic_object_activation_call});
+    if(result==Outcome::ResumeOriginal &&
+       (context.stop_reason!=katana::runtime::NativePortStopReason::None || cpu.trap_pending ||
+        !services.can_chain_executable_block(entry) || !retained_source_matches(cpu,services.immutable_write_guard())))
+        return Outcome::Interrupted;
+    return result;
 }
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;
