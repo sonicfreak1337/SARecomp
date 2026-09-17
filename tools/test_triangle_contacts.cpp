@@ -184,7 +184,7 @@ void compare(Fixture& n,Fixture& r){
             std::cerr<<"first event difference "<<i<<" addresses "<<std::hex<<std::get<0>(n.events[i])<<'/'<<std::get<0>(r.events[i])<<std::dec<<'\n';break;}
         throw std::runtime_error("ordered address/size/source/changed events differ");
     }
-    observers.verify();
+    observers.verify(true,true);
     require(!n.immutable.write_detected()&&!r.immutable.write_detected(),"immutable write");
 }
 void decline(Fixture& f,const NativePortImmutableWriteGuard* guard,bool missing_bridge=false){
@@ -284,8 +284,9 @@ int main(int argc,char** argv){
             }};
             try{(void)tc::try_execute(f.cpu,&f.immutable,b);}catch(const std::runtime_error&){threw=true;}
             require(threw && (observers.product() || !f.events.empty()),"post-mutation bridge failure was not fatal");
-            observers.verify();++cases;
+            observers.verify(true,true);++cases;
         }
+        collision_test::verify_fusion();
         std::cout<<"triangle-contacts: PASS "<<cases<<" cases, original-angle-calls="<<calls<<
             " reference_ftrc_source_corrections="<<reference_ftrc_repairs<<'\n';return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

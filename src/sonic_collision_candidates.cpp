@@ -16,7 +16,7 @@ namespace sonic::collision_candidates {
 namespace {
 using namespace katana::runtime;
 #include "touch-poly-identities.inc"
-struct Range { std::uint32_t address,size; };
+using Range=collision_math::ClosedWriteRange;
 bool overlap(Range a,Range b) noexcept {
     const auto x=a.address&0x1FFFFFFFu,y=b.address&0x1FFFFFFFu;
     return x<std::uint64_t(y)+b.size && y<std::uint64_t(x)+a.size;
@@ -126,7 +126,8 @@ bool try_execute(katana::runtime::CpuState& cpu,
         for(const auto w:writes)if(!writable(w))broken();
     };
     collision_memory::Access access;
-    access.capture(cpu,*immutable,g);
+    access.capture(cpu,*immutable,g,true);
+    const bool closed_math=collision_memory::closure_enabled();
     const auto load=[&](std::uint32_t a){std::uint32_t v=0u;
         if(access.try_read(a,v))return v;
         if(!direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,v))broken();return v;};
@@ -148,6 +149,10 @@ bool try_execute(katana::runtime::CpuState& cpu,
     std::optional<HostFpuExecutionEpoch> epoch;epoch.emplace(cpu);
     const auto call=[&](std::uint32_t target){
         const auto ret=cpu.pr,sp=cpu.r[15];
+        if(closed_math && collision_math::try_execute_closed(cpu,target,access,p0,writes)) {
+            if(cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp)broken();
+            return;
+        }
         access.reset();epoch.reset();g={};cpu.pc=target;
         bool complete=false;
         if(target==collision_math::cross_entry || target==collision_math::length_entry || target==collision_math::normalize_entry)
@@ -160,7 +165,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
                 target==0x8C639E08u || target==0x8C639E9Cu || target==0x8C10CD1Cu)
             complete=bridge.invoke(bridge.context,cpu,target);
         if(!complete || cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp)broken();
-        revalidate();access.capture(cpu,*immutable,g);epoch.emplace(cpu);
+        revalidate();access.capture(cpu,*immutable,g,true);epoch.emplace(cpu);
     };
     #include "touch-poly-body.inc"
 }

@@ -44,6 +44,47 @@ bool overlaps(std::uint32_t address, std::uint32_t size,
     const auto a = address & 0x1FFFFFFFu, b = code & 0x1FFFFFFFu;
     return a < std::uint64_t(b) + code_size && b < std::uint64_t(a) + size;
 }
+template<class Load,class Store>
+void execute_body(CpuState& cpu,std::uint32_t target,const Load& load,const Store& store) {
+    const auto postload = [&](unsigned reg, unsigned fr) {
+        cpu.fr[fr] = load(cpu.r[reg]); cpu.r[reg] += 4u;
+    };
+    const auto sub = [&](unsigned source, unsigned destination) {
+        fpu_binary(cpu, FpuBinaryOperation::Subtract, std::uint8_t(source), std::uint8_t(destination));
+    };
+    const auto mul = [&](unsigned source, unsigned destination) {
+        fpu_binary(cpu, FpuBinaryOperation::Multiply, std::uint8_t(source), std::uint8_t(destination));
+    };
+    if (target == cross_entry) {
+        // 7360..737E: retain B-A and A-C, not reassociated vector arithmetic.
+        postload(5u,9u); cpu.r[0] = 4u;
+        postload(4u,4u); postload(6u,3u); sub(4u,9u);
+        postload(5u,8u); sub(3u,4u); postload(4u,6u);
+        postload(6u,3u); sub(6u,8u); cpu.fr[5] = load(cpu.r[4]);
+        sub(3u,6u); cpu.fr[7] = load(cpu.r[5]); cpu.fr[3] = load(cpu.r[6]);
+        sub(5u,7u); sub(3u,5u);
+        // 7380..73A0: interleaved arithmetic/stores and the final delay slot.
+        cpu.fr[3] = cpu.fr[8]; mul(4u,8u); cpu.fr[2] = cpu.fr[7];
+        mul(6u,2u); mul(5u,3u); mul(4u,7u); sub(3u,2u);
+        store(0x8C02738Eu,cpu.r[7],2u);
+        cpu.fr[2] = cpu.fr[9]; mul(5u,2u); mul(6u,9u); sub(7u,2u); sub(9u,8u);
+        store(0x8C02739Au,cpu.r[7] + cpu.r[0],2u); cpu.r[0] = 8u;
+        store(0x8C0273A0u,cpu.r[7] + cpu.r[0],8u);
+    } else if (target == length_entry) {
+        cpu.fr[7] = 0u; postload(4u,4u); postload(4u,5u); postload(4u,6u);
+        fpu_inner_product(cpu,4u,4u); fpu_square_root(cpu,7u); cpu.fr[0] = cpu.fr[7];
+    } else {
+        postload(4u,0u); postload(4u,1u); postload(4u,2u); cpu.fr[3] = 0u;
+        fpu_inner_product(cpu,0u,0u); cpu.fr[4] = cpu.fr[0]; cpu.fr[0] = cpu.fr[3];
+        fpu_reciprocal_square_root(cpu,3u); mul(3u,2u); mul(3u,1u); mul(3u,4u);
+        // FMOV @-Rn commits Rn after its scalar store/observer notification.
+        store(0x8C63A8A2u,cpu.r[4] - 4u,2u); cpu.r[4] -= 4u;
+        store(0x8C63A8A4u,cpu.r[4] - 4u,1u); cpu.r[4] -= 4u;
+        store(0x8C63A8A6u,cpu.r[4] - 4u,4u); cpu.r[4] -= 4u;
+        mul(3u,0u); // RTS delay slot: preserve FSRRA-derived result and flags.
+    }
+    cpu.pc = cpu.pr;
+}
 } // namespace
 
 bool try_execute(katana::runtime::CpuState& cpu,
@@ -95,50 +136,51 @@ bool try_execute(katana::runtime::CpuState& cpu,
         (void)direct_linear_guard_read_u32(g, (address & 0x1FFFFFFFu) | 0x80000000u, result);
         return result;
     };
-    const auto postload = [&](unsigned reg, unsigned fr) {
-        cpu.fr[fr] = load(cpu.r[reg]); cpu.r[reg] += 4u;
-    };
     const auto store = [&](std::uint32_t pc, std::uint32_t address, unsigned fr) {
         if(access.try_store(address,cpu.fr[fr]))return;
         if (!memory.try_write_direct_linear_u32(address & 0x1FFFFFFFu, cpu.fr[fr], CodeWriteSource::Fpu))
             guest_write_u32_at(cpu, GuestInstructionOrigin{pc, pc, true}, address, cpu.fr[fr], CodeWriteSource::Fpu);
     };
-    const auto sub = [&](unsigned source, unsigned destination) {
-        fpu_binary(cpu, FpuBinaryOperation::Subtract, std::uint8_t(source), std::uint8_t(destination));
-    };
-    const auto mul = [&](unsigned source, unsigned destination) {
-        fpu_binary(cpu, FpuBinaryOperation::Multiply, std::uint8_t(source), std::uint8_t(destination));
-    };
     const HostFpuExecutionEpoch epoch(cpu);
-    if (cpu.pc == cross_entry) {
-        // 7360..737E: retain B-A and A-C, not reassociated vector arithmetic.
-        postload(5u,9u); cpu.r[0] = 4u;
-        postload(4u,4u); postload(6u,3u); sub(4u,9u);
-        postload(5u,8u); sub(3u,4u); postload(4u,6u);
-        postload(6u,3u); sub(6u,8u); cpu.fr[5] = load(cpu.r[4]);
-        sub(3u,6u); cpu.fr[7] = load(cpu.r[5]); cpu.fr[3] = load(cpu.r[6]);
-        sub(5u,7u); sub(3u,5u);
-        // 7380..73A0: interleaved arithmetic/stores and the final delay slot.
-        cpu.fr[3] = cpu.fr[8]; mul(4u,8u); cpu.fr[2] = cpu.fr[7];
-        mul(6u,2u); mul(5u,3u); mul(4u,7u); sub(3u,2u);
-        store(0x8C02738Eu,cpu.r[7],2u);
-        cpu.fr[2] = cpu.fr[9]; mul(5u,2u); mul(6u,9u); sub(7u,2u); sub(9u,8u);
-        store(0x8C02739Au,cpu.r[7] + cpu.r[0],2u); cpu.r[0] = 8u;
-        store(0x8C0273A0u,cpu.r[7] + cpu.r[0],8u);
-    } else if (cpu.pc == length_entry) {
-        cpu.fr[7] = 0u; postload(4u,4u); postload(4u,5u); postload(4u,6u);
-        fpu_inner_product(cpu,4u,4u); fpu_square_root(cpu,7u); cpu.fr[0] = cpu.fr[7];
-    } else {
-        postload(4u,0u); postload(4u,1u); postload(4u,2u); cpu.fr[3] = 0u;
-        fpu_inner_product(cpu,0u,0u); cpu.fr[4] = cpu.fr[0]; cpu.fr[0] = cpu.fr[3];
-        fpu_reciprocal_square_root(cpu,3u); mul(3u,2u); mul(3u,1u); mul(3u,4u);
-        // FMOV @-Rn commits Rn after its scalar store/observer notification.
-        store(0x8C63A8A2u,cpu.r[4] - 4u,2u); cpu.r[4] -= 4u;
-        store(0x8C63A8A4u,cpu.r[4] - 4u,1u); cpu.r[4] -= 4u;
-        store(0x8C63A8A6u,cpu.r[4] - 4u,4u); cpu.r[4] -= 4u;
-        mul(3u,0u); // RTS delay slot: preserve FSRRA-derived result and flags.
+    execute_body(cpu,cpu.pc,load,store);
+    return true;
+}
+
+bool try_execute_closed(katana::runtime::CpuState& cpu,std::uint32_t target,
+    collision_memory::Access& access,bool p0,std::span<const ClosedWriteRange> writes) {
+    if(!collision_memory::closure_enabled() || !access.direct() ||
+       (target!=cross_entry && target!=length_entry && target!=normalize_entry))return false;
+    // The parent's admission proves the exact closed source spans and holds the
+    // FPU epoch. Only data-dependent operands remain to be checked here. There
+    // is no guest callback, dispatch, mapping change or observable store hook.
+    const auto vector_ok=[&](std::uint32_t a){
+        const auto p=a&0x1FFFFFFFu;
+        return !(a&3u) && ((a&0xC0000000u)==0x80000000u ||
+            (p0 && a>=0x0C000000u && a<0x0D000000u)) &&
+            p>=0x0C000000u && p<=0x0D000000u-12u;
+    };
+    if(!vector_ok(cpu.r[4]) || (target==cross_entry &&
+       (!vector_ok(cpu.r[5]) || !vector_ok(cpu.r[6]))))return false;
+    if(target!=length_entry){
+        const auto output=cpu.r[target==cross_entry?7u:4u];
+        if(!vector_ok(output))return false;
+        const auto p=output&0x1FFFFFFFu;
+        bool covered=false;
+        for(const auto w:writes){
+            const auto base=w.address&0x1FFFFFFFu;
+            if(p>=base && w.size>=12u && p-base<=w.size-12u){covered=true;break;}
+        }
+        if(!covered)return false;
     }
-    cpu.pc = cpu.pr;
+    const auto load=[&](std::uint32_t a){std::uint32_t value=0;
+        (void)access.try_read(a,value);return value;};
+    const auto store=[&](std::uint32_t,std::uint32_t a,unsigned fr){
+        (void)access.try_store(a,cpu.fr[fr]);};
+    if(target==cross_entry)++collision_memory::counts.fused_cross;
+    else if(target==length_entry)++collision_memory::counts.fused_length;
+    else ++collision_memory::counts.fused_normalize;
+    cpu.pc=target;
+    execute_body(cpu,target,load,store);
     return true;
 }
 } // namespace sonic::collision_math

@@ -37,13 +37,14 @@ public:
     }
     ~Comparison(){sonic::scalar_writes::unbind(&memory_,&immutable_);}
     bool product()const{return mode()==1u;}
-    void verify(bool writable=true)const {
+    void verify(bool writable=true,bool closed_owner=false)const {
         const auto after=sonic::collision_memory::counts;
         if(after.active!=before_.active)throw std::runtime_error("collision capability escaped owner/call");
-        const bool expected=product() && writable && sonic::collision_memory::enabled();
+        const bool expected=product() && ((writable && sonic::collision_memory::enabled()) ||
+            (closed_owner && sonic::collision_memory::closure_enabled()));
         if((after.intervals>before_.intervals)!=expected)
             throw std::runtime_error("collision direct/fallback evidence differs");
-        if(expected && (after.reads<=before_.reads || after.writes<=before_.writes))
+        if(expected && (after.reads<=before_.reads || (writable && after.writes<=before_.writes)))
             throw std::runtime_error("collision direct interval did no actual accesses");
     }
 private:
@@ -51,6 +52,13 @@ private:
     katana::runtime::NativePortImmutableWriteGuard& immutable_;
     sonic::collision_memory::Counts before_;
 };
+inline void verify_fusion(){
+    const auto& c=sonic::collision_memory::counts;
+    const bool expected=mode()==1u && sonic::collision_memory::closure_enabled();
+    if(expected ? (!c.fused_cross || !c.fused_length || !c.fused_normalize) :
+       (c.fused_cross || c.fused_length || c.fused_normalize))
+        throw std::runtime_error("closed-child direct/fallback coverage differs");
+}
 inline void bridge_boundary(){
     if(sonic::collision_memory::counts.active)throw std::runtime_error("live collision capability at retained bridge");
 }

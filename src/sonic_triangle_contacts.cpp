@@ -198,7 +198,7 @@ constexpr std::array<std::uint16_t,228> words_10{
     0x2DE9,0xBDBA,0x8E38,0x3DE3,0x4925,0xBE12,0xCCCD,0x3E4C,0xAAAB,0xBEAA,0x0000,0x3F80,
 };
 constexpr std::array<std::span<const std::uint16_t>,11> identities{words_0,words_1,words_2,words_3,words_4,words_5,words_6,words_7,words_8,words_9,words_10};
-struct Range { std::uint32_t address,size; };
+using Range=collision_math::ClosedWriteRange;
 bool overlap(Range a,Range b) noexcept {
     const auto x=a.address&0x1FFFFFFFu,y=b.address&0x1FFFFFFFu;
     return x<std::uint64_t(y)+b.size && y<std::uint64_t(x)+a.size;
@@ -298,7 +298,8 @@ bool try_execute(katana::runtime::CpuState& cpu,
                 !memory.is_writable_linear_range(w.address&0x1FFFFFFFu,w.size,false)) broken();
     };
     collision_memory::Access access;
-    access.capture(cpu,*immutable,g);
+    access.capture(cpu,*immutable,g,true);
+    const bool closed_math=collision_memory::closure_enabled();
     const auto load=[&](std::uint32_t a) {
         std::uint32_t v=0u;
         if(access.try_read(a,v))return v;
@@ -319,6 +320,10 @@ bool try_execute(katana::runtime::CpuState& cpu,
     epoch.emplace(cpu);
     const auto call=[&](std::uint32_t target) {
         const auto ret=cpu.pr,sp=cpu.r[15];
+        if(closed_math && collision_math::try_execute_closed(cpu,target,access,p0,writes)) {
+            if(cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp)broken();
+            return;
+        }
         access.reset(); epoch.reset(); g={}; // No RAM/FPU capability spans a call.
         cpu.pc=target;
         if (target==collision_math::cross_entry || target==collision_math::length_entry ||
@@ -328,7 +333,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
             if (!bridge.invoke(bridge.context,cpu,target)) broken();
         } else broken();
         if (cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp) broken();
-        revalidate(); access.capture(cpu,*immutable,g); epoch.emplace(cpu);
+        revalidate(); access.capture(cpu,*immutable,g,true); epoch.emplace(cpu);
     };
     bool branch=false;
     // Statically expanded original CFG: every operation is annotated by its

@@ -9,14 +9,23 @@ inline bool enabled() noexcept {
     }();
     return value && !diagnostics::runtime_checks_enabled();
 }
-struct Counts {std::uint64_t intervals=0,reads=0,writes=0,active=0;};
+inline bool closure_enabled() noexcept {
+    static const bool value=[] {
+        const char* p=std::getenv("SARECOMP_NATIVE_COLLISION_CLOSURE");
+        return p && std::strcmp(p,"1")==0;
+    }();
+    return value && !diagnostics::runtime_checks_enabled();
+}
+struct Counts {std::uint64_t intervals=0,reads=0,writes=0,active=0;
+    std::uint64_t fused_cross=0,fused_length=0,fused_normalize=0;};
 inline thread_local Counts counts{};
 
 // A capability for an ALREADY admitted, closed collision interval. Its caller
 // has proved every address, width, alias and write permission, including stack
 // and scratch storage. Stores remain immediate and in original order. There
 // can be no guest call, callback or mapping/observer change within an interval.
-// End it BEFORE every nested owner/retained call, then perform the owner's
+// Only the reviewed callback-free collision_math closed children can share it.
+// End it BEFORE every other owner/retained call, then perform the owner's
 // existing revalidation before capturing again. Never cache it across owners.
 class Access final {
 public:
@@ -25,9 +34,9 @@ public:
     ~Access(){reset();}
     void capture(katana::runtime::CpuState& cpu,
         const katana::runtime::NativePortImmutableWriteGuard& immutable,
-        const katana::runtime::DirectLinearMemoryGuard& read) noexcept {
+        const katana::runtime::DirectLinearMemoryGuard& read,bool closed_owner=false) noexcept {
         reset();
-        if(!enabled())return;
+        if(!enabled() && !(closed_owner && closure_enabled()))return;
         const scalar_writes::View view(cpu.memory,&immutable,false,false,true);
         const auto write=view.closed_region_snapshot();
         if(!write || write.write_bytes!=read.read_bytes || write.generation!=read.generation ||

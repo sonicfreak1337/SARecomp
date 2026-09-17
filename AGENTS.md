@@ -315,6 +315,25 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   boundaries and arbitrary observers. No generic cross-call capability cache;
   the retired NEAR-POLY experiment remains retired.
 
+- Closed collision child fusion is a separate internal-OFF experiment; see
+  `docs/native-collision-closure-20260917.md`. Reviewed cross/length/normalize
+  bodies share their triangle/contact parents' admitted RAM/FPU context;
+  external bridges and arbitrary observers retain the previous boundaries.
+  Windows and Linux each pass 1,644 exact/observer/rejection cases. Matched
+  Linux Gamma/Chaos-4 pairs save 4.75%/2.30% execution CPU, with -0.45%/+0.47%
+  images/s. Windows Gamma saves 2.56%; Windows Chaos-4 has mismatched state and
+  provides no qualified gain. Final Windows Recompiled Gamma passes at 59.998
+  new images/s with exact 60 updates. This is not a large global/Deck FPS gain;
+  keep `SARECOMP_NATIVE_COLLISION_CLOSURE` OFF and do not ship or repeat unchanged
+  suites/pairs. Artifacts are `build-linux/game` and
+  `out/collision-closure-windows-20260917/game.exe`; Sep17 delivery stays intact.
+  Move next to the complete model transaction/shared capture described in
+  `docs/native-model-pipeline-next-20260916.md` (037098, then 037108), preserving
+  all projected/palette RAM and live effects. This is distinct from the rejected
+  model-packet offloading/resource-cache path. Do not flatten mutable callbacks
+  in 040612/040784, repeat their rejected register ABI, or ignore the documented
+  QEMU arithmetic issue by broadening model FPU epochs.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "katana/runtime/runtime.hpp"
+#include <span>
+
+namespace sonic::collision_memory { class Access; }
 
 namespace katana::runtime { class NativePortImmutableWriteGuard; }
 
@@ -28,4 +31,13 @@ inline constexpr auto normalize_source_sha256 =
 [[nodiscard]] bool try_execute(
     katana::runtime::CpuState& cpu,
     const katana::runtime::NativePortImmutableWriteGuard* immutable_guard);
+// Internal closed-child entry, only for the reviewed triangle/contact owners.
+// Caller proves the exact three source bodies, admitted FPU mode/epoch and the
+// complete writable footprints. Access authenticates the product observer; an
+// arbitrary observer cannot use this entry. Operands are checked before any
+// mutation. Caller must discard Access before external/retained calls, prove
+// their reviewed closure and revalidate before recapture. No generic call cache.
+struct ClosedWriteRange { std::uint32_t address,size; };
+[[nodiscard]] bool try_execute_closed(katana::runtime::CpuState&,std::uint32_t target,
+    collision_memory::Access&,bool p0,std::span<const ClosedWriteRange> writes);
 } // namespace sonic::collision_math

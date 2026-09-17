@@ -135,7 +135,7 @@ void compare(Fixture& n,Fixture& r){
     require(architecture(n.cpu)==architecture(r.cpu),"architecture differs");
     require(std::equal(n.ram->bytes().begin(),n.ram->bytes().end(),r.ram->bytes().begin()),"RAM differs");
     require(observers.product() || n.events==r.events,"ordered guest stores differ");
-    observers.verify();
+    observers.verify(true,true);
 }
 void decline(Fixture& f,bool stable=true,bool missing_guard=false){
     f.observe(stable);const auto state=architecture(f.cpu);
@@ -219,8 +219,9 @@ int main(int argc,char** argv)try{
         collision_test::Comparison observers(f,r);f.interrupt=true;
         bool aborted=false;try{(void)native_body(f);}catch(const std::runtime_error&){aborted=true;}
         require(aborted&&f.calls==1u&&(observers.product() || !f.events.empty()),"interrupted owner did not abort after mutation");
-        observers.verify();}
+        observers.verify(true,true);}
     require(full_contacts>0u,"full-contact skipped-pop path was not exercised");
+    collision_test::verify_fusion();
     std::cout<<"SONIC_COLLISION_BODY_PASS cases="<<cases<<" original_callees="<<calls
         <<" full_contact_cases="<<full_contacts<<" safe_rejections="<<rejections<<" interrupted_abort=1\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

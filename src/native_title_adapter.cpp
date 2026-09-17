@@ -18114,6 +18114,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " collision_memory_intervals=" << sonic::collision_memory::counts.intervals
               << " collision_memory_reads=" << sonic::collision_memory::counts.reads
               << " collision_memory_writes=" << sonic::collision_memory::counts.writes
+              << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
+              << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
+              << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
               << " matrix_bulk_pushes=" << sonic::matrix_stack::bulk_counts.pushes
               << " matrix_bulk_pops=" << sonic::matrix_stack::bulk_counts.pops
               << " matrix_bulk_saved=" << sonic::matrix_stack::bulk_counts.saved

@@ -143,7 +143,18 @@ void execute_reference(CpuState& cpu,unsigned leaf) {
 }
 void compare(Fixture& n,Fixture& r,unsigned leaf) {
     collision_test::Comparison observers(n,r);
-    if (!cm::try_execute(n.cpu,&n.immutable)) {
+    const bool closed=observers.product() && sonic::collision_memory::closure_enabled();
+    bool completed=false;
+    if(closed){
+        sonic::collision_memory::Access access;
+        access.capture(n.cpu,n.immutable,n.cpu.memory.direct_linear_memory_guard(false),true);
+        const std::array writes{cm::ClosedWriteRange{n.cpu.r[leaf==0u?7u:4u],12u}};
+        const bool p0=!(n.cpu.mmucr&1u) && (!n.cpu.address_space ||
+            n.cpu.address_space->mode()==AddressTranslationMode::NoMmu);
+        const HostFpuExecutionEpoch epoch(n.cpu);
+        completed=cm::try_execute_closed(n.cpu,n.cpu.pc,access,p0,writes);
+    }else completed=cm::try_execute(n.cpu,&n.immutable);
+    if (!completed) {
         std::cerr<<n.label<<'\n'; throw std::runtime_error("eligible leaf declined");
     }
     execute_reference(r.cpu,leaf);
@@ -162,7 +173,7 @@ void compare(Fixture& n,Fixture& r,unsigned leaf) {
         std::cerr<<n.label<<" native stores="<<n.events.size()<<" reference stores="<<r.events.size()<<'\n';
         throw std::runtime_error("ordered stores/value/source/changed/pointers/FPSCR differ");
     }
-    observers.verify(leaf!=1u);
+    observers.verify(leaf!=1u,closed);
     require(!n.immutable.write_detected() && !r.immutable.write_detected(),"protected code written");
     if (n.cpu.address_space && r.cpu.address_space)
         require(n.cpu.address_space->snapshot()==r.cpu.address_space->snapshot(),"MMU state differs");
@@ -179,6 +190,44 @@ void decline(Fixture& f,const NativePortImmutableWriteGuard* guard) {
     require(metrics.indexed_region_hits==after.indexed_region_hits && metrics.reference_region_probes==after.reference_region_probes &&
         metrics.observed_accesses==after.observed_accesses && metrics.unobserved_accesses==after.unobserved_accesses,"decline changed metrics");
     require(!translation || *translation==f.cpu.address_space->snapshot(),"decline changed MMU");
+}
+unsigned closed_declines(std::span<const std::uint8_t> boot) {
+    if(collision_test::mode()!=1u || !sonic::collision_memory::closure_enabled())return 0;
+    for(unsigned kind=0;kind<12u;++kind){
+        Fixture n(boot,0u),r(boot,0u);collision_test::Comparison observers(n,r);
+        sonic::collision_memory::Access access;
+        access.capture(n.cpu,n.immutable,n.cpu.memory.direct_linear_memory_guard(false),true);
+        require(access.direct(),"closed negative fixture not authenticated");
+        std::array writes{cm::ClosedWriteRange{n.cpu.r[7],12u}};
+        auto target=cm::cross_entry;bool p0=true;
+        switch(kind){
+        case 0:n.cpu.r[4]+=2u;break;
+        case 1:n.cpu.r[4]=0x8CFFFFF8u;break;
+        case 2:n.cpu.r[5]=0x0D000000u;break;
+        case 3:n.cpu.r[6]=0xCC000000u;break;
+        case 4:n.cpu.r[7]+=4u;break;
+        case 5:writes[0].size=8u;break;
+        case 6:p0=false;n.cpu.r[4]&=0x1FFFFFFFu;break;
+        case 7:target+=2u;break;
+        case 8:access.reset();break;
+        case 9:writes[0].size=0u;break;
+        case 10:n.cpu.r[7]=0x8CFFFFF8u;break;
+        case 11:target=cm::length_entry;n.cpu.r[4]=0xEC000000u;break;
+        }
+        const auto before=architecture(n.cpu);
+        const auto bytes=std::vector<std::uint8_t>(n.ram->bytes().begin(),n.ram->bytes().end());
+        const auto metrics=n.cpu.memory.performance_counters();
+        const HostFpuExecutionEpoch epoch(n.cpu);
+        require(!cm::try_execute_closed(n.cpu,target,access,p0,writes),"unsafe closed child admitted");
+        access.reset();
+        require(before==architecture(n.cpu) &&
+            std::equal(bytes.begin(),bytes.end(),n.ram->bytes().begin()),"closed decline changed guest");
+        const auto after=n.cpu.memory.performance_counters();
+        require(metrics.indexed_region_hits==after.indexed_region_hits &&
+            metrics.unobserved_accesses==after.unobserved_accesses,"closed decline accessed RAM");
+        collision_test::bridge_boundary();
+    }
+    return 12u;
 }
 } // namespace
 int main(int argc,char** argv) {
@@ -338,8 +387,11 @@ int main(int argc,char** argv) {
             { Fixture f(boot,leaf); decline(f,nullptr); ++cases; }
             counts[leaf]=cases-start;
         }
+        collision_test::verify_fusion();
+        const auto closed_rejections=closed_declines(boot);
         std::cout<<"SONIC_COLLISION_MATH_PASS cases="<<cases<<" cross_cases="<<counts[0]
             <<" length_cases="<<counts[1]<<" normalize_cases="<<counts[2]
+            <<" closed_rejections="<<closed_rejections
             <<" entries=8C027360,8C63A69C,8C63A88C reference=sha_bound_retail_sh4"
             <<" architectural_registers=exact RAM=exact stores=ordered_values_sources_changed_pointers_fpscr"
             <<" accounting=native_hook_policy\n";
