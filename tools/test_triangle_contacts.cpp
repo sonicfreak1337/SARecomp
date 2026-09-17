@@ -4,9 +4,7 @@
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
 #include "katana/sh4/decoder.hpp"
-#define NOMINMAX
-#include <windows.h>
-#include <bcrypt.h>
+#include "test_collision_memory_support.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -53,12 +51,16 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
     return {std::istreambuf_iterator<char>(f),{}};
 }
 std::string digest(std::span<const std::uint8_t> bytes) {
+#ifndef _WIN32
+    return native_port_content_sha256(bytes);
+#else
     std::array<unsigned char,32> result{};
     require(bytes.size()<=ULONG_MAX && BCryptHash(BCRYPT_SHA256_ALG_HANDLE,nullptr,0,
         const_cast<PUCHAR>(bytes.data()),ULONG(bytes.size()),result.data(),ULONG(result.size()))>=0,"SHA-256 failed");
     constexpr char hex[]="0123456789abcdef"; std::string text(64,'0');
     for (std::size_t i=0;i<result.size();++i) { text[i*2]=hex[result[i]>>4]; text[i*2+1]=hex[result[i]&15]; }
     return text;
+#endif
 }
 // Instruction/cycle/provenance bookkeeping belongs to native-hook integration.
 auto architecture(const CpuState& c) {
@@ -149,6 +151,7 @@ void run_until(CpuState& cpu,std::uint32_t stop){
     require(cpu.pc==stop,"reference did not return");
 }
 bool original_bridge(void* context,CpuState& cpu,std::uint32_t target){
+    collision_test::bridge_boundary();
     auto& f=*static_cast<Fixture*>(context);++f.bridge_calls;
     require((target==0x8C10D038u||target==0x8C10CF98u)&&cpu.pc==target,"bad bridge target");
     const auto ret=cpu.pr;
@@ -157,7 +160,7 @@ bool original_bridge(void* context,CpuState& cpu,std::uint32_t target){
     run_until(cpu,ret);return true;
 }
 void compare(Fixture& n,Fixture& r){
-    n.observe();r.observe();
+    collision_test::Comparison observers(n,r);
     require(tc::try_execute(n.cpu,&n.immutable,{&n,original_bridge}),"eligible owner declined");
     run_until(r.cpu,returned);
     if(architecture(n.cpu)!=architecture(r.cpu)){
@@ -175,12 +178,13 @@ void compare(Fixture& n,Fixture& r){
             std::cerr<<n.label<<" first RAM difference physical="<<std::hex<<(0x0C000000u+i)<<std::dec<<'\n';break;}
         throw std::runtime_error("complete RAM/stack differs");
     }
-    if(n.events!=r.events){
+    if(!observers.product() && n.events!=r.events){
         std::cerr<<n.label<<" stores "<<n.events.size()<<'/'<<r.events.size()<<'\n';
         for(std::size_t i=0;i<std::min(n.events.size(),r.events.size());++i)if(n.events[i]!=r.events[i]){
             std::cerr<<"first event difference "<<i<<" addresses "<<std::hex<<std::get<0>(n.events[i])<<'/'<<std::get<0>(r.events[i])<<std::dec<<'\n';break;}
         throw std::runtime_error("ordered address/size/source/changed events differ");
     }
+    observers.verify();
     require(!n.immutable.write_detected()&&!r.immutable.write_detected(),"immutable write");
 }
 void decline(Fixture& f,const NativePortImmutableWriteGuard* guard,bool missing_bridge=false){
@@ -268,7 +272,7 @@ int main(int argc,char** argv){
         {Fixture f(boot);decline(f,&f.immutable,true);++cases;}
         // Fatal interruption after visible stores must never be a false fallback.
         for(unsigned fault=0;fault<3u;++fault){
-            Fixture f(boot);f.observe();bool threw=false;
+            Fixture f(boot),r(boot);collision_test::Comparison observers(f,r);bool threw=false;
             struct Failure { Fixture* fixture;unsigned fault; } failure{&f,fault};
             const tc::RetainedCallBridge b{&failure,[](void* p,CpuState& c,std::uint32_t t){
                 const auto& x=*static_cast<Failure*>(p);
@@ -279,7 +283,8 @@ int main(int argc,char** argv){
                 return true;
             }};
             try{(void)tc::try_execute(f.cpu,&f.immutable,b);}catch(const std::runtime_error&){threw=true;}
-            require(threw&&!f.events.empty(),"post-mutation bridge failure was not fatal");++cases;
+            require(threw && (observers.product() || !f.events.empty()),"post-mutation bridge failure was not fatal");
+            observers.verify();++cases;
         }
         std::cout<<"triangle-contacts: PASS "<<cases<<" cases, original-angle-calls="<<calls<<
             " reference_ftrc_source_corrections="<<reference_ftrc_repairs<<'\n';return 0;

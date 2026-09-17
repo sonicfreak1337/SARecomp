@@ -62,6 +62,7 @@
 #include "sonic_render_completion.hpp"
 #include "sonic_palette_lighting.hpp"
 #include "sonic_native_model_memory.hpp"
+#include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
 #include "sonic_matrix_stack.hpp"
 #include "sonic_collision_math.hpp"
@@ -18110,6 +18111,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " model_packet_vertices=" << sonic_native_title_state.model_source_plans.stats.model_packet_vertices
               << " closed_memory_calls=" << sonic::model_memory::closed_leaf_counts.calls
               << " closed_memory_words=" << sonic::model_memory::closed_leaf_counts.words
+              << " collision_memory_intervals=" << sonic::collision_memory::counts.intervals
+              << " collision_memory_reads=" << sonic::collision_memory::counts.reads
+              << " collision_memory_writes=" << sonic::collision_memory::counts.writes
               << " matrix_bulk_pushes=" << sonic::matrix_stack::bulk_counts.pushes
               << " matrix_bulk_pops=" << sonic::matrix_stack::bulk_counts.pops
               << " matrix_bulk_saved=" << sonic::matrix_stack::bulk_counts.saved

@@ -3,9 +3,7 @@
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
-#define NOMINMAX
-#include <windows.h>
-#include <bcrypt.h>
+#include "test_collision_memory_support.hpp"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -55,12 +53,16 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
     return {std::istreambuf_iterator<char>(f),{}};
 }
 std::string digest(std::span<const std::uint8_t> bytes) {
+#ifndef _WIN32
+    return native_port_content_sha256(bytes);
+#else
     std::array<unsigned char,32> result{};
     require(bytes.size()<=ULONG_MAX && BCryptHash(BCRYPT_SHA256_ALG_HANDLE,nullptr,0,
         const_cast<PUCHAR>(bytes.data()),ULONG(bytes.size()),result.data(),ULONG(result.size()))>=0,"SHA-256 failed");
     constexpr char hex[]="0123456789abcdef"; std::string text(64,'0');
     for (std::size_t i=0;i<result.size();++i) { text[i*2]=hex[result[i]>>4]; text[i*2+1]=hex[result[i]&15]; }
     return text;
+#endif
 }
 // Instruction/cycle/provenance bookkeeping belongs to native-hook integration.
 auto architecture(const CpuState& c) {
@@ -140,7 +142,7 @@ void execute_reference(CpuState& cpu,unsigned leaf) {
     require(cpu.pc==returned,"reference did not return");
 }
 void compare(Fixture& n,Fixture& r,unsigned leaf) {
-    n.observe(); r.observe();
+    collision_test::Comparison observers(n,r);
     if (!cm::try_execute(n.cpu,&n.immutable)) {
         std::cerr<<n.label<<'\n'; throw std::runtime_error("eligible leaf declined");
     }
@@ -156,10 +158,11 @@ void compare(Fixture& n,Fixture& r,unsigned leaf) {
         throw std::runtime_error("architectural state differs");
     }
     require(std::equal(n.ram->bytes().begin(),n.ram->bytes().end(),r.ram->bytes().begin()),"RAM/CPU-stack differs");
-    if (n.events!=r.events) {
+    if (!observers.product() && n.events!=r.events) {
         std::cerr<<n.label<<" native stores="<<n.events.size()<<" reference stores="<<r.events.size()<<'\n';
         throw std::runtime_error("ordered stores/value/source/changed/pointers/FPSCR differ");
     }
+    observers.verify(leaf!=1u);
     require(!n.immutable.write_detected() && !r.immutable.write_detected(),"protected code written");
     if (n.cpu.address_space && r.cpu.address_space)
         require(n.cpu.address_space->snapshot()==r.cpu.address_space->snapshot(),"MMU state differs");
@@ -266,8 +269,9 @@ int main(int argc,char** argv) {
                 const auto initial=n.cpu.r;
                 compare(n,r,leaf); ++cases;
                 for (auto* f:{&n,&r}) { f->cpu.pc=entries[leaf]; f->cpu.r=initial; }
-                const auto begin=n.events.size(); compare(n,r,leaf); ++cases;
-                require(std::any_of(n.events.begin()+begin,n.events.end(),[](const Write& w) { return !std::get<3>(w); }),"unchanged store events absent");
+                const auto& observed=collision_test::mode()==1u?r.events:n.events;
+                const auto begin=observed.size(); compare(n,r,leaf); ++cases;
+                require(std::any_of(observed.begin()+begin,observed.end(),[](const Write& w) { return !std::get<3>(w); }),"unchanged store events absent");
             }
             for (unsigned scenario=0;scenario<19u;++scenario) {
                 Fixture f(boot,leaf); f.observe();

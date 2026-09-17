@@ -70,6 +70,7 @@ p.add_argument('--native-model-packets', choices=('off','on','verify'), default=
 p.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
 p.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 p.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
+p.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -155,6 +156,7 @@ env.update({
     'SARECOMP_RAM_PREPARED_ACCESS':str(int(a.ram_prepared_access=='on')),
     'SARECOMP_NATIVE_MATRIX_BULK':str(int(a.native_matrix_bulk=='on')),
     'SARECOMP_NATIVE_CLOSED_MEMORY':str(int(a.native_closed_memory=='on')),
+    'SARECOMP_NATIVE_COLLISION_MEMORY':str(int(a.native_collision_memory=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
     'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
@@ -290,6 +292,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'ram_prepared_access':a.ram_prepared_access,
           'native_matrix_bulk':a.native_matrix_bulk,
           'native_closed_memory':a.native_closed_memory,
+          'native_collision_memory':a.native_collision_memory,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,
           'collision_scope':a.collision_scope,

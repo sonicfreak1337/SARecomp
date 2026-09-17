@@ -1,4 +1,5 @@
 #include "sonic_collision_math.hpp"
+#include "sonic_native_collision_memory.hpp"
 
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -85,8 +86,12 @@ bool try_execute(katana::runtime::CpuState& cpu,
     // arbitrary data read/write aliasing (including in-place normalization) safe.
     // Each output consists of three distinct aligned words. Stable callbacks
     // cannot mutate the latched operands or memory mapping. No fallbacks below.
+    collision_memory::Access access;
+    // The read-only length leaf has only three accesses: retain its small path.
+    if(cpu.pc!=length_entry)access.capture(cpu,*immutable_guard,g);
     const auto load = [&](std::uint32_t address) {
         std::uint32_t result = 0u;
+        if(access.try_read(address,result))return result;
         (void)direct_linear_guard_read_u32(g, (address & 0x1FFFFFFFu) | 0x80000000u, result);
         return result;
     };
@@ -94,6 +99,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         cpu.fr[fr] = load(cpu.r[reg]); cpu.r[reg] += 4u;
     };
     const auto store = [&](std::uint32_t pc, std::uint32_t address, unsigned fr) {
+        if(access.try_store(address,cpu.fr[fr]))return;
         if (!memory.try_write_direct_linear_u32(address & 0x1FFFFFFFu, cpu.fr[fr], CodeWriteSource::Fpu))
             guest_write_u32_at(cpu, GuestInstructionOrigin{pc, pc, true}, address, cpu.fr[fr], CodeWriteSource::Fpu);
     };

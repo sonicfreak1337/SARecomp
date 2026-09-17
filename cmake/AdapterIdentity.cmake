@@ -15,7 +15,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     ../tools/generate_minicart_aot.cpp ../tools/prepare_minicart_aot.py
     ../tools/minicart_universe.py
     sonic_collision_math.hpp sonic_collision_math.cpp
-    sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp
+    sonic_triangle_contacts.hpp sonic_triangle_contacts.cpp sonic_native_collision_memory.hpp
     sonic_collision_candidates.hpp sonic_collision_candidates.cpp ../tools/prepare_collision_candidates.py
     sonic_motion_sampling.hpp sonic_motion_sampling.cpp ../tools/prepare_motion_sampling.py
     sonic_animation_hierarchy.hpp sonic_animation_hierarchy.cpp ../tools/prepare-animation-hierarchy.py

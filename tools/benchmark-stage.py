@@ -72,6 +72,7 @@ parser.add_argument('--native-model-packets', choices=('off','on','verify'), def
 parser.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
 parser.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 parser.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
+parser.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
@@ -160,6 +161,7 @@ env['SARECOMP_GAMEPLAY_MATH_RETAINED']='1' if args.gameplay_math=='retained' els
 env['SARECOMP_NATIVE_ANIMATION_HIERARCHY']='1' if args.native_animation=='on' else '0'
 env['SARECOMP_NATIVE_POSE_BLEND']='1' if args.native_pose=='on' else '0'
 env['SARECOMP_NATIVE_CLOSED_MEMORY']='1' if args.native_closed_memory=='on' else '0'
+env['SARECOMP_NATIVE_COLLISION_MEMORY']='1' if args.native_collision_memory=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
 env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
 env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'

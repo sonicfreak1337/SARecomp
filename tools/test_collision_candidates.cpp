@@ -4,9 +4,7 @@
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
-#define NOMINMAX
-#include <windows.h>
-#include <bcrypt.h>
+#include "test_collision_memory_support.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -24,11 +22,15 @@ constexpr auto entry=0x8C029B00u,returned=0x8CF80000u;
 constexpr auto query=0x8CE00000u,object=0x8CE01000u,indices=0x8CE02000u,triangles=0x8CE03000u;
 void require(bool condition,const char* message){if(!condition)throw std::runtime_error(message);}
 std::string digest(std::span<const std::uint8_t> bytes){
+#ifndef _WIN32
+    return native_port_content_sha256(bytes);
+#else
     std::array<unsigned char,32> result{};
     require(bytes.size()<=ULONG_MAX&&BCryptHash(BCRYPT_SHA256_ALG_HANDLE,nullptr,0,
         const_cast<PUCHAR>(bytes.data()),ULONG(bytes.size()),result.data(),ULONG(result.size()))>=0,"SHA failed");
     constexpr char hex[]="0123456789abcdef";std::string text(64,'0');
     for(unsigned i=0;i<result.size();++i){text[2*i]=hex[result[i]>>4];text[2*i+1]=hex[result[i]&15];}return text;
+#endif
 }
 struct Services final:PlatformServices {
     std::string_view name()const noexcept override{return "touch-poly-original-bytes";}
@@ -105,6 +107,7 @@ void run_original(CpuState& cpu,std::uint32_t stop){
     require(cpu.pc==stop,"reference did not return");
 }
 bool original_bridge(void* opaque,CpuState& cpu,std::uint32_t target){
+    collision_test::bridge_boundary();
     auto& fixture=*static_cast<Fixture*>(opaque);
     static constexpr std::array allowed{0x8C10CF48u,0x8C10D038u,0x8C10CF98u,
         0x8C639E08u,0x8C639E9Cu,0x8C10CD1Cu};
@@ -124,14 +127,15 @@ auto architecture(const CpuState& c){
         c.read_fpscr(),c.sr,c.t,c.s,c.q,c.m,c.trap_pending,c.exception_generation,c.last_exception_cause);
 }
 void compare(Fixture& n,Fixture& r){
-    n.observe();r.observe();
+    collision_test::Comparison observers(n,r);
     try{require(native_body(n),"body did not return");}
     catch(...){std::cerr<<"native phase, last callee pc="<<std::hex<<n.cpu.pc<<std::dec<<'\n';throw;}
     try{run_original(r.cpu,returned);}
     catch(...){std::cerr<<"original phase, pc="<<std::hex<<r.cpu.pc<<std::dec<<'\n';throw;}
     require(architecture(n.cpu)==architecture(r.cpu),"architecture differs");
     require(std::equal(n.ram->bytes().begin(),n.ram->bytes().end(),r.ram->bytes().begin()),"RAM differs");
-    require(n.events==r.events,"ordered guest stores differ");
+    require(observers.product() || n.events==r.events,"ordered guest stores differ");
+    observers.verify();
 }
 void decline(Fixture& f,bool stable=true,bool missing_guard=false){
     f.observe(stable);const auto state=architecture(f.cpu);
@@ -211,9 +215,11 @@ int main(int argc,char** argv)try{
         }
         decline(f,kind!=23,kind==24);++rejections;
     }
-    {Fixture f(image,1,false,fpscr_dn_mask);f.observe();f.interrupt=true;
+    {Fixture f(image,1,false,fpscr_dn_mask),r(image,1,false,fpscr_dn_mask);
+        collision_test::Comparison observers(f,r);f.interrupt=true;
         bool aborted=false;try{(void)native_body(f);}catch(const std::runtime_error&){aborted=true;}
-        require(aborted&&f.calls==1u&&!f.events.empty(),"interrupted owner did not abort after mutation");}
+        require(aborted&&f.calls==1u&&(observers.product() || !f.events.empty()),"interrupted owner did not abort after mutation");
+        observers.verify();}
     require(full_contacts>0u,"full-contact skipped-pop path was not exercised");
     std::cout<<"SONIC_COLLISION_BODY_PASS cases="<<cases<<" original_callees="<<calls
         <<" full_contact_cases="<<full_contacts<<" safe_rejections="<<rejections<<" interrupted_abort=1\n";

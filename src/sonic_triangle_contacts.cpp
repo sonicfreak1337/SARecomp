@@ -1,4 +1,5 @@
 #include "sonic_triangle_contacts.hpp"
+#include "sonic_native_collision_memory.hpp"
 #include "sonic_collision_math.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -296,17 +297,21 @@ bool try_execute(katana::runtime::CpuState& cpu,
             if (!admitted(g,p0,w) || immutable->tracks_address(w.address&0x1FFFFFFFu,w.size) ||
                 !memory.is_writable_linear_range(w.address&0x1FFFFFFFu,w.size,false)) broken();
     };
+    collision_memory::Access access;
+    access.capture(cpu,*immutable,g);
     const auto load=[&](std::uint32_t a) {
         std::uint32_t v=0u;
+        if(access.try_read(a,v))return v;
         if (!direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,v)) broken();
         return v;
     };
     const auto load16=[&](std::uint32_t a) {
         std::uint16_t v=0u;
-        if (!direct_linear_guard_read_u16(g,(a&0x1FFFFFFFu)|0x80000000u,v)) broken();
+        if (!access.try_read(a,v) && !direct_linear_guard_read_u16(g,(a&0x1FFFFFFFu)|0x80000000u,v)) broken();
         return std::uint32_t(std::int32_t(std::int16_t(v)));
     };
     const auto store=[&](std::uint32_t pc,std::uint32_t a,std::uint32_t v,CodeWriteSource source) {
+        if(access.try_store(a,v))return;
         if (!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,v,source))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},a,v,source);
     };
@@ -314,7 +319,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
     epoch.emplace(cpu);
     const auto call=[&](std::uint32_t target) {
         const auto ret=cpu.pr,sp=cpu.r[15];
-        epoch.reset(); g={}; // No cached RAM/FPU context spans a retained call.
+        access.reset(); epoch.reset(); g={}; // No RAM/FPU capability spans a call.
         cpu.pc=target;
         if (target==collision_math::cross_entry || target==collision_math::length_entry ||
             target==collision_math::normalize_entry) {
@@ -323,7 +328,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
             if (!bridge.invoke(bridge.context,cpu,target)) broken();
         } else broken();
         if (cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp) broken();
-        revalidate(); epoch.emplace(cpu);
+        revalidate(); access.capture(cpu,*immutable,g); epoch.emplace(cpu);
     };
     bool branch=false;
     // Statically expanded original CFG: every operation is annotated by its

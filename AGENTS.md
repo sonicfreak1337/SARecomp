@@ -299,6 +299,22 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   cover module range removal/addition, and tracks_address is overlap rather
   than complete coverage; do not build an identity cache on those assumptions.
 
+- Closed collision RAM remains an internal-OFF experiment; see
+  `docs/native-collision-memory-20260917.md`. Cross/normalize, triangle contacts
+  and contact candidates share authenticated direct accesses between calls.
+  Windows and Linux each pass 1,667 original-byte/access/observer cases. Linux
+  Gamma/Chaos-4 exact-state pairs save 1.95%/0.77% CPU, with +1.41%/+0.03%
+  images/s. Windows Gamma costs 4.08% more CPU; its Chaos-4 pair is not comparable
+  because the start tick and ending game state differ. Do not promote, ship,
+  call this a global gain or repeat unchanged pairs. Artifacts are
+  `build-linux/game` and `out/collision-memory-windows-20260917/game.exe`; the
+  Sep17 delivery stays unchanged. Next investigate fusing specifically reviewed
+  cross/length/normalize children into their fully admitted collision parents:
+  every short child currently releases/revalidates/recaptures the context.
+  Prove child addresses/arithmetic/live outputs and preserve external bridge
+  boundaries and arbitrary observers. No generic cross-call capability cache;
+  the retired NEAR-POLY experiment remains retired.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

@@ -1,4 +1,5 @@
 #include "sonic_collision_candidates.hpp"
+#include "sonic_native_collision_memory.hpp"
 #include "sonic_collision_math.hpp"
 #include "sonic_matrix_stack.hpp"
 #include "sonic_matrix_vectors.hpp"
@@ -124,23 +125,30 @@ bool try_execute(katana::runtime::CpuState& cpu,
            (cpu.read_fpscr()&fpu_mask)!=initial_fpu)broken();
         for(const auto w:writes)if(!writable(w))broken();
     };
+    collision_memory::Access access;
+    access.capture(cpu,*immutable,g);
     const auto load=[&](std::uint32_t a){std::uint32_t v=0u;
+        if(access.try_read(a,v))return v;
         if(!direct_linear_guard_read_u32(g,(a&0x1FFFFFFFu)|0x80000000u,v))broken();return v;};
     const auto load16=[&](std::uint32_t a){std::uint16_t v=0u;
+        if(access.try_read(a,v))return v;
         if(!direct_linear_guard_read_u16(g,(a&0x1FFFFFFFu)|0x80000000u,v))broken();return v;};
     const auto load8=[&](std::uint32_t a){std::uint8_t v=0u;
+        if(access.try_read(a,v))return v;
         if(!direct_linear_guard_read_u8(g,(a&0x1FFFFFFFu)|0x80000000u,v))broken();return v;};
     const auto store=[&](std::uint32_t pc,std::uint32_t a,std::uint32_t v,CodeWriteSource source){
+        if(access.try_store(a,v))return;
         if(!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,v,source))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},a,v,source);};
     const auto store16=[&](std::uint32_t pc,std::uint32_t a,std::uint16_t v,CodeWriteSource source){
+        if(access.try_store(a,v))return;
         if(!memory.try_write_direct_linear_u16(a&0x1FFFFFFFu,v,source))
             guest_write_u16_at(cpu,GuestInstructionOrigin{pc,pc,true},a,v,source);};
     const auto set_t=[&](bool value){cpu.t=value;};
     std::optional<HostFpuExecutionEpoch> epoch;epoch.emplace(cpu);
     const auto call=[&](std::uint32_t target){
         const auto ret=cpu.pr,sp=cpu.r[15];
-        epoch.reset();g={};cpu.pc=target;
+        access.reset();epoch.reset();g={};cpu.pc=target;
         bool complete=false;
         if(target==collision_math::cross_entry || target==collision_math::length_entry || target==collision_math::normalize_entry)
             complete=collision_math::try_execute(cpu,immutable);
@@ -152,7 +160,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
                 target==0x8C639E08u || target==0x8C639E9Cu || target==0x8C10CD1Cu)
             complete=bridge.invoke(bridge.context,cpu,target);
         if(!complete || cpu.pc!=ret || cpu.pr!=ret || cpu.r[15]!=sp)broken();
-        revalidate();epoch.emplace(cpu);
+        revalidate();access.capture(cpu,*immutable,g);epoch.emplace(cpu);
     };
     #include "touch-poly-body.inc"
 }
