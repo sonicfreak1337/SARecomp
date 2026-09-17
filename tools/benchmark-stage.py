@@ -19,6 +19,7 @@ parser.add_argument('--begin-frame', type=int, default=0, help='Optional exact w
 parser.add_argument('--end-frame', type=int, default=0, help='Stop the isolated probe after this many title boundaries')
 parser.add_argument('--width', type=int, default=3182)
 parser.add_argument('--height', type=int, default=1332)
+parser.add_argument('--aspect', choices=('original','widescreen'), default='widescreen')
 parser.add_argument('--render-percent', type=int, default=100)
 parser.add_argument('--timing', action='store_true')
 parser.add_argument('--telemetry', choices=('on','off'), default='off',
@@ -74,6 +75,8 @@ parser.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 parser.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
 parser.add_argument('--native-collision-memory', choices=('off','on'), default='off')
 parser.add_argument('--native-collision-closure', choices=('off','on'), default='off')
+parser.add_argument('--native-model-pipeline', choices=('off','on'), default='off')
+parser.add_argument('--capture-frame', type=int, default=-1, help='Private exact-image check, excluded from performance qualification')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
@@ -114,7 +117,7 @@ run.mkdir()
 saves = run/'user-data'
 shutil.copytree(root/'.local/baseline/r354/saves', saves, copy_function=shutil.copyfile)
 display = run/'sonic-display.ini'
-display.write_text(f'setup_complete=1\nmode=widescreen\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\ngameplay_timing={int(args.gameplay_timing=="recompiled")}\n')
+display.write_text(f'setup_complete=1\nmode={args.aspect}\nwidth={args.width}\nheight={args.height}\nrender_percent={args.render_percent}\nrenderer={args.renderer}\nvsync={args.vsync}\nanisotropy={args.anisotropy}\ngameplay_timing={int(args.gameplay_timing=="recompiled")}\n')
 env = {k:v for k,v in os.environ.items() if not k.startswith(('KATANA_', 'SARECOMP_'))}
 env['SARECOMP_NATIVE_MATRIX_VECTORS']='1' if args.matrix_vectors=='native' else '0'
 env['SARECOMP_NATIVE_COLLISION_CANDIDATES']='1' if args.collision_candidates=='native' else '0'
@@ -135,6 +138,12 @@ env.update({
     'KATANA_SONIC_GAMEPLAY_INPUT_PROFILE':'3', 'KATANA_SONIC_DIAGNOSTIC_MOVIE_SKIP_ONCE':'1',
     'KATANA_NATIVE_DIAGNOSTIC_TIMEOUT_MS':'100000', 'SARECOMP_DISPLAY_CONFIG':str(display),
 })
+if args.capture_frame>=0:
+    env.update(KATANA_NATIVE_GRAPHICS_CAPTURE_DIRECTORY=str(run/'frames'),
+        KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME=str(args.capture_frame),
+        KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME=str(args.capture_frame),
+        KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL='1')
+
 env['SARECOMP_VULKAN_DESCRIPTOR_CACHE']='1' if args.vulkan_descriptor_cache=='on' else '0'
 env['SARECOMP_VULKAN_STATE_CACHE']='1' if args.vulkan_state_cache=='on' else '0'
 if args.vulkan_offscreen: env['SARECOMP_VULKAN_OFFSCREEN_TEST']='1'
@@ -164,6 +173,7 @@ env['SARECOMP_NATIVE_POSE_BLEND']='1' if args.native_pose=='on' else '0'
 env['SARECOMP_NATIVE_CLOSED_MEMORY']='1' if args.native_closed_memory=='on' else '0'
 env['SARECOMP_NATIVE_COLLISION_MEMORY']='1' if args.native_collision_memory=='on' else '0'
 env['SARECOMP_NATIVE_COLLISION_CLOSURE']='1' if args.native_collision_closure=='on' else '0'
+env['SARECOMP_NATIVE_MODEL_PIPELINE']='1' if args.native_model_pipeline=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
 env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
 env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'
@@ -277,7 +287,7 @@ if args.end_frame:
 result={'schema':'sarecomp-stage-performance-v3','exe_sha256':exe_sha,**vars(args),
     'monitor_presentation':'offscreen-test' if args.vulkan_offscreen else 'window-surface',
     'exit_code':process.returncode,'forced':forced,'wall_ms':(time.monotonic()-started)*1000,
-    'hidden':True,'muted':True,'captures':False,'input_profile':3,'cpu_samples':samples,
+    'hidden':True,'muted':True,'captures':args.capture_frame>=0,'input_profile':3,'cpu_samples':samples,
     'profile_instrumented':bool(args.profile_ms),'profiler_exit_code':profiler.returncode if profiler else None,
     'gameplay_samples':gameplay,'completed':'SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE ' in stderr,
     'failures':[line for line in (stderr+'\n'+stdout).splitlines() if line.startswith((

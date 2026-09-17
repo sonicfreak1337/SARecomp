@@ -124,8 +124,12 @@ def main():
     lines = (root/'.katana-generated-artifacts').read_text().splitlines()
     if lines[0] != 'katana-codegen-artifacts-v2' or lines[1] != 'generation\tsha256:'+digest(('\n'.join(lines[2:])+'\n').encode()):
         raise ValueError('Invalid retained source manifest')
-    if a.mode in ('stack','region') and lines[1] != 'generation\tsha256:ad51236f53b465bcac54c915df97ecdcb6467f8f06e5b36f85885e19525129f1':
-        raise ValueError('Stack admission helpers need review for this generation')
+    # Provider-only refreshes change the project generation, not these helpers.
+    # Bind every retained unit's path, size and source bytes independently of
+    # hook/provider metadata; the per-selected-unit byte checks below still run.
+    unit_manifest='\n'.join('\t'.join(line.split('\t')[:3]) for line in lines[2:] if line.startswith('code/unit-'))+'\n'
+    if a.mode in ('stack','region') and digest(unit_manifest.encode()) != '908caf356f0b00638afda51f5a91e8d5d0d65aa7abcdd70ad7e56acbedce4df5':
+        raise ValueError('Stack admission helpers need review for these retained units')
     records = {parts[0]:parts for line in lines[2:] if len(parts:=line.split('\t')) >= 3}
     units = a.units_file.read_text().splitlines()
     if len(units) != len(set(units)): raise ValueError('Duplicate unit')

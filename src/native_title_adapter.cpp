@@ -61,6 +61,7 @@
 #include "sonic_native_cpu_policy.hpp"
 #include "sonic_render_completion.hpp"
 #include "sonic_palette_lighting.hpp"
+#include "sonic_model_pipeline.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -3681,7 +3682,8 @@ class SonicGuestReader final {
   public:
     explicit SonicGuestReader(const katana::runtime::CpuState& cpu) noexcept
         : memory_(&cpu.memory),
-          guard_(cpu.memory.direct_linear_memory_guard(false)),
+          guard_(sonic::model_pipeline::active && sonic::model_pipeline::active->cpu==&cpu
+              ? sonic::model_pipeline::active->memory : cpu.memory.direct_linear_memory_guard(false)),
           scalar_main_ram_mode_(!guard_ && has_scalar_main_ram()) {}
 
     [[nodiscard]] bool valid() const noexcept {
@@ -18114,6 +18116,12 @@ void emit_sonic_native_gameplay_probe_sample(
               << " collision_memory_intervals=" << sonic::collision_memory::counts.intervals
               << " collision_memory_reads=" << sonic::collision_memory::counts.reads
               << " collision_memory_writes=" << sonic::collision_memory::counts.writes
+              << " model_pipeline_calls=" << sonic::model_pipeline::statistics().calls
+              << " model_pipeline_declined=" << sonic::model_pipeline::statistics().declined
+              << " model_pipeline_points=" << sonic::model_pipeline::statistics().points
+              << " model_pipeline_normals=" << sonic::model_pipeline::statistics().normal_reuses
+              << " model_pipeline_draws=" << sonic::model_pipeline::statistics().draw_reuses
+              << " model_pipeline_direct_outputs=" << sonic::model_pipeline::statistics().direct_outputs
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -34970,15 +34978,17 @@ sonic_native_ninja_model_transform(
 
         // This synchronous owner performs only RAM reads and native FPU work
         // until commit; it cannot dispatch another model provider or migrate
-        // threads. Every record's padding and XYZ words are overwritten below.
-        // The transaction copies the exact span before notifying observers.
-        auto& output_scratch =
-            sonic_native_title_state.model_transform_output_scratch;
+        // threads. XYZ changes while every record's padding is preserved.
+        // Outside a qualified model scope, retain the original transaction.
         const auto output_size = static_cast<std::size_t>(output_bytes_count);
-        if (output_scratch.size() < output_size)
-            output_scratch.resize(output_size);
-        auto output_bytes =
-            std::span<std::uint8_t>{output_scratch}.first(output_size);
+        const auto direct_output=sonic::model_pipeline::projection_output(
+            cpu,cpu.r[4],point_count,output);
+        auto output_bytes=direct_output;
+        if(output_bytes.empty()){
+            auto& output_scratch=sonic_native_title_state.model_transform_output_scratch;
+            if(output_scratch.size()<output_size)output_scratch.resize(output_size);
+            output_bytes=std::span<std::uint8_t>{output_scratch}.first(output_size);
+        }
         const auto store_word = [&output_bytes](
                                     const std::size_t offset,
                                     const std::uint32_t value) noexcept {
@@ -35001,7 +35011,10 @@ sonic_native_ninja_model_transform(
         const auto previous_output = projection_batch_enabled
             ? reader.direct_bytes(output, output_size)
             : std::span<const std::uint8_t>{};
-        if (!previous_output.empty()) {
+        if (!direct_output.empty()) {
+            // The admitted whole-model scope writes XYZ in place. The fourth
+            // word already has its original RAM value; no padding copy needed.
+        } else if (!previous_output.empty()) {
             // One already-admitted, unobserved RAM capture preserves every
             // padding word without rechecking each word's address. XYZ is
             // overwritten by either the native batch or the retained loop.
@@ -35075,13 +35088,22 @@ sonic_native_ninja_model_transform(
             }
         }else if(projection_batch_enabled)++sonic::projection_batch::counts.declined;
 
+        const auto* shared_model=sonic::model_pipeline::active;
+        const auto* captured_points=shared_model && shared_model->cpu==&cpu &&
+            shared_model->model==cpu.r[4] && shared_model->points_address==points &&
+            shared_model->count==point_count ? shared_model->points.data() : nullptr;
         auto source = points;
         const auto load_and_transform =
-            [&reader, &cpu, &source](const std::uint8_t base) noexcept {
+            [&reader, &cpu, &source,points,captured_points](const std::uint8_t base) noexcept {
                 std::uint32_t x = 0u;
                 std::uint32_t y = 0u;
                 std::uint32_t z = 0u;
-                if (!reader.u32(source + 0u, x) ||
+                if(captured_points){
+                    const auto& point=captured_points[(source-points)/12u];
+                    x=std::bit_cast<std::uint32_t>(point[0]);
+                    y=std::bit_cast<std::uint32_t>(point[1]);
+                    z=std::bit_cast<std::uint32_t>(point[2]);
+                }else if (!reader.u32(source + 0u, x) ||
                     !reader.u32(source + 4u, y) ||
                     !reader.u32(source + 8u, z))
                     return false;
@@ -35196,8 +35218,9 @@ sonic_native_ninja_model_transform(
             katana::runtime::LinearMemoryTransactionWrite{
                 sonic_native_backing_address(output),
                 std::span<const std::uint8_t>{output_bytes}}};
-        if (!cpu.memory.commit_linear_transaction_batch(
-                writes, katana::runtime::CodeWriteSource::Copy))
+        if (!(direct_output.empty()
+                ? cpu.memory.commit_linear_transaction_batch(writes,katana::runtime::CodeWriteSource::Copy)
+                : sonic::model_pipeline::publish_projection(cpu,cpu.r[4],point_count,output)))
             return graphics_abort(context, sonic_native_graphics_error_range);
         if (sonic_native_title_state.transformed_point_clipped.size() !=
             point_count)
@@ -35529,21 +35552,34 @@ sonic_native_ninja_model_draw_impl(
         // retained capacity across model draws. This removes repeated guest
         // address validation/loads and allocator cadence from dense cutscene
         // models without caching mutable title data across invocations.
-        auto& model_point_scratch =
-            sonic_native_title_state.model_point_scratch;
-        auto& model_normal_scratch =
-            sonic_native_title_state.model_normal_scratch;
-        model_point_scratch.resize(point_count);
-        if (!reader.copy_finite_vec3_array(model_points, model_point_scratch))
-            return graphics_abort(context, sonic_native_graphics_error_range);
-        model_normal_scratch.clear();
-        if (model_normals != 0u && model_consumes_normals) {
-            if (!checked_span_size(point_count, 12u, normal_bytes) ||
-                !reader.range(model_normals, normal_bytes))
-                return graphics_abort(context, sonic_native_graphics_error_range);
-            model_normal_scratch.resize(point_count);
-            if (!reader.copy_finite_vec3_array(model_normals, model_normal_scratch))
-                return graphics_abort(context, sonic_native_graphics_error_range);
+        std::span<const sonic::model_pipeline::Vector> model_point_scratch,model_normal_scratch;
+        const auto* shared_model=sonic::model_pipeline::active;
+        if(shared_model && shared_model->cpu==&cpu && shared_model->model==model &&
+           shared_model->count==point_count && shared_model->points_address==model_points &&
+           shared_model->normals_address==model_normals){
+            model_point_scratch=std::span{shared_model->points}.first(point_count);
+            if(model_consumes_normals)model_normal_scratch=std::span{shared_model->normals}.first(point_count);
+            // Preserve the ordinary draw's finite-input rejection, after the
+            // transform/palette have published their original RAM effects.
+            for(const auto values:{model_point_scratch,model_normal_scratch})
+                for(const auto& vector:values)for(const auto value:vector)
+                    if(!std::isfinite(value))return graphics_abort(context,sonic_native_graphics_error_range);
+            sonic::model_pipeline::note_draw_reuse();
+        }else{
+            auto& point_storage=sonic_native_title_state.model_point_scratch;
+            auto& normal_storage=sonic_native_title_state.model_normal_scratch;
+            point_storage.resize(point_count);
+            if(!reader.copy_finite_vec3_array(model_points,point_storage))
+                return graphics_abort(context,sonic_native_graphics_error_range);
+            normal_storage.clear();
+            if(model_normals!=0u && model_consumes_normals){
+                if(!checked_span_size(point_count,12u,normal_bytes) || !reader.range(model_normals,normal_bytes))
+                    return graphics_abort(context,sonic_native_graphics_error_range);
+                normal_storage.resize(point_count);
+                if(!reader.copy_finite_vec3_array(model_normals,normal_storage))
+                    return graphics_abort(context,sonic_native_graphics_error_range);
+            }
+            model_point_scratch=point_storage;model_normal_scratch=normal_storage;
         }
 
         // ResidentAuthoredTextureFamily is an identity-bound PAL OBJ_REGULAR
@@ -38475,6 +38511,51 @@ sonic_native_ninja_model_draw(
     katana::runtime::NativePortContext& context) noexcept {
     return sonic_native_ninja_model_draw_impl(context, SonicNativeBasicMaterialOwner::TitleBasic);
 }
+
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_widescreen_model_cull(katana::runtime::NativePortContext&) noexcept;
+static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
+    using namespace katana::runtime;
+    auto& context=*static_cast<NativePortContext*>(opaque);
+    const auto continuation=cpu.pr;
+    NativePortHookResult result{NativePortHookAction::Abort,0u,0u};
+    if(entry==0x8C03718Cu)result=sonic_native_widescreen_model_cull(context);
+    else if(entry==0x8C037294u)result=sonic_native_ninja_model_transform(context);
+    else if(entry==0x8C037350u)result=sonic_native_palette_lighting(context);
+    else if(entry==0x8C0376D0u)result=sonic_native_ninja_model_draw(context);
+    if(result.action==NativePortHookAction::ContinueOriginal){
+        // Never expose a borrowed guard/data scope to retained guest execution.
+        sonic::model_pipeline::active=nullptr;
+        if(!context.aot.invoke_callback)return false;
+        struct Depth {Depth(){++sonic_native_host_service_depth;}~Depth(){--sonic_native_host_service_depth;}} depth;
+        result=context.aot.invoke_callback(context,entry);
+        return result.action==NativePortHookAction::Return && cpu.pc==continuation &&
+            context.stop_reason==NativePortStopReason::None;
+    }
+    if(result.action!=NativePortHookAction::Return || context.stop_reason!=NativePortStopReason::None)return false;
+    cpu.pc=continuation;return true;
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_model_pipeline(katana::runtime::NativePortContext& context) noexcept {
+    using namespace katana::runtime;
+    if(!context.cpu || !sonic::model_pipeline::enabled() || !sonic_native_leaf_math_active())
+        return {NativePortHookAction::ContinueOriginal,0u,0u};
+    auto* services=katana_port_generated::runtime_dispatch_detail::active_services;
+    if(!services)return {NativePortHookAction::ContinueOriginal,0u,0u};
+    try{
+        const auto result=sonic::model_pipeline::execute(*context.cpu,services->immutable_write_guard(),
+            {&context,sonic_model_pipeline_call});
+        if(result==sonic::model_pipeline::Outcome::Declined)return {NativePortHookAction::ContinueOriginal,0u,0u};
+        if(result==sonic::model_pipeline::Outcome::Complete)return {NativePortHookAction::Return,0u,0u};
+    }catch(const std::exception& error){std::cerr<<"SONIC_MODEL_PIPELINE_FAILURE "<<error.what()<<'\n';}
+    return graphics_abort(context,sonic_native_graphics_error_model_transform);
+}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_model_pipeline_8c037098(katana::runtime::NativePortContext& context) noexcept {return sonic_native_model_pipeline(context);}
+extern "C" katana::runtime::NativePortHookResult
+sonic_native_model_pipeline_8c037108(katana::runtime::NativePortContext& context) noexcept {return sonic_native_model_pipeline(context);}
+
+
 
 extern "C" katana::runtime::NativePortHookResult
 sonic_native_draw_polygon(

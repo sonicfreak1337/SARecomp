@@ -177,8 +177,9 @@ inline constexpr std::string_view
         // Linux gameplay probes now report thread/process CPU time at their
         // existing one-second boundary, preserving errno and the Windows path.
         // Private slow-host probes wait for active gameplay; normal cadence,
-        // drawing, instruction coverage and all title hooks are unchanged.
-        "sha256:0d7f9bab33e3b4d0244879a45c9e98c16c54474f593e792f19f2b9fc68f1c61b"};
+        // drawing and instruction coverage are unchanged. The two optional
+        // model-owner bindings retain their original bodies when disabled.
+        "sha256:37e837a429ae443f26c93725fd6c29a7e1eecf4a4ac7413e67992dd28fb96404"};
 static_assert(sonic_native_title_adapter_source_identity ==
               sonic_native_title_adapter_provider_implementation_identity);
 static_assert(
@@ -1628,6 +1629,22 @@ int main(const int argc, char* argv[]) {
                 katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
                 "sonic_native_widescreen_draw_sphere_cull",
                 "sha256:1f573f535bbc2d5e67ba50eca018c42cab9736a60bc89ec7542df1a88e10d551",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C037098u, 0x70u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_model_pipeline_8c037098",
+                "sha256:e27737990139bd86aba80aedf8bd2d92b3759c80193b04e1b9808f3dede971ac",
+                sonic_native_title_adapter_provider_implementation_identity},
+            katana::runtime::NativePortHookBinding{
+                0x8C037108u, 0x84u,
+                katana::runtime::NativePortHookKind::FunctionEntry,
+                katana::runtime::NativePortHookRequirement::Required,
+                katana::runtime::NativePortHookOriginalPolicy::MayContinueOriginal,
+                "sonic_native_model_pipeline_8c037108",
+                "sha256:be256489218b12f6ef7888b4b117ad05d887abded39a501a039e3e4f0223b2c5",
                 sonic_native_title_adapter_provider_implementation_identity},
             katana::runtime::NativePortHookBinding{
                 0x8C037294u,

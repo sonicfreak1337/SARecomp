@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-GENERATION='sha256:ad51236f53b465bcac54c915df97ecdcb6467f8f06e5b36f85885e19525129f1'
+RETAINED_UNITS_SHA='908caf356f0b00638afda51f5a91e8d5d0d65aa7abcdd70ad7e56acbedce4df5'
 RUNTIME_SHA='1b5ced39e89c7a2ca2b223218538a8dcde933d2374234e2dca4ce6f212ef31eb'
 STATE_SHA='9282825fed1e356fa08ded9c2359a08a85145a31dff46fc8a6dba1646466dc62'
 HEADER='#include "sonic_fpu_register_cache.hpp"\n'
@@ -69,14 +69,16 @@ def main():
     a=p.parse_args();root=a.source_root.resolve();dest=a.destination.resolve()
     if root==dest or root in dest.parents or dest in root.parents:raise ValueError('Separate output required')
     lines=(root/'.katana-generated-artifacts').read_text().splitlines()
-    if lines[:2]!=['katana-codegen-artifacts-v2','generation\t'+GENERATION] or GENERATION!='sha256:'+sha(('\n'.join(lines[2:])+'\n').encode()):
-        raise ValueError('Unreviewed source generation')
+    if lines[:2]!=['katana-codegen-artifacts-v2','generation\tsha256:'+sha(('\n'.join(lines[2:])+'\n').encode())]:
+        raise ValueError('Invalid source generation')
+    unit_manifest='\n'.join('\t'.join(line.split('\t')[:3]) for line in lines[2:] if line.startswith('code/unit-'))+'\n'
+    if sha(unit_manifest.encode())!=RETAINED_UNITS_SHA:raise ValueError('Unreviewed retained unit sources')
     if sha(a.runtime.read_bytes())!=RUNTIME_SHA or sha(a.state_header.read_bytes())!=STATE_SHA:
         raise ValueError('FPU/register-cache contract changed')
     records={r[0]:r for line in lines[2:] if len(r:=line.split('\t'))>=3}
     units=a.units_file.read_text().splitlines()
     if len(units)!=len(set(units)):raise ValueError('Duplicate unit')
-    report={'schema':'sarecomp-fpu-register-cache-v1','generation':GENERATION,
+    report={'schema':'sarecomp-fpu-register-cache-v1','generation':lines[1].split('\t')[1],
         'runtime_sha256':RUNTIME_SHA,'register_state_sha256':STATE_SHA,'units':[]}
     totals=Counter()
     for unit in units:

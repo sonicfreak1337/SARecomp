@@ -1,4 +1,5 @@
 #include "sonic_palette_lighting.hpp"
+#include "sonic_model_pipeline.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_palette_batch.hpp"
 
@@ -90,7 +91,9 @@ bool try_execute(katana::runtime::CpuState& cpu,
         memory.has_guest_memory_access_sink() || memory.has_mmio_trace_handler() ||
         !memory.guest_write_observer_allows_prevalidated_linear_writes())
         return false;
-    const auto guard = memory.direct_linear_memory_guard(false);
+    const auto* shared=sonic::model_pipeline::active;
+    if(shared && shared->cpu!=&cpu)shared=nullptr;
+    const auto guard = shared ? shared->memory : memory.direct_linear_memory_guard(false);
     // MMU control projects MMUCR.AT into RuntimeAddressSpace::mode(). Require
     // both views to say NoMmu before admitting P0; a stale/inconsistent binding
     // must fall back. P1/P2 remain untranslated under either MMU mode.
@@ -162,8 +165,11 @@ bool try_execute(katana::runtime::CpuState& cpu,
         if (!memory.try_write_direct_linear_u32(address & 0x1FFFFFFFu, value, CodeWriteSource::Cpu))
             guest_write_u32_at(cpu, GuestInstructionOrigin{pc, pc, true}, address, value);
     };
+    const bool captured=shared && shared->model==cpu.r[4] && shared->normals_address==normals && shared->count==count;
+    const auto* normal_data=captured ? reinterpret_cast<const std::uint8_t*>(shared->normals.data()) : guard.read_bytes+(normals&0xFFFFFFu);
+    if(captured)sonic::model_pipeline::note_normal_reuse();
     const auto normal_word = [&](unsigned fr) {
-        cpu.fr[fr] = load(cpu.r[2]); cpu.r[2] += 4u;
+        std::memcpy(&cpu.fr[fr],normal_data+(cpu.r[2]-normals),4u);cpu.r[2]+=4u;
     };
     const auto nonnegative = [](std::uint32_t value) { return (value & 0x80000000u) == 0u; };
     const auto above_max = [](std::uint32_t value) {
@@ -200,7 +206,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
 
     thread_local sonic::palette_batch::Result batch;
     const bool batched=sonic::palette_batch::enabled() &&
-        sonic::palette_batch::prepare(cpu,guard.read_bytes+(normals&0xFFFFFFu),count,
+        sonic::palette_batch::prepare(cpu,normal_data,count,
             cpu.fr.data()+12u,cpu.fr[7],batch);
     if(batched){++sonic::palette_batch::counts.calls;sonic::palette_batch::counts.vertices+=count;}
     else if(sonic::palette_batch::enabled())++sonic::palette_batch::counts.declined;

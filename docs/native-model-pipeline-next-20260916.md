@@ -5,6 +5,13 @@ implemented. The first compact model submission below is now implemented,
 internally OFF and excluded from the installed update. Complete transaction
 capture across transform, palette and draw remains work in progress.
 
+September 17 follow-up: the two complete owners and shared capture are now
+implemented in `native-model-pipeline-20260917.md`, with an additional admitted
+direct-output path. They pass the documented functional checks but remain OFF
+after a slower Linux comparison. Continue with the distinct activation/lifetime
+scope in `native-object-activation-next-20260917.md`; do not repeat this plan
+as if its shared-capture step had not been attempted.
+
 Title owners `8C037098`, `8C037108` and `8C03700C` surround native transform,
 palette and draw operations. Replacing only their wrapper with three native
 calls mostly removes wrapper overhead. A larger replacement needs a shared

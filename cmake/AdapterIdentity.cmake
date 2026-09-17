@@ -19,6 +19,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_collision_candidates.hpp sonic_collision_candidates.cpp ../tools/prepare_collision_candidates.py
     sonic_motion_sampling.hpp sonic_motion_sampling.cpp ../tools/prepare_motion_sampling.py
     sonic_animation_hierarchy.hpp sonic_animation_hierarchy.cpp ../tools/prepare-animation-hierarchy.py
+    sonic_model_pipeline.hpp sonic_model_pipeline.cpp sonic_model_pipeline_identity.inc
     sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
     sonic_render_context.hpp sonic_render_context.cpp ../tools/prepare-render-context.py
     sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py

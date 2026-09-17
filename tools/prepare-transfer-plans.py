@@ -6,7 +6,7 @@ from pathlib import Path
 
 # This is the already adapted, manifest-authenticated motion/minicart dispatcher.
 # A change to that producer must be reviewed before updating this identity.
-EFFECTIVE_SHA = '0f1ef33e781435eee1b81042389d6e7a95336a889768e1b7e0351b5be2bf555f'
+EFFECTIVE_SHA = '7dabb4cc8e61591aa6558064e32d3f0872a0ee1208d0f7afb8ab0c86d24aef52'
 SELECTION = '''thread_local NativeBringupCoverageDispatchSelection
     native_bringup_coverage_dispatch_selection;'''
 STATE = '''

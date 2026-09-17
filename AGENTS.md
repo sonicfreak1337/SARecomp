@@ -334,6 +334,17 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   in 040612/040784, repeat their rejected register ABI, or ignore the documented
   QEMU arithmetic issue by broadening model FPU epochs.
 
+- The complete model transaction is implemented but remains internal-OFF;
+  see `docs/native-model-pipeline-20260917.md`. Both platforms pass 145 cases,
+  Windows has exact image/19-field matches and a Recompiled 4:3 check, and
+  Linux Gamma and Chaos-4 entry pass. Initial shared capture saves no meaningful
+  CPU; the direct-output follow-up costs 12.48% more Linux Gamma CPU and loses
+  7.15% image throughput with matched state. Do not ship, promote or repeat
+  unchanged pairs. The Sep17 delivery is intact. Next implement the distinct
+  common object activation/lifetime family in
+  `docs/native-object-activation-next-20260917.md`; preserve mutable callback
+  boundaries and exact distance/activation semantics. Its benefit is unproved.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

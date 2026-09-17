@@ -426,6 +426,7 @@ RenderHookExtension render_hook_extension(
     RenderHookExtension result{before, {}, {}};
     std::size_t old = 0;
     unsigned candidates_added=0,motion_added=0;
+    unsigned pipeline_added=0;
     unsigned rendering_added=0,language_added=0,camera_added=0,legacy_video_added=0,options_display_added=0,rumble_added=0,cadence_added=0,palette_added=0,normals_added=0,matrix_stack_added=0,collision_added=0,inverse_added=0,contacts_added=0,atan_added=0,amy_effect_added=0,matrix_vectors_added=0;
     struct ReviewedRumble {std::uint32_t address,size;std::string_view symbol,sha;};
     constexpr std::array rumble_hooks{
@@ -448,6 +449,12 @@ RenderHookExtension render_hook_extension(
             result.hooks.push_back(before.hooks[old++]);
             continue;
         }
+        const bool pipeline=(hook.guest_address==0x8C037098u && hook.covered_size==0x70u &&
+            hook.symbol=="sonic_native_model_pipeline_8c037098" &&
+            hook.code_identity=="sha256:e27737990139bd86aba80aedf8bd2d92b3759c80193b04e1b9808f3dede971ac") ||
+            (hook.guest_address==0x8C037108u && hook.covered_size==0x84u &&
+            hook.symbol=="sonic_native_model_pipeline_8c037108" &&
+            hook.code_identity=="sha256:be256489218b12f6ef7888b4b117ad05d887abded39a501a039e3e4f0223b2c5");
         const bool model = hook.guest_address == 0x8C03718Cu &&
             hook.covered_size == 0x108u &&
             hook.symbol == "sonic_native_widescreen_model_cull" &&
@@ -545,7 +552,7 @@ RenderHookExtension render_hook_extension(
              hook.code_identity=="sha256:4c9efceb0a2491382e2251fb758565cb4073f1292ea079692f68e79e22246b82") ||
             (hook.symbol=="sonic_native_atan_scale" && hook.guest_address==0x8C10E6F8u && hook.covered_size==0xC0u &&
              hook.code_identity=="sha256:316c8b53e094bc27f5d85d3be392105d732e2aae3609409e41b862ce1dddb4ca"));
-        if ((!model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !candidates && !motion && !atan && !amy_effect && !matrix_vectors) ||
+        if ((!pipeline && !model && !sphere && !language && !camera && !legacy_video && !options_display && !rumble && !cadence && !palette && !normals && !matrix_stack && !collision && !inverse && !contacts && !candidates && !motion && !atan && !amy_effect && !matrix_vectors) ||
             hook.kind != NativePortHookKind::FunctionEntry ||
             hook.requirement != NativePortHookRequirement::Required ||
             hook.original_policy != ((rumble||amy_effect)?NativePortHookOriginalPolicy::ReplacesOriginal:
@@ -565,12 +572,12 @@ RenderHookExtension render_hook_extension(
         }
         result.hooks.push_back(hook);
         result.added.push_back(hook);
-        if(motion) ++motion_added;else if(candidates) ++candidates_added;else if(language) ++language_added;else if(camera) ++camera_added;
+        if(pipeline) ++pipeline_added;else if(motion) ++motion_added;else if(candidates) ++candidates_added;else if(language) ++language_added;else if(camera) ++camera_added;
         else if(legacy_video) ++legacy_video_added;else if(options_display) ++options_display_added;
         else if(rumble) ++rumble_added;else if(cadence) ++cadence_added;else if(palette) ++palette_added;else if(normals) ++normals_added;else if(matrix_stack) ++matrix_stack_added;else if(collision) ++collision_added;else if(inverse) ++inverse_added;else if(matrix_vectors) ++matrix_vectors_added;else if(contacts) ++contacts_added;else if(atan) ++atan_added;else if(amy_effect) ++amy_effect_added;else ++rendering_added;
     }
     if (old != before.hooks.size() || candidates_added>1u || (motion_added!=0u && motion_added!=4u) ||
-        (rendering_added!=0u && rendering_added!=2u) ||
+        (rendering_added!=0u && rendering_added!=2u) || (pipeline_added!=0u && pipeline_added!=2u) ||
         (language_added!=0u && language_added!=7u) || camera_added>2u || legacy_video_added>1u || options_display_added>1u ||
         (rumble_added!=0u && rumble_added!=4u) || cadence_added>1u || palette_added>1u || normals_added>1u ||
         (matrix_stack_added!=0u && matrix_stack_added!=2u) || (collision_added!=0u && collision_added!=3u) ||
