@@ -15,8 +15,12 @@ The Linux/Steam Deck update applies to the September 16 CPU update:
 - Package SHA-256: `e4111c57553502091035e09fcfb4620ae2ff509d8b7da195c441d7b3b29685e0`.
 - Internal patch identity: `native-cpu-20260917`.
 
-The validated staging package is `out/cpu-update-20260917/validation-update.run`.
-The final delivery path is recorded after the remaining installed-game checks.
+The delivered package is
+`out/patches/SonicAdventureRecompiled-CPU-Update-2026-09-17.run`.
+It was published at 05:09 Europe/Berlin on September 17 for the requested
+05:20 delivery, after the actual installation and installed-game checks.
+Its published bytes match the validated staging package. Source commit:
+`4309d3a` (`Enable qualified native CPU paths on Windows and Linux`).
 No GDI, installed content, personal save or development dependency is packaged.
 Run the update as the normal user in Desktop Mode, without sudo or reinstalling.
 The package preserves existing Steam/desktop paths, settings and diagnostic
@@ -120,9 +124,22 @@ hashes/inodes/modes, manifests and Story/Chao/settings sentinels are unchanged.
 The previous CPU binary is rejected, and original test preferences are restored.
 Evidence: `runs/native-cpu-diagnostics-linux-20260917.log`.
 
-The installed Recompiled Gamma run also timed out before its gameplay window
-(1,268 seconds). Its setup matches the earlier successful explicit-ON prototype;
+Published paths are `out/patches/SARecomp-Diagnostics-ON.run` and
+`out/patches/SARecomp-Diagnostics-OFF.run`. The obsolete D2 switches are archived
+in `out/patches/previous-diagnostics-d2/`; they are not switches for this build.
+All three published packages have verified SHA-256 sidecars containing their
+source commit, publication time and actual-Linux-installation result.
+
+## Remaining investigation
+
+The first installed Recompiled Gamma run, on two vCPUs, timed out before its
+gameplay window (1,268 seconds). Its setup matches the earlier successful explicit-ON prototype;
 there is no valid measurement from this run. A ten-second audio-worker sample
 finds about 41% in effect-block processing and 33% in the native QSound kernel.
 This is a worker-specific VM observation, not a measured share of the whole game
-or proof of a new regression. The independent Original checks above complete.
+or proof of a new regression. Original and the later four-vCPU Recompiled
+function check above complete. No ratio is reported from either timed-out run.
+
+The [post-update execution profile](native-cpu-postupdate-profile-20260917.md)
+records the next investigation into remaining generated-body and bookkeeping
+costs. It introduces no additional unqualified code into this delivery.

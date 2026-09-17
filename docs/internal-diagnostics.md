@@ -27,21 +27,21 @@ require the user's confirmation. OFF does not retain a rolling pre-crash history
 ## Patches
 
 `out/patches/SARecomp-Diagnostics-ON.run` and
-`out/patches/SARecomp-Diagnostics-OFF.run` target Linux and Steam Deck.
+`out/patches/SARecomp-Diagnostics-OFF.run` target the
+[September 17 CPU update](cpu-update-20260917.md) on Linux and Steam Deck.
 Run with the game closed, in Desktop Mode, as the normal user. No sudo or GDI.
-The first use updates a previously native-math-patched installation; subsequent
-switches write only the policy file and retain the executable inode. Both use
-the existing Steam/desktop launch paths. Saves, Chao data and settings are not
-opened by the patch. Executable and manifest updates are verified and reversible.
+Both are 21,144-byte policy-only packages: every switch writes only the policy
+file and retains the executable and manifest. Existing Steam/desktop launch
+paths remain valid. Saves, Chao data and settings are not opened by the patch.
+Other executable identities are rejected without modification.
 
 The shared policy is also compiled into the Windows performance candidate.
 The accepted `out/experimental` build and r354 snapshot are unchanged.
 
-The [2026-09-16 CPU update](cpu-update-20260916.md) preserves this policy but
-replaces the Linux executable with a newer identity. The original standalone
-ON/OFF patch packages remain bound to the D2 executable below; they must not
-be used to downgrade the CPU update. Its internal policy file and developer
-override continue to work normally.
+The original D2 standalone ON/OFF packages have been moved into
+`out/patches/previous-diagnostics-d2/`. They included an executable update and
+must not be used to downgrade either CPU update. The September 16 update
+preserves the policy file; its developer override continues to work normally.
 
 The [September 17 native CPU update](cpu-update-20260917.md) has new, small
 policy-only ON/OFF packages. They admit only its exact executable SHA-256 and
@@ -52,7 +52,7 @@ manifests and Story/Chao/settings sentinels stayed unchanged. An old September 1
 installation was rejected without changes. Test preferences were restored.
 Evidence: `runs/native-cpu-diagnostics-linux-20260917.log`.
 
-## Verification and performance
+## Historical D2 verification and performance
 
 The Linux VM is a TCG software-graphics environment, not a Deck FPS estimate.
 Nine policy cases pass on Windows and Linux. Patch fixtures cover repeated
@@ -89,7 +89,7 @@ This approximately 3% difference is **not evidence of an improvement**. The
 measured execution bottleneck. Do not present this as the promised large Deck
 performance patch. The explicit diagnostic-switch request is a separate delivery.
 
-The final Linux program is SHA-256
+The historical D2 Linux program is SHA-256
 `d2d6e6d35e2664586486d6dceb262b91ca03b974acecd59f09636b0eedc4807b`.
 The patch base is
 `7d4fb2b71694dead0ae7f76f105bb975429978a7dce3ce6cad44aace220c6921`.

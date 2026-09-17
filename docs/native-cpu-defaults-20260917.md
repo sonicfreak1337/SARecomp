@@ -53,4 +53,6 @@ images are produced. Evidence: `runs/native-cpu-all-win-{on,off}-original/result
 These figures describe the qualified group, not a guaranteed Deck speedup.
 The requested 20–25 ms target remains open until measured on the target hardware.
 Linux normal-start, actual patch installation and final binary identities are
-recorded with the delivery once those checks complete.
+recorded in the [completed delivery report](cpu-update-20260917.md). Original
+Gamma and Chaos-4 entry pass on the installed Linux binary; Recompiled Gamma
+passes in the separately identified four-vCPU function check.

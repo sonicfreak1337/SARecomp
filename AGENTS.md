@@ -178,8 +178,13 @@ movie aspect and title simulation cadence intact. Do not stretch the final
 - Latest scheduling instruction: continue autonomous native CPU work, then
   build the next patch around 05:20 Europe/Berlin on 2026-09-17. This explicitly
   authorizes that patch; ship qualified improvements only and preserve saves.
-  The one-shot thread heartbeat `sarecomp-patch-am-17-09-um-05-20` is registered
-  for that time. Avoid a duplicate patch if the active goal already built it.
+  The one-shot thread heartbeat `sarecomp-patch-am-17-09-um-05-20` was removed
+  after the completed delivery below. Do not schedule a duplicate delivery.
+  This scheduled delivery was fulfilled at 05:09 on September 17:
+  `out/patches/SonicAdventureRecompiled-CPU-Update-2026-09-17.run`, source commit
+  `4309d3a`. Actual Linux installation and both timing modes are checked.
+  Matching policy-only ON/OFF packages are also delivered; see
+  `docs/cpu-update-20260917.md`. Do not rebuild this completed delivery on wake.
 
 - The September 17 shared native CPU group now defaults ON independently of
   timing: animation hierarchy, pose blending, whole-owner direct model memory,
