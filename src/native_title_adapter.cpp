@@ -73,6 +73,7 @@
 #include "sonic_pose_blend.hpp"
 #include "sonic_render_context.hpp"
 #include "sonic_palette_batch.hpp"
+#include "sonic_projection_batch.hpp"
 #include "sonic_mesh_plan.hpp"
 #include "sonic_matrix_vectors.hpp"
 #include "sonic_big_hud.hpp"
@@ -18117,6 +18118,10 @@ void emit_sonic_native_gameplay_probe_sample(
               << " palette_batch_vertices=" << sonic::palette_batch::counts.vertices
               << " palette_batch_declined=" << sonic::palette_batch::counts.declined
               << " palette_batch_closed_loops=" << sonic::palette_batch::counts.closed_loops
+              << " projection_batch_calls=" << sonic::projection_batch::counts.calls
+              << " projection_batch_vertices=" << sonic::projection_batch::counts.vertices
+              << " projection_batch_declined=" << sonic::projection_batch::counts.declined
+              << " projection_batch_verified=" << sonic::projection_batch::counts.verified
               << " sound_metadata_hits=" << sonic::audio::sound_command_counts.metadata_hits
               << " sound_metadata_misses=" << sonic::audio::sound_command_counts.metadata_misses
               << " sound_metadata_verified=" << sonic::audio::sound_command_counts.metadata_verified
@@ -35016,6 +35021,41 @@ sonic_native_ninja_model_transform(
         sonic_native_title_state.transformed_point_clipped.clear();
         std::uint32_t observed_transformed_points = 0u;
 
+        static const bool projection_batch_enabled=[] {
+            const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH");
+            return value && std::strcmp(value,"1")==0 &&
+                sonic::native_cpu::enabled("SARECOMP_NATIVE_PROJECTION_BATCH");
+        }();
+        static const bool projection_batch_verify=[] {
+            const auto* value=std::getenv("SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY");
+            return value && std::strcmp(value,"1")==0;
+        }();
+        thread_local sonic::projection_batch::Result projection_batch;
+        const bool batched=projection_batch_enabled && sonic::projection_batch::prepare(cpu,
+            point_count,reader.direct_bytes(points,static_cast<std::size_t>(source_bytes)),
+            projection_batch,fpu_epoch);
+        struct ProjectionState {
+            std::array<std::uint32_t,16> fr;
+            std::uint32_t fpscr,r13;
+            bool t;
+        };
+        ProjectionState before_batch,expected_batch;
+        if(batched && projection_batch_verify)
+            before_batch={cpu.fr,cpu.fpscr,cpu.r[13],cpu.t};
+        if(batched){
+            auto& counts=sonic::projection_batch::counts;
+            ++counts.calls;counts.vertices+=point_count;
+            sonic_native_title_state.transformed_point_clipped.resize(point_count);
+            sonic::projection_batch::publish(cpu,projection_batch,output_bytes,
+                sonic_native_title_state.transformed_point_clipped);
+            if(projection_batch_verify){
+                expected_batch={cpu.fr,cpu.fpscr,cpu.r[13],cpu.t};
+                cpu.fr=before_batch.fr;cpu.fpscr=before_batch.fpscr;
+                cpu.r[13]=before_batch.r13;cpu.t=before_batch.t;
+                sonic_native_title_state.transformed_point_clipped.clear();
+            }
+        }else if(projection_batch_enabled)++sonic::projection_batch::counts.declined;
+
         auto source = points;
         const auto load_and_transform =
             [&reader, &cpu, &source](const std::uint8_t base) noexcept {
@@ -35051,9 +35091,10 @@ sonic_native_ninja_model_transform(
             if (!cpu.t) ++cpu.r[13];
         };
 
+        std::uint32_t remaining = point_count;
+        if (!batched || projection_batch_verify) {
         if (!load_and_transform(0u))
             return graphics_abort(context, sonic_native_graphics_error_range);
-        std::uint32_t remaining = point_count;
         std::uint64_t output_record = 0u;
         while (true) {
             account_clipped(2u);
@@ -35108,6 +35149,20 @@ sonic_native_ninja_model_transform(
 
             remaining -= 2u;
             if (static_cast<std::int32_t>(remaining) <= 0) break;
+        }
+        } else {
+            source=points+static_cast<std::uint32_t>(source_bytes);
+            remaining-=static_cast<std::uint32_t>(transformed_count);
+        }
+        if(batched && projection_batch_verify){
+            bool exact=cpu.fr==expected_batch.fr && cpu.fpscr==expected_batch.fpscr &&
+                cpu.r[13]==expected_batch.r13 && cpu.t==expected_batch.t &&
+                sonic_native_title_state.transformed_point_clipped==projection_batch.clipped;
+            for(std::size_t i=0;i<projection_batch.positions.size();++i)
+                exact=exact && std::memcmp(output_bytes.data()+i*16u,
+                    projection_batch.positions[i].data(),12u)==0;
+            if(!exact)throw std::runtime_error("native projection batch differs from retained owner");
+            ++sonic::projection_batch::counts.verified;
         }
 
         std::array<std::uint8_t, sizeof(std::uint32_t)> output_pointer_bytes{

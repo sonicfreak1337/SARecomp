@@ -69,6 +69,7 @@ parser.add_argument('--async-audio-status', choices=('off','on','installed'), de
 parser.add_argument('--sound-metadata', choices=('off','on','verify'), default='off')
 parser.add_argument('--deferred-midi-notes', choices=('off','on'), default='off')
 parser.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
+parser.add_argument('--native-projection-batch', choices=('off','on','verify'), default='off')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
 parser.add_argument('--wait-for-gameplay', action='store_true', help='Start the window after the selected timing mode reaches gameplay')
@@ -165,6 +166,8 @@ env['SARECOMP_SOUND_METADATA_VERIFY']='1' if args.sound_metadata=='verify' else 
 env['SARECOMP_DEFERRED_MIDI_NOTES']='1' if args.deferred_midi_notes=='on' else '0'
 env['SARECOMP_NATIVE_MODEL_PACKETS']='0' if args.native_model_packets=='off' else '1'
 env['SARECOMP_NATIVE_MODEL_PACKETS_VERIFY']='1' if args.native_model_packets=='verify' else '0'
+env['SARECOMP_NATIVE_PROJECTION_BATCH']=str(int(args.native_projection_batch!='off'))
+env['SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY']=str(int(args.native_projection_batch=='verify'))
 if args.ram_regions != 'installed':
     env['SARECOMP_RAM_REGIONS'] = '1' if args.ram_regions == 'on' else '0'
 for name, selection in (

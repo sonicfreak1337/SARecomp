@@ -230,6 +230,18 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   as experiments, never as implicit release-promotion candidates. Continue
   from the documented comparisons; do not rerun all component cases unchanged.
 
+- The user confirms the September 17 native CPU approach improves Deck
+  performance and requests further replacements; no new exact Deck numbers
+  were provided. The complete model-projection batch is a new internal-OFF
+  experiment: see `docs/native-projection-batch-20260917.md`. Both platforms
+  pass 4,096 exact component cases, plus real-game dual-path verification.
+  Matched Linux Gamma saves 18.84% execution CPU/update, but Chaos-4 entry
+  costs 1.44% more. Windows results are also mixed. Do not promote or advertise
+  a global/Deck gain from the favorable scene alone. The development Linux
+  game and `out/projection-batch-windows-20260917/game.exe` now contain this
+  OFF path plus the retained extended RAM experiment; the Sep17 patch is
+  unchanged. Continue from these reports without repeating unchanged tests.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

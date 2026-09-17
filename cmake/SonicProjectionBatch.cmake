@@ -1,0 +1,18 @@
+add_library(sonic_projection_batch STATIC EXCLUDE_FROM_ALL "${SONIC_ROOT}/src/sonic_projection_batch.cpp"
+    "${SONIC_ROOT}/src/sonic_projection_batch_simd.cpp")
+target_include_directories(sonic_projection_batch PUBLIC "${SONIC_ROOT}/src")
+target_sources(${animation_title} PRIVATE "${SONIC_ROOT}/src/sonic_projection_batch.cpp"
+    "${SONIC_ROOT}/src/sonic_projection_batch_simd.cpp")
+add_executable(sonic-projection-batch-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_projection_batch.cpp")
+target_link_libraries(sonic-projection-batch-tests PRIVATE sonic_projection_batch)
+if(TARGET sonic_linux_title)
+    target_compile_options(sonic_projection_batch PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+    target_compile_options(sonic-projection-batch-tests PRIVATE -O2 -g0 -frounding-math -ffp-contract=off)
+    set_source_files_properties("${SONIC_ROOT}/src/sonic_projection_batch_simd.cpp" PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+    target_link_libraries(sonic_projection_batch PUBLIC sonic_linux_aot_runtime)
+else()
+    target_compile_options(sonic_projection_batch PRIVATE /EHsc /utf-8 /fp:strict)
+    target_compile_options(sonic-projection-batch-tests PRIVATE /EHsc /utf-8 /fp:strict)
+    set_source_files_properties("${SONIC_ROOT}/src/sonic_projection_batch_simd.cpp" PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    target_link_libraries(sonic_projection_batch PUBLIC KatanaRecomp::native_port_runtime)
+endif()

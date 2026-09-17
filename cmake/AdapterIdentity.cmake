@@ -5,6 +5,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_frame_completion_contract.hpp sonic_qsound_reverb_medium.hpp sonic_palette_lighting.hpp sonic_palette_lighting.cpp
     sonic_vertex_normals.hpp sonic_vertex_normals.cpp
     sonic_palette_batch.hpp sonic_palette_batch.cpp sonic_palette_batch_simd.cpp
+    sonic_projection_batch.hpp sonic_projection_batch.cpp sonic_projection_batch_simd.cpp
     sonic_matrix_stack.hpp sonic_matrix_stack.cpp
     sonic_matrix_vectors.hpp sonic_matrix_vectors.cpp
     sonic_big_hud.hpp
