@@ -467,6 +467,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   v2 patch and installers remain unchanged. Next is the distinct complete
   live render/motion hierarchy group, retaining mutable callbacks/draws.
 
+- The live render/motion tree `040784` and its complete SRT/sampling/matrix
+  closure are implemented as an internal-OFF group; see
+  `docs/native-render-hierarchy-20260917.md`. Both platforms pass 198 exact
+  CPU/RAM cases and ten actual-AOT continuation cases, including the completed
+  tail-callback invalidation correction. Windows Original endpoint state matches
+  and Recompiled retains 60 Hz; Linux gameplay qualification is still running.
+  Do not promote from component success or the small Windows gain alone. The
+  next coherent scope is the distinct two-pose render tree described there.
+
 - Latest delivery request: continue broad native function-group work and build
   the next Deck patch on September 18, 2026 around 05:20 Europe/Berlin. The
   one-shot heartbeat `sarecomp-deck-patch-18-09-05-20` is already scheduled in

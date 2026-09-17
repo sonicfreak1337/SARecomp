@@ -65,6 +65,7 @@
 #include "sonic_object_activation.hpp"
 #include "sonic_movement_resolver.hpp"
 #include "sonic_collision_world.hpp"
+#include "sonic_render_hierarchy.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -18146,6 +18147,11 @@ void emit_sonic_native_gameplay_probe_sample(
               << " world_resumes=" << sonic::collision_world::counts.resumes
               << " world_membership=" << sonic::collision_world::counts.membership_hits
               << " world_eligibility=" << sonic::collision_world::counts.eligibility_hits
+              << " render_hierarchy_calls=" << sonic::render_hierarchy::counts.calls
+              << " render_hierarchy_declined=" << sonic::render_hierarchy::counts.declined
+              << " render_hierarchy_internal=" << sonic::render_hierarchy::counts.internal_calls
+              << " render_hierarchy_callbacks=" << sonic::render_hierarchy::counts.callbacks
+              << " render_hierarchy_resumes=" << sonic::render_hierarchy::counts.resumes
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -38593,6 +38599,29 @@ sonic::collision_world::Outcome sonic::collision_world::try_dispatch(katana::run
     if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
     SonicCollisionWorldBridge bridge{services};
     return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_collision_world_call,sonic_collision_world_resume});
+}
+namespace {
+struct SonicRenderHierarchyBridge {katana::runtime::NativePortAotServices& services;};
+bool sonic_render_hierarchy_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t target){
+    auto& bridge=*static_cast<SonicRenderHierarchyBridge*>(opaque);
+    return sonic_object_activation_call(&bridge.services.context(),cpu,target);
+}
+bool sonic_render_hierarchy_resume(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t owner,std::uint32_t){
+    using namespace sonic::render_hierarchy;
+    auto& services=static_cast<SonicRenderHierarchyBridge*>(opaque)->services;
+    auto& context=services.context();
+    if(cpu.trap_pending || context.stop_reason!=katana::runtime::NativePortStopReason::None ||
+       !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
+    struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
+    const bool handled=resume_original(cpu,owner);
+    return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
+}
+}
+sonic::render_hierarchy::Outcome sonic::render_hierarchy::try_dispatch(katana::runtime::CpuState& cpu,
+                                                                     katana::runtime::NativePortAotServices& services){
+    if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
+    SonicRenderHierarchyBridge bridge{services};
+    return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_render_hierarchy_call,sonic_render_hierarchy_resume});
 }
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;
