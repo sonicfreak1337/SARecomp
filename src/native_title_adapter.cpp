@@ -64,6 +64,7 @@
 #include "sonic_model_pipeline.hpp"
 #include "sonic_object_activation.hpp"
 #include "sonic_movement_resolver.hpp"
+#include "sonic_collision_world.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_native_collision_memory.hpp"
 #include "sonic_vertex_normals.hpp"
@@ -18138,6 +18139,13 @@ void emit_sonic_native_gameplay_probe_sample(
               << " movement_declined=" << sonic::movement::counts.declined
               << " movement_callbacks=" << sonic::movement::counts.callbacks
               << " movement_reentries=" << sonic::movement::counts.slow_accesses
+              << " world_calls=" << sonic::collision_world::counts.calls
+              << " world_declined=" << sonic::collision_world::counts.declined
+              << " world_internal=" << sonic::collision_world::counts.internal_calls
+              << " world_callbacks=" << sonic::collision_world::counts.callbacks
+              << " world_resumes=" << sonic::collision_world::counts.resumes
+              << " world_membership=" << sonic::collision_world::counts.membership_hits
+              << " world_eligibility=" << sonic::collision_world::counts.eligibility_hits
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -38562,6 +38570,29 @@ sonic::movement::Outcome sonic::movement::try_dispatch(katana::runtime::CpuState
         !services.can_chain_executable_block(entry) || !retained_source_matches(cpu,services.immutable_write_guard())))
         return Outcome::Interrupted;
     return result;
+}
+namespace {
+struct SonicCollisionWorldBridge {katana::runtime::NativePortAotServices& services;};
+bool sonic_collision_world_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t target){
+    auto& bridge=*static_cast<SonicCollisionWorldBridge*>(opaque);
+    return sonic_object_activation_call(&bridge.services.context(),cpu,target);
+}
+bool sonic_collision_world_resume(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t owner){
+    using namespace sonic::collision_world;
+    auto& services=static_cast<SonicCollisionWorldBridge*>(opaque)->services;
+    auto& context=services.context();
+    if(cpu.trap_pending || context.stop_reason!=katana::runtime::NativePortStopReason::None ||
+       !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
+    struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
+    const bool handled=resume_geometry(cpu,owner) || resume_pools(cpu,owner) || resume_eligibility(cpu,owner);
+    return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
+}
+}
+sonic::collision_world::Outcome sonic::collision_world::try_dispatch(katana::runtime::CpuState& cpu,
+                                                                     katana::runtime::NativePortAotServices& services){
+    if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
+    SonicCollisionWorldBridge bridge{services};
+    return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_collision_world_call,sonic_collision_world_resume});
 }
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;

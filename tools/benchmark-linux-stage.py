@@ -58,7 +58,8 @@ p.add_argument('--content', type=Path, required=True)
 p.add_argument('--lib', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--scenario', default='emerald-coast',
-    choices=('emerald-coast','gamma-emerald-coast','sonic-windy-valley','amy-hot-shelter','sonic-chaos-4'),
+    choices=('emerald-coast','gamma-emerald-coast','sonic-windy-valley','amy-hot-shelter','sonic-chaos-4',
+             'knuckles-sky-deck','knuckles-lost-world'),
     help='Reviewed performance scenarios; IDs match the private stage table exactly')
 p.add_argument('--gameplay-timing', choices=('original','recompiled'), default='recompiled')
 p.add_argument('--gameplay-math', choices=('native','retained'), default='native')
@@ -75,6 +76,7 @@ p.add_argument('--native-collision-closure', choices=('off','on'), default='off'
 p.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-movement', choices=('off','on'), default='off')
+p.add_argument('--native-collision-world', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -165,6 +167,7 @@ env.update({
     'SARECOMP_NATIVE_MODEL_PIPELINE':str(int(a.native_model_pipeline=='on')),
     'SARECOMP_NATIVE_OBJECT_ACTIVATION':str(int(a.native_object_activation=='on')),
     'SARECOMP_NATIVE_MOVEMENT':str(int(a.native_movement=='on')),
+    'SARECOMP_NATIVE_COLLISION_WORLD':str(int(a.native_collision_world=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
     'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
@@ -185,6 +188,7 @@ for name, selection in (
     ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', a.native_animation),
     ('SARECOMP_NATIVE_POSE_BLEND', a.native_pose),
     ('SARECOMP_NATIVE_OBJECT_ACTIVATION', a.native_object_activation),
+    ('SARECOMP_NATIVE_COLLISION_WORLD', a.native_collision_world),
     ('SARECOMP_NATIVE_MODEL_PIPELINE', a.native_model_pipeline),
     ('SARECOMP_NATIVE_PROJECTION_BATCH', a.native_projection_batch),
     ('SARECOMP_NATIVE_CLOSED_MEMORY', a.native_closed_memory),
@@ -307,6 +311,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_collision_closure':a.native_collision_closure,
           'native_model_pipeline':a.native_model_pipeline,
           'native_movement':a.native_movement,
+          'native_collision_world':a.native_collision_world,
           'native_object_activation':a.native_object_activation,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,

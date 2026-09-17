@@ -24,6 +24,8 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     ../tools/prepare-object-activation-bridge.py
     sonic_movement_resolver.hpp sonic_movement_resolver.cpp
     ../tools/prepare-movement-resolver.py ../tools/prepare-movement-bridge.py
+    sonic_collision_world.hpp sonic_collision_world.cpp
+    ../tools/prepare-collision-world.py ../tools/prepare-collision-world-bridge.py
     sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
     sonic_render_context.hpp sonic_render_context.cpp ../tools/prepare-render-context.py
     sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py

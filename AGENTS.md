@@ -434,6 +434,25 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Windows test installer explicitly records that distinction. Linux/Deck test
   installers and delivered v2 patch retain their previously qualified runtime.
 
+- The complete collision-world group now joins the default-ON native CPU
+  group on both platforms. See `docs/native-collision-world-20260917.md`:
+  11 owners / 1,492 instruction PCs, shared admitted RAM and native indexes for
+  active membership / first eligible occurrence. Both platforms pass 78 full
+  CPU/RAM reference cases and eight actual-AOT fallback cases. Private restarts
+  preserve the sparse global entry table and the root's exact return marker.
+  Short matched Original Linux Gamma / Knuckles Sky Deck / Knuckles Lost World
+  pairs each match all 19 endpoint fields and 68 updates. Execution CPU falls
+  3.64% / 6.45% / 8.10%; new images/s change +0.62% / +3.63% / +9.54%.
+  These are entry-window VM measurements, not Deck FPS or full-level guarantees.
+  Global/per-feature zero overrides and diagnostics retain the original path.
+  Existing installers, delivered v2 patch, baseline and saves stay unchanged;
+  the 20-25 ms Deck goal remains open. Do not repeat these unchanged pairs or
+  enable unrelated rejected experiments. The next related boundary is the
+  complete matrix/transform SDK group described in the report, preserving
+  arithmetic epochs and real callback boundaries. The retired NEAR-POLY path
+  remains retired. Latest user scope: include both Knuckles stages, but keep
+  testing short rather than expanding the full matrix.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

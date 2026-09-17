@@ -45,7 +45,8 @@ def emit_identities(ram, source_ranges=SOURCE_RANGES):
 def signed(value, bits):
     return (value ^ (1 << (bits - 1))) - (1 << (bits - 1))
 
-def inspect(ram, entry=ENTRY, end=END):
+def inspect(ram, entry=ENTRY, end=END, *, begin=None):
+    begin = entry if begin is None else begin
     words = lambda pc: struct.unpack_from('<H', ram, pc - BASE)[0]
     pending = [entry]
     instructions = {}
@@ -55,7 +56,7 @@ def inspect(ram, entry=ENTRY, end=END):
         pc = pending.pop()
         if pc in instructions:
             continue
-        if pc < entry or pc + 2 > end or pc & 1:
+        if pc < begin or pc + 2 > end or pc & 1:
             raise ValueError(f'Control flow leaves the complete owner: {pc:08X}')
         op = words(pc)
         instructions[pc] = op
