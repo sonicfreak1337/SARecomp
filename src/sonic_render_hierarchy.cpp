@@ -12,7 +12,7 @@ namespace {
 using namespace katana::runtime;
 #include "hierarchy-identities.inc"
 struct Interrupted {};
-struct ResumeOriginal {bool after_call{};};
+struct ResumeOriginal {bool completed_tail{};};
 // Unsupported accesses resume before the instruction. Nothing device-visible
 // is performed inside the native transaction. A delay slot resumes its branch;
 // a call also restores PR so that the retained branch executes exactly once.
@@ -121,7 +121,7 @@ public:
 
 struct Flow {unsigned depth{},backedges{};};
 #ifdef SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE
-#define HIERARCHY_SITE(pc) (visited[((pc)>=0x8C639000u?0x2000u+(pc)-0x8C639000u:(pc)-0x8C03F000u)/2u]=true)
+#define HIERARCHY_SITE(pc) (visited[((pc)>=0x8C639000u?0x6000u+(pc)-0x8C639000u:(pc)-0x8C03F000u)/2u]=true)
 #else
 #define HIERARCHY_SITE(pc) ((void)0)
 #endif
@@ -138,16 +138,16 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     // All FPU operations use the original helper scopes. No larger epoch may
     // leak across FSCA, FTRV, a callback or an original continuation.
     const auto backedge=[&](std::uint32_t pc){if(++flow.backedges>=100000u)a.restart(pc);};
-    const auto call=[&](std::uint32_t target){
+    const auto call=[&](std::uint32_t target,bool tail=false){
         cpu.pc=target;const auto continuation=cpu.pr;
         if(contains(target)){
             ++counts.internal_calls;
-            if(!run(cpu,a,calls,flow,target))throw ResumeOriginal{true};
+            if(!run(cpu,a,calls,flow,target))throw ResumeOriginal{tail};
         }else{
             a.flush();++counts.callbacks;
             if(!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation)throw Interrupted{};
-            if(!a.refresh())throw ResumeOriginal{true};
-            for(unsigned i=0;i<identities.size();++i)if(!a.identity(i))throw ResumeOriginal{true};
+            if(!a.refresh())throw ResumeOriginal{tail};
+            for(unsigned i=0;i<identities.size();++i)if(!a.identity(i))throw ResumeOriginal{tail};
         }
         if(cpu.pc!=continuation)throw Interrupted{};
     };
@@ -168,14 +168,17 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
         a.flush();
         // A tail child can finish this owner before invalidating our borrowed
         // memory/mode. Only the caller has instructions left at this address.
-        // An ordinary access fault must still resume even if PR aliases its PC.
-        if(state.after_call && cpu.pc==continuation){
+        // A normal call/access must still resume when the incoming PR happens
+        // to alias its internal continuation. The original transfer kind matters.
+        if(state.completed_tail && cpu.pc==continuation){
             if(owner==entry)return_site=0x8C04082Cu;
+            if(owner==blended_entry)return_site=0x8C041B0Au;
             return false;
         }
         if(!calls.resume)throw;
         if(!calls.resume(calls.context,cpu,owner,continuation) || cpu.pc!=continuation)throw Interrupted{};
         if(owner==entry)return_site=0x8C04082Cu;
+        if(owner==blended_entry)return_site=0x8C041B0Au;
         if(!a.refresh())return false;
         for(unsigned i=0;i<identities.size();++i)if(!a.identity(i))return false;
         return true;

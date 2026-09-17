@@ -476,6 +476,15 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Do not promote from component success or the small Windows gain alone. The
   next coherent scope is the distinct two-pose render tree described there.
 
+- The first render group now has matched Linux Gamma/Sky Deck/Lost World
+  comparisons: -6.78%/+9.66%/+3.34% execution CPU, with mixed/worse throughput.
+  It stays OFF. The entire two-pose tree and 16 connected owners now extend
+  the same closure to 39 owners. Both platforms pass 306 CPU/RAM cases and
+  19 actual-AOT continuation cases. These include ordinary-call PR aliasing
+  and pending original dynamic tails; preserve these distinctions. Combined
+  gameplay qualification is pending. See `docs/native-render-hierarchy-20260917.md`;
+  do not promote from component success or rerun the unchanged first-group pairs.
+
 - Latest delivery request: continue broad native function-group work and build
   the next Deck patch on September 18, 2026 around 05:20 Europe/Berlin. The
   one-shot heartbeat `sarecomp-deck-patch-18-09-05-20` is already scheduled in

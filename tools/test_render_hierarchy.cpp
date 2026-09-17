@@ -76,7 +76,7 @@ struct Fixture {
     std::uint32_t get(std::uint32_t a){std::uint32_t v;std::memcpy(&v,ram->bytes().data()+(a&0xFFFFFFu),4);return v;}
     void putf(std::uint32_t a,float v){put(a,std::bit_cast<std::uint32_t>(v));}
     void vector(std::uint32_t a,float x,float y,float z){putf(a,x);putf(a+4,y);putf(a+8,z);}
-    static bool external(std::uint32_t pc){return pc==0x8C037098u || pc==callback || pc==alternate;}
+    static bool external(std::uint32_t pc){return pc==0x8C037098u || pc==0x8C03700Cu || pc==callback || pc==alternate;}
     bool child(std::uint32_t target){
         trace.emplace_back(target,cpu.pr);++callback_index;
         if(stop_after==callback_index)return false;
@@ -89,6 +89,8 @@ struct Fixture {
             if(mutation==6)cpu.memory.set_guest_write_observer([](const GuestWriteEvent&)noexcept{});
             if(mutation==7){put(0x8C88FD74u,0x8C0405A4u);cpu.r[13]+=32;}
             if(mutation==8)cpu.write_fpscr(cpu.read_fpscr()|fpscr_sz_mask);
+            if(mutation==9)put(0x8C88FDE0u,alternate);
+            if(mutation==10)put(0x8C88FE78u,1u);
         }
         cpu.fr[1]^=0x00800000u;cpu.r[0]=target;cpu.t=!cpu.t;cpu.pc=cpu.pr;
         return true;
@@ -149,6 +151,64 @@ void setup(Fixture& f,unsigned variant){
     if(variant==28){f.cpu.r[15]+=2;return;}
     if(variant==29){f.put(nodes+44,nodes+1);return;}
 }
+void setup_blended(Fixture& f,unsigned variant){
+    f.cpu.pc=family::blended_entry;
+    f.put(0x8C88FDC0u,0x8C041516u);f.put(0x8C88FDC4u,0x8C041516u);
+    f.put(0x8C88FD98u,0);f.put(0x8C19AC84u,variant&1u?0x8C639F38u:0x8C639C34u);
+    f.putf(0x8C88FE7Cu,.375f);
+    for(unsigned channel=0;channel<2;++channel){
+        f.put(0x8C88FDD8u+4*channel,0x8C0414A6u);
+        f.put(0x8C88FDE0u+4*channel,0x8C0414F0u);
+        f.put(0x8C88FDE8u+4*channel,0x8C0414CCu);
+        const auto context=0x8C88FDF8u+channel*28;
+        f.put(context,records+channel*4096);f.putf(context+12,5.25f+float(channel));
+    }
+    if(!variant)return;
+    f.put(nodes+44,nodes+256);f.put(nodes+256+48,nodes+512);
+    if(variant==1)return;
+    if(variant>=2 && variant<=4){f.put(nodes,variant==2?0x20:variant==3?0x40:0x48);return;}
+    if(variant>=5 && variant<=9){
+        constexpr std::uint32_t entries[]{0x8C041516u,0x8C04154Eu,0x8C041600u,0x8C041666u,0x8C0416CCu};
+        f.put(0x8C88FDC0u,entries[variant-5]);f.put(0x8C88FDC4u,entries[variant-5]);return;
+    }
+    if(variant>=10 && variant<=17){
+        f.put(0x8C88FDC0u,0x8C041666u);f.put(0x8C88FDC4u,0x8C041666u);
+        const auto count=variant<12?0u:variant<14?1u:variant<16?2u:4u;
+        for(unsigned channel=0;channel<2;++channel){
+            f.put(0x8C88FDD8u+4*channel,0x8C040DF0u);
+            f.put(0x8C88FDE0u+4*channel,0x8C040EF8u);
+            f.put(0x8C88FDE8u+4*channel,0x8C040E74u);
+            if(variant==17)f.putf(0x8C88FE04u+channel*28,30.5f);
+            for(unsigned node=0;node<4;++node)for(unsigned axis=0;axis<3;++axis){
+                const auto row=records+channel*4096+node*24;
+                const auto key=keys+channel*8192+node*1024+axis*256;
+                f.put(row+axis*4,count?key:0);f.put(row+12+axis*4,count);
+                for(unsigned i=0;i<count;++i){
+                    f.put(key+i*16,i*8);
+                    for(unsigned part=0;part<3;++part){
+                        if(axis==1)f.put(key+i*16+4+part*4,0xFFFF1234u*(i+part+1+channel));
+                        else f.putf(key+i*16+4+part*4,float(i+part+1+channel)*.25f);
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if(variant>=18 && variant<=24){f.put(0x8C88FFB4u,callback);f.mutation=variant-17;return;}
+    if(variant==25){f.cpu.r[4]|=0x20000000u;f.cpu.r[15]|=0x20000000u;return;}
+    if(variant==26){f.put(0x8C88F5D8u,1);return;}
+    if(variant==27){f.put(0x8C88FFB4u,callback);f.stop_after=2;return;}
+    if(variant==28){f.cpu.r[15]+=2;return;}
+    if(variant==29){f.put(nodes+44,nodes+1);return;}
+    if(variant==30 || variant==31){f.put(0x8C88FDE8u,callback);f.mutation=variant==30?6:8;return;}
+    if(variant==32){f.put(0x8C19AC84u,callback);return;}
+    if(variant==33){f.put(0x8C88FDD8u,callback);f.mutation=9;return;}
+    if(variant==34){f.put(0x8C88FDD8u,callback);f.mutation=10;return;}
+    if(variant==35){
+        f.put(nodes,0x60);f.put(0x8C88FD98u,0x8CE50000u);
+        for(unsigned i=0;i<16;++i)f.put(0x8CE50000u+i*4,i%5==0?0x3F800000u:0u);
+    }
+}
 int main(int argc,char** argv)try{
     require(argc==2,"render-hierarchy-tests <original-ram>");std::ifstream file(argv[1],std::ios::binary);
     const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
@@ -160,6 +220,15 @@ int main(int argc,char** argv)try{
         if(variant<27)require(result==family::Outcome::Complete && a.cpu.pc==returned,"hierarchy incomplete");
         else require(result==family::Outcome::Interrupted,"expected original failure/stop");
         std::cout<<"hierarchy case="<<variant<<" mode="<<mode<<" outcome="<<int(result)<<'\n';++cases;
+    }
+    for(unsigned mode:{0u,1u,fpscr_fr_mask})for(unsigned variant=0;variant<36;++variant){
+        Fixture a(image,mode),b(image,mode);setup_blended(a,variant);setup_blended(b,variant);a.oracle=&b;
+        const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,Fixture::resume});
+        while(b.cpu.pc!=a.cpu.pc && !b.cpu.trap_pending){advance(b);if(Fixture::external(b.cpu.pc))require(b.child(b.cpu.pc),"blended original child");}
+        compare(a,b,"blended hierarchy final");require(a.trace==b.trace,"blended callback sequence differs");
+        if(variant>=27 && variant<=29)require(result==family::Outcome::Interrupted,"blended expected failure");
+        else require(result==family::Outcome::Complete && a.cpu.pc==returned,"blended incomplete");
+        std::cout<<"blended case="<<variant<<" mode="<<mode<<" outcome="<<int(result)<<'\n';++cases;
     }
     for(unsigned mode:{0u,1u,fpscr_fr_mask})for(auto owner:{0x8C639BB0u,0x8C639AD8u,0x8C639C34u,0x8C639F38u,0x8C63A5DCu,0x8C63A7B8u})for(unsigned kind=0;kind<6;++kind){
         Fixture a(image,mode),b(image,mode);

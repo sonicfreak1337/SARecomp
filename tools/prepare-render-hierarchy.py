@@ -23,6 +23,22 @@ OWNERS=(
  ('srt_triple',0x8C0406A0,0x8C0406A0,0x8C0406E0),
  ('srt_quad',0x8C0406E0,0x8C0406E0,0x8C040720),
 )+tuple((name.replace('-','_'),entry,entry,entry+size) for name,entry,size,_ in motion.OWNERS)+(
+ ('blend_hierarchy',0x8C041A2E,0x8C041A2E,0x8C041B0E),
+ ('blend_static',0x8C041516,0x8C041516,0x8C04154E),
+ ('blend_single',0x8C04154E,0x8C04154E,0x8C0415B4),
+ ('blend_double',0x8C041600,0x8C041600,0x8C041666),
+ ('blend_triple',0x8C041666,0x8C041666,0x8C0416CC),
+ ('blend_quad',0x8C0416CC,0x8C0416CC,0x8C041732),
+ ('blend_static_position',0x8C0414A6,0x8C0414A6,0x8C0414CC),
+ ('blend_static_scale',0x8C0414CC,0x8C0414CC,0x8C0414F0),
+ ('blend_static_angle',0x8C0414F0,0x8C0414F0,0x8C041516),
+ ('blend_position',0x8C040DF0,0x8C040DF0,0x8C040E74),
+ ('blend_scale',0x8C040E74,0x8C040E74,0x8C040EF8),
+ ('blend_angle',0x8C040EF8,0x8C040EF8,0x8C040F7A),
+ ('blend_key_index',0x8C040A60,0x8C040A60,0x8C040AAA),
+ ('blend_float_key',0x8C040C5C,0x8C040C5C,0x8C040CD0),
+ ('blend_angle_key',0x8C040D60,0x8C040D60,0x8C040DF0),
+ ('blend_apply',0x8C0417C8,0x8C0417C8,0x8C04196C),
  ('push',0x8C639BB0,0x8C639BB0,0x8C639C30),
  ('pop',0x8C639AD8,0x8C639AD8,0x8C639B18),
  ('translate_register',0x8C63A7B8,0x8C63A7B8,0x8C63A81A),
@@ -59,7 +75,9 @@ def inspect(ram,entry,begin,end):
 
 def emit_simple(pc,op,ram,restart=None):
     n,m=(op>>8)&15,(op>>4)&15;r,s=f'cpu.r[{n}]',f'cpu.r[{m}]'
-    if op&0xF00F==0x3002:body=f'cpu.t={r}>={s};'
+    if op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
+    elif op&0xF00F==0x200B:body=f'{r}|={s};'
+    elif op&0xF00F==0x3002:body=f'cpu.t={r}>={s};'
     elif op&0xF00F==0x3006:body=f'cpu.t={r}>{s};'
     elif op&0xF00F==0x3008:body=f'{r}-={s};'
     elif op&0xF0FF==0x4000:body=f'cpu.t=({r}&0x80000000u)!=0u;{r}<<=1u;'
@@ -81,7 +99,7 @@ def emit_body(ram,entry,instructions):
         delay=lambda at:emit_simple(pc+2,word(pc+2),ram,at)
         if op==0xB:lines+=['const auto target=cpu.pr;',delay(at),f'return_site=0x{pc:08X}u;cpu.pc=target;return;']
         elif op&0xF0FF==0x402B:
-            lines+=[f'const auto target=cpu.r[{(op>>8)&15}];',delay(at),'call(target);return;']
+            lines+=[f'const auto target=cpu.r[{(op>>8)&15}];',delay(at),'call(target,true);return;']
         elif high==0xA:lines+=[delay(at),f'goto {label(pc+4+2*shared.signed(op&4095,12))};']
         elif upper in (0x89,0x8B,0x8D,0x8F):
             delayed=upper in (0x8D,0x8F);condition='cpu.t' if upper in (0x89,0x8D) else '!cpu.t'

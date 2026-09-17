@@ -10,7 +10,9 @@ spec=importlib.util.spec_from_file_location('hierarchy_author',Path(__file__).wi
 author=importlib.util.module_from_spec(spec);spec.loader.exec_module(author)
 def sha(data):return hashlib.sha256(data).hexdigest()
 UNITS={'unit-v8C038802-8C03FF90-0329df60636b0242.cpp': '6e712b4cd2dc88ca28782efc79268ac7a49edac77bcc7cb1d4d38b31d66f4e4b', 'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp': '9a8b8e51de23c7982413a8d2d15ba783be133a0b77a406d656a2769da510e785', 'unit-v8C638FF0-8C639E9C-df982d963eeb3342.cpp': '79ecc1ebbdf3e06c517d5edcc42850c08eb50c7dfe6fe4359c59b0e626472558', 'unit-v8C639F38-8C63B05C-e3ea66f80473641e.cpp': '8716f427e7212908572f5b03d060864aa455c94458a55157135268b2c040b852'}
-ROOT_UNIT='unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp'
+UNITS['unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp']='b00ee65998295accfadc0e20866953410c3c42872670f0dae9cc66025c1c943b'
+ROOT_UNITS={'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp':0x8C040784,
+            'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E}
 def local_resumes(text,ram,owner):
     _,entry,begin,end=owner
     instructions,delays,calls=author.inspect(ram,entry,begin,end)
@@ -87,14 +89,21 @@ def main():
         texts[name]=data.decode().replace('\r\n','\n')
     proof=[]
     if a.input:
-        if a.input.name!=ROOT_UNIT:raise ValueError('Unexpected hierarchy hook unit')
-        data=a.input.read_bytes();original=(a.source_root/'code'/ROOT_UNIT).read_bytes()
+        if a.input.name not in ROOT_UNITS:raise ValueError('Unexpected hierarchy hook unit')
+        root_unit=a.input.name;public_entry=ROOT_UNITS[root_unit]
+        data=a.input.read_bytes();original=(a.source_root/'code'/root_unit).read_bytes()
         if data!=original:
-            if a.input.parent.name not in ('region-writes','region-extended-writes'):raise ValueError('Unreviewed active input')
-            prior=json.loads((a.input.parent/'preparation.json').read_text());rows=[e for e in prior['units'] if e['unit']==ROOT_UNIT]
-            if (prior['generation']!=generation or prior['mode']!='region' or prior.get('guard_probe',False) or prior.get('extended_regions',False)!=(a.input.parent.name=='region-extended-writes') or len(rows)!=1 or rows[0]['source_sha256']!=sha(original) or rows[0]['output_sha256']!=sha(data)):raise ValueError('RAM provenance')
+            if a.input.parent.name=='animation-bridge':
+                prior=json.loads(a.input.with_suffix('.json').read_text())
+                if (public_entry!=0x8C041A2E or prior['generation']!=generation or prior['owners']!=['8C0417C8'] or
+                    prior['original_sha256']!=sha(original) or prior['output_sha256']!=sha(data)):
+                    raise ValueError('Pose bridge provenance')
+            else:
+                if a.input.parent.name not in ('region-writes','region-extended-writes'):raise ValueError('Unreviewed active input')
+                prior=json.loads((a.input.parent/'preparation.json').read_text());rows=[e for e in prior['units'] if e['unit']==root_unit]
+                if (prior['generation']!=generation or prior['mode']!='region' or prior.get('guard_probe',False) or prior.get('extended_regions',False)!=(a.input.parent.name=='region-extended-writes') or len(rows)!=1 or rows[0]['source_sha256']!=sha(original) or rows[0]['output_sha256']!=sha(data)):raise ValueError('RAM provenance')
         out=data.decode().replace('\r\n','\n')
-        start=out.index('BlockExit fn_8C040784_runtime_entry(CpuState& cpu, BlockExecutionContext& context) {')
+        start=out.index(f'BlockExit fn_{public_entry:08X}_runtime_entry(CpuState& cpu, BlockExecutionContext& context) {{')
         boundary=out.index('    static_cast<void>(services);',start)
         injection="""    if (sonic::render_hierarchy::enabled() && cpu.pc == sonic::render_hierarchy::entry) {
         const auto outcome=sonic::render_hierarchy::try_dispatch(cpu,*services);
@@ -108,6 +117,7 @@ def main():
         }
     }
 """
+        injection=injection.replace('sonic::render_hierarchy::entry',f'0x{public_entry:08X}u')
         out=out[:boundary]+injection+out[boundary:]
         out='#include "sonic_render_hierarchy.hpp"\n'+out.replace('#include "../include/','#include "')
     else:
@@ -127,6 +137,7 @@ def main():
         for entry in owners:out=out.replace(f'fn_{entry:08X}_runtime_entry',f'hierarchy_original_{entry:08X}')
         declarations='\n'.join(f'BlockExit hierarchy_original_{e:08X}(CpuState&,BlockExecutionContext&);' for e in owners)
         declarations+='\nBlockExit fn_8C037098_runtime_entry(CpuState&,BlockExecutionContext&);'
+        declarations+='\nBlockExit fn_8C03700C_runtime_entry(CpuState&,BlockExecutionContext&);'
         out=out.replace(prefix,prefix+declarations+'\n',1)+'\n}\n'
         out='#include "sonic_render_hierarchy.hpp"\n'+out
         out+='namespace sonic::render_hierarchy {\nbool resume_original(katana::runtime::CpuState& cpu,std::uint32_t owner) {\nkatana::runtime::BlockExecutionContext block;\nswitch(owner) {\n'

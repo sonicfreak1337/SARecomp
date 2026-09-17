@@ -89,6 +89,7 @@
 
 namespace katana_port_generated::runtime_dispatch_detail {
 extern thread_local katana::runtime::NativePortAotServices* active_services;
+extern thread_local katana::runtime::BlockEndKind active_exit_kind;
 }
 
 #include <algorithm>
@@ -38606,14 +38607,20 @@ bool sonic_render_hierarchy_call(void* opaque,katana::runtime::CpuState& cpu,std
     auto& bridge=*static_cast<SonicRenderHierarchyBridge*>(opaque);
     return sonic_object_activation_call(&bridge.services.context(),cpu,target);
 }
-bool sonic_render_hierarchy_resume(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t owner,std::uint32_t){
+bool sonic_render_hierarchy_resume(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t owner,std::uint32_t continuation){
     using namespace sonic::render_hierarchy;
     auto& services=static_cast<SonicRenderHierarchyBridge*>(opaque)->services;
     auto& context=services.context();
     if(cpu.trap_pending || context.stop_reason!=katana::runtime::NativePortStopReason::None ||
        !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
     struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
-    const bool handled=resume_original(cpu,owner);
+    bool handled=resume_original(cpu,owner);
+    // Retained dynamic tails publish the target for the outer dispatcher.
+    // Finish that boundary here, with the same restored PR and callback path.
+    if(handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None &&
+       cpu.pc!=continuation && cpu.pr==continuation &&
+       katana_port_generated::runtime_dispatch_detail::active_exit_kind==katana::runtime::BlockEndKind::DynamicBranch)
+        handled=sonic_object_activation_call(&context,cpu,cpu.pc);
     return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
 }
 }

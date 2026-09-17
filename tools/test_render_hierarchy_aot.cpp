@@ -6,6 +6,7 @@
 #include "katana/runtime/native_port.hpp"
 #include <filesystem>
 #include <regex>
+namespace katana_port_generated::runtime_dispatch_detail {extern thread_local katana::runtime::BlockEndKind active_exit_kind;}
 namespace {
 Fixture* active_fixture{};
 std::set<std::uint32_t> original_entries;
@@ -34,9 +35,13 @@ void external(CpuState& c,std::uint32_t target){
     const auto end=c.pr;
     require(Fixture::resume(active_fixture,c,target,end),"AOT child reference failed");
 }
-bool resume(void*,CpuState& c,std::uint32_t owner,std::uint32_t){
+bool resume(void*,CpuState& c,std::uint32_t owner,std::uint32_t continuation){
     struct Depth{Depth(){++family::resume_depth;}~Depth(){--family::resume_depth;}} depth;
-    return family::resume_original(c,owner) && !c.trap_pending;
+    const bool handled=family::resume_original(c,owner);
+    if(handled && !c.trap_pending && c.pc!=continuation && c.pr==continuation &&
+       katana_port_generated::runtime_dispatch_detail::active_exit_kind==BlockEndKind::DynamicBranch)
+        external(c,c.pc);
+    return handled && !c.trap_pending;
 }
 }
 namespace katana_port_generated {
@@ -58,17 +63,31 @@ BOUNDARY(runtime_only_call) BOUNDARY(runtime_only_jump) BOUNDARY(unresolved_call
 void exact_guarded_call(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
 void exact_guarded_jump(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
 BlockExit fn_8C037098_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C037098u);return {};}
+BlockExit fn_8C03700C_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C03700Cu);return {};}
 }
 int main(int argc,char** argv)try{
     require(argc==3,"render-hierarchy-aot-tests <original-ram> <original-code-root>");
     std::ifstream file(argv[1],std::ios::binary);const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000u,"RAM size");load_original_entries(argv[2]);unsigned cases=0;
-    for(unsigned kind=0;kind<10;++kind){
+    for(unsigned kind=0;kind<19;++kind){
         Fixture a(image,0),b(image,0);a.oracle=&b;active_fixture=&a;
-        setup(a,kind==0?1:kind==1?23:kind==2?28:kind==3?29:16);
-        setup(b,kind==0?1:kind==1?23:kind==2?28:kind==3?29:16);
+        if(kind<10){
+            setup(a,kind==0?1:kind==1?23:kind==2?28:kind==3?29:16);
+            setup(b,kind==0?1:kind==1?23:kind==2?28:kind==3?29:16);
+        }else{
+            const auto variant=kind==10?16u:kind==11?23u:kind==12?30u:kind==13?31u:kind==14?28u:kind==15?29u:kind==16?16u:35u;
+            setup_blended(a,variant);setup_blended(b,variant);
+            if(kind==16)for(auto* f:{&a,&b})f->put(records,keys+1u);
+            if(kind==17)for(auto* f:{&a,&b})f->put(0x8C88FD98u,0x8CE50002u);
+            if(kind==18)for(auto* f:{&a,&b}){
+                // Incoming PR aliases a normal call continuation, not a return.
+                f->cpu.pc=0x8C041516u;f->cpu.pr=0x8C04152Cu;f->mutation=6;
+                f->put(0x8C88FE78u,0);f->put(0x8C88FDD8u,callback);
+                f->put(0x8C88FDE0u,alternate);f->put(0x8C88FDE8u,alternate);
+            }
+        }
         if(kind>=4 && kind<8){for(auto* f:{&a,&b}){f->cpu.pc=kind<6?0x8C63A7B8u:0x8C639C34u;f->cpu.r[4]=kind&1u?0x8CFFFFE0u:0x8CE30002u;f->cpu.r[5]=0x1111;f->cpu.r[6]=0x2222;f->cpu.r[7]=0x3333;}}
-        if(kind>=8)for(auto* f:{&a,&b}){
+        if(kind>=8 && kind<10)for(auto* f:{&a,&b}){
             // The final SRT operation tail-calls a mutable foreign callback.
             f->put(0x8C88FD64u,0x8C0405B2u);
             f->put(0x8C88FD6Cu,0x8C04057Au);f->put(0x8C88FD70u,0x8C040588u);
@@ -83,7 +102,8 @@ int main(int argc,char** argv)try{
         const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,resume});
         while(b.cpu.pc!=a.cpu.pc && !b.cpu.trap_pending){advance(b);if(Fixture::external(b.cpu.pc))require(b.child(b.cpu.pc),"original child");}
         compare(a,b,"actual AOT continuation");require(a.trace==b.trace,"duplicate AOT callback");
-        if(kind<2 || kind>=8)require(result==family::Outcome::Complete && family::return_site==0x8C04082Cu,"root AOT return");
+        if(kind<2 || (kind>=8 && kind<14))require(result==family::Outcome::Complete && family::return_site==(kind<10?0x8C04082Cu:0x8C041B0Au),"root AOT return");
+        else if(kind==18)require(result==family::Outcome::Complete && a.trace.size()==3 && a.cpu.pc==0x8C04152Cu,"ordinary call mistaken for completed owner");
         else require(a.cpu.trap_pending && result==family::Outcome::Interrupted,"expected actual AOT fault");
         std::cout<<"hierarchy-aot case="<<kind<<" outcome="<<int(result)<<'\n';++cases;
     }

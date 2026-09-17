@@ -7,6 +7,7 @@
 namespace katana::runtime {class NativePortImmutableWriteGuard;class NativePortAotServices;}
 namespace sonic::render_hierarchy {
 inline constexpr std::uint32_t entry=0x8C040784u;
+inline constexpr std::uint32_t blended_entry=0x8C041A2Eu;
 inline thread_local unsigned resume_depth{};
 inline thread_local std::uint32_t return_site{};
 inline bool enabled() noexcept {
@@ -30,6 +31,6 @@ Outcome try_dispatch(katana::runtime::CpuState&,katana::runtime::NativePortAotSe
 bool retained_source_matches(katana::runtime::CpuState&,const katana::runtime::NativePortImmutableWriteGuard*) noexcept;
 bool resume_original(katana::runtime::CpuState&,std::uint32_t);
 #ifdef SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE
-inline thread_local std::array<bool,0x4000/2> visited{};
+inline thread_local std::array<bool,0xA000/2> visited{};
 #endif
 }

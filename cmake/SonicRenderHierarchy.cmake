@@ -2,7 +2,9 @@ set(render_hierarchy_dir "${CMAKE_BINARY_DIR}/generated/render-hierarchy")
 set(render_hierarchy_outputs "${render_hierarchy_dir}/hierarchy-identities.inc"
     "${render_hierarchy_dir}/hierarchy-switch.inc" "${render_hierarchy_dir}/hierarchy-members.inc")
 foreach(part hierarchy static_position static_zyx static_yxz static_scale srt_static srt_single srt_double srt_triple srt_quad
-    position scale rotate_zyx rotate_yxz key_index float_key angle_key push pop translate_register scale_register rotate_zyx_register rotate_yxz_register)
+    position scale rotate_zyx rotate_yxz key_index float_key angle_key push pop translate_register scale_register rotate_zyx_register rotate_yxz_register
+    blend_hierarchy blend_static blend_single blend_double blend_triple blend_quad blend_static_position blend_static_scale blend_static_angle
+    blend_position blend_scale blend_angle blend_key_index blend_float_key blend_angle_key blend_apply)
     list(APPEND render_hierarchy_outputs "${render_hierarchy_dir}/hierarchy-${part}.inc")
 endforeach()
 add_custom_command(OUTPUT ${render_hierarchy_outputs}
