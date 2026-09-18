@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a crash, visual problem, input issue or performance regression.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check existing issues first. Do not attach original game files or personal saves.
+        Diagnostic reports are optional; include a screenshot or short video when useful.
+  - type: input
+    id: build
+    attributes:
+      label: Build or update
+      description: Give the version, installer/update filename or commit you tested.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - Steam Deck (Gaming Mode)
+        - Steam Deck (Desktop Mode)
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware and operating system
+      description: CPU/GPU and OS version, or Steam Deck model and SteamOS version.
+  - type: dropdown
+    id: timing
+    attributes:
+      label: Game timing
+      options:
+        - Original
+        - Recompiled
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: renderer
+    attributes:
+      label: Renderer
+      options:
+        - Vulkan
+        - Direct3D 11
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What happened and how to reproduce it
+      description: Include character, stage, act or transition, and the steps leading to the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, video or additional details
+      description: For performance, distinguish in-game SIM FPS from external display FPS. Note display mode, camera style and controller if relevant.

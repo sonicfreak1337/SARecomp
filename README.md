@@ -1,201 +1,157 @@
-# Sonic Adventure: Recompiled
+<p align="center">
+  <img src="assets/branding/sonic-adventure-recompiled-logo.png" alt="Sonic Adventure Recompiled" width="512">
+</p>
 
-Private development project for the native Sonic Adventure PC port.
+<p align="center">
+  <strong>The Dreamcast adventure, recompiled for PC.</strong><br>
+  Windows &nbsp;·&nbsp; Linux &nbsp;·&nbsp; Steam Deck
+</p>
 
-Current installers are in `out/installers`; the separate existing-installation
-Deck/Linux patch is in `out/patches`. The v5 installers were **withdrawn** due
-to disabled native math under Original timing. See
-[the correction, verification and exact artifact identities](docs/original-timing-performance-fix-20260915.md).
+<p align="center">
+  <a href="https://github.com/sonicfreak1337/SARecomp/releases">Releases</a> &nbsp;·&nbsp;
+  <a href="#installation">Installation</a> &nbsp;·&nbsp;
+  <a href="#features">Features</a> &nbsp;·&nbsp;
+  <a href="#known-issues">Known issues</a> &nbsp;·&nbsp;
+  <a href="https://github.com/sonicfreak1337/SARecomp/issues/new/choose">Report a bug</a>
+</p>
 
-The accepted baseline is **r354 / 0.49.9** (2026-09-11). All seven stories
-were completed by the user, who also accepted the current bug-fix batch.
-The executable and its dependencies are preserved independently from the
-experimental worktree. See `baseline/r354.json` for the exact file identities.
+---
 
-Development uses the existing Sonic title adapter and a pinned Katana runtime.
-Katana core and SA2 development are outside this project. Experimental work
-lives on `enhancements/widescreen` and `enhancements/camera-style`; `main` and the `r354-baseline` tag retain
-the initial standalone baseline.
+Sonic Adventure Recompiled is an unofficial native PC port of the Dreamcast
+version of **Sonic Adventure**, powered by **KatanaRecomp**. It preserves the
+original adventure while adding widescreen support, modern camera controls, native
+PC settings and a choice of rendering and gameplay timing modes.
 
-The independent, read-only snapshot lives under `.local/baseline/r354`.
-`python tools/verify-baseline.py` checks its contents without starting a game;
-`--quick` checks the executable and AOT metadata. Experiments use `out/` and
-separate save directories. No feature automatically replaces r354.
+**You must provide your own copy of Sonic Adventure.** The installer requires
+the supported **PAL v1.003 (1999)** disc image and its accompanying tracks.
+Original gameplay files are installed from your disc data, not supplied in the
+player installer. See [supported game files](docs/INSTALLATION.md#supported-game-files).
 
-The private GitHub release `r354-baseline` also contains a split development
-archive. `baseline/development-bundle.json` records each part and every restored
-file's SHA-256. A fresh clone can use `python tools/restore-baseline.py` with
-authenticated GitHub CLI access to restore the pinned SDK, compiled AOT,
-baseline product and installed content. This helper refuses to replace an
-existing snapshot. Archive upload and remote part identities were verified;
-a complete fresh-clone restore has not yet been exercised.
+> [!NOTE]
+> **Work in progress.** These are test builds, not a finished v1.0 release.
+> All seven stories have been completed in project playtests, but performance
+> and compatibility work continues. Player-facing GitHub releases are being prepared.
 
-Original disc images are excluded. Installed content may be used privately
-during development; a later end-user installer will require original media.
+## Installation
 
-Build with `./tools/build.ps1` (Windows x64, PowerShell 7, Python 3.12+,
-Visual Studio clang-cl, CMake and Ninja). It uses the pinned runtime libraries
-and retains all 1,157 compiled game partitions. Adapter changes refresh only
-the provider contract and small dispatch archive, then relink. The original
-native link audit remains mandatory. The final widescreen build took 106
-seconds with zero AOT recompilations.
+Choose the installer for your platform and follow the on-screen setup.
+**Setup is in English.** In-game text and voice languages can be changed in Options.
 
-The development build is **`out/experimental/game.exe`**. Keep its DLLs,
-configuration files and the installed content at their current locations.
-Double-clicking the executable resolves content through `katana-content-root.txt`.
+| Platform | Package | Getting started |
+| --- | --- | --- |
+| Windows | Windows installer (`.exe`) | Run setup, select your `.gdi`, then launch **Sonic Adventure Recompiled**. |
+| Linux | Linux installer (`.run`) | Make it executable and run it as your normal user. No `sudo` is needed. |
+| Steam Deck | Steam Deck installer (`.run`) | Install in **Desktop Mode**, then add the installed game to Steam. Use Gaming Mode to play; do not force Proton. |
 
-At the title screen, **B / Circle / Escape** opens a localized quit prompt.
-**A / Cross / Enter** confirms; **B / Circle / Escape** cancels. See
-`docs/title-quit.md` for the title-only scope and verification.
+Keep the `.gdi` and **all of its track files together**, with the filenames
+referenced by the descriptor. Extract archives before selecting the game files.
+No development tools, compilation or Katana export are needed to install a player build.
 
-The original in-game **50/60 Hz / Test** actions do not change the PC video
-mode. Their Dreamcast graphics reset is disabled; use `sonic-config.exe`
-for PC resolution, output frame rate, renderer and window mode. The original
-menu can still be navigated and closed. See `docs/legacy-video-options.md`.
+**[Full installation guide and disc hashes →](docs/INSTALLATION.md)**
 
-Run `./tools/start.ps1` for experiments or
-`./tools/start.ps1 -Mode baseline` for an independent r354 run copy.
-Both seed separate profiles from the local save backup. Directly launching
-the experimental EXE defaults to `%LOCALAPPDATA%/SARecomp/experimental`.
-The immutable snapshot is never itself a writable run directory.
+Player installers and their update instructions belong on the
+[Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
+The `r354-baseline` development archive and GitHub's source-code ZIPs are not
+player installers. Until a player release is published, use the test package
+provided by the project maintainer.
 
-## Experimental widescreen
+## Features
 
-Open **Optionen > Bildformat (Neustart)** in the native window menu:
+### Widescreen and native rendering
 
-- Original (4:3), which remains the default.
-- 16:9 at 1920 x 1080.
-- 21:9 at 2560 x 1080.
-- An Monitor anpassen, using the monitor's actual aspect and fitting the window
-  into its available desktop area.
+- Original **4:3**, **16:9** and **21:9**, plus the display's actual aspect ratio.
+- Wider world rendering with correctly proportioned HUD elements at the screen edges.
+- **Direct3D 11 or Vulkan** on Windows; **Vulkan** on Linux and Steam Deck.
+- Windowed, borderless and fullscreen modes on PC, with **Alt+Enter** switching.
+- Steam Deck handheld preset: **1280 × 800**, native **16:10**, fullscreen.
+  Docked mode supports compatible external display resolutions and aspect ratios.
 
-Choices persist in `sonic-display.ini` and apply on the next launch. The window
-is fixed to the selected dimensions until restart, keeping output, rendering
-and camera aspect consistent. Custom resolutions can also be set in the INI.
-Builds preserve an existing output INI. The launch helper keeps per-profile
-settings; explicit `-Aspect`, `-Width` and `-Height` arguments override them.
+### Original or Recompiled
 
-The world gains horizontal field of view without stretching. Supported HUD
-owners keep their original proportions and margins at the physical edges:
-time, rings, lives, alternate main counters, boss health and the animal row.
-Other interface elements remain centered. Movies keep their aspect. Source-bound
-full-screen fade owners cover the added width. Only host rendering/culling
-copies change; guest gameplay activation, collision, simulation cadence and
-save semantics remain unchanged. Presentation stays at the title's 144 Hz
-default. Original mode leaves presentation packets unchanged.
+**Original timing** retains the game's scene-dependent cadence.
+**Recompiled timing** targets 60 gameplay updates per second at the original
+intended game speed. VSync controls presentation against the display's refresh rate.
+Both modes use the same native CPU optimizations; actual performance depends
+on the scene and hardware.
 
-Verification on 2026-09-11 used hidden, muted Emerald Coast captures at 4:3,
-16:9 and ultrawide, plus projection/edge/culling checks for 16:9, 64:27 and
-43:18. The final ultrawide capture confirms the stage-entry fade now covers
-the full width and the left HUD retains its margins. An in-process integration
-check exercised all four Options commands and restored the test configuration.
-The baseline's full hash check and subsequent executable/metadata check passed.
+**Original camera** keeps the original behavior. The optional **Recompiled
+camera** adds right-stick orbit and vertical control, with mouse camera support,
+separate sensitivities, inversion, deadzones and a configurable return to the
+original camera. Cutscenes and scripted camera sequences retain their control.
 
-This is a bounded visual verification, not a new full-story or level-matrix
-pass. Character-specific HUD extras and every scene transition have not all
-been independently checked. Captures and logs are local under
-`runs/widescreen-final`; the inspected final frame is `emerald-coast-ultrawide.png`.
-Personal saves and original disc images are excluded from Git and the remote
-development archive.
+### Options that fit the game
 
-The Adventure Field ring icon now shares its counter's left anchor; the user
-confirmed this correction. Widescreen visibility also reaches the retail
-BasicAttach pre-cull and 16 reviewed object display callers, including the
-hint monitor. A reported station-hall monitor crash is still under
-investigation; this experimental build is not a replacement baseline.
-See `docs/widescreen-culling.md` for the scope, evidence and remaining limits.
+A new in-game Options menu follows the original presentation and keeps the
+original Options music and **Sound Test**. Navigate with a controller, mouse
+or keyboard. Settings that need a restart are marked; display changes have a
+confirmation timeout and automatic rollback.
 
-The subsequent Speed Highway 2 capsule identified a separate finite-only SDK
-color read. The experimental build now preserves the original FMOV/FADD color
-behavior and converts exceptional colors at their output boundary. See
-`docs/speed-highway-color-crash.md` for the exact source evidence and checks.
+- Rebind controls and choose Xbox, PlayStation or keyboard button prompts.
+- Adjust master, music, voice and effects volumes separately.
+- Optionally mute or pause on focus loss, and pause on controller disconnection.
+- Select Japanese, English, French, Spanish or German text; Japanese or English voices.
+- Manage save profiles, versioned backups, restores and save import/export.
+  Story and Chao data are backed up together, with confirmation before replacement.
+- At the title screen, press **B / Circle / Escape** to open the quit confirmation.
 
-## CPU performance work
+## System requirements
 
-The performance batch found no reliable reduction in total CPU work. All
-runtime, AOT and adapter experiments were discarded, including mesh-local
-color reuse. The exact accepted widescreen executable and adapter sources
-were restored. No gameplay work, memory guard or floating-point contract
-has changed. This batch adds measurement tooling, not a claimed FPS upgrade.
+| Platform | Current requirements |
+| --- | --- |
+| Windows | x64 PC with a Direct3D 11-capable GPU, or a Vulkan 1.3-capable GPU and driver for Vulkan. |
+| Linux | x86-64, glibc 2.31 or newer, X11 or XWayland, and a Vulkan 1.3-capable GPU and driver. |
+| Steam Deck | SteamOS; use the Steam Deck package and install in Desktop Mode. |
 
-The linker now uses a persistent ThinLTO cache and three worker threads. Build
-logs count actual recompiled AOT objects instead of always reporting zero.
-This improves development diagnostics; it is not a game-FPS claim.
+CPU, memory and storage recommendations for a final release are still being
+measured. Setup checks the required installation space. Allow additional room
+for the source disc files, temporary extraction and update backups.
 
-Run `python tools/benchmark-stage.py --tag unique-name --timing` for one hidden,
-muted, 60-second Emerald Coast probe with forward input and separate copied
-saves. It measures simulation/presentation rates and process CPU milliseconds
-per simulation frame, excluding the first ten seconds. It refuses to overlap
-another game or compiler. `--exe` selects a preserved reference executable;
-`--scenario sonic-windy-valley` selects the other measured scene.
+## Known issues
 
-The probe uses a diagnostic entry and a timed shutdown, not a completed stage
-or story replay. Passing requires completed gameplay, the expected deadline
-stop reason, process exit status and no reported runtime fault. CPU timing
-includes all game threads and is not CPU temperature or a single-core duration.
-The local logs live under `runs/`; the compact measurement report is in
-`docs/performance-2026-09-11.md`.
+- **Steam Deck performance:** for the best current experience, set
+  **Game timing → Original** and **VSync → Off** in Options. Demanding stages,
+  bosses and cutscenes can still slow down. Further performance improvements are planned;
+  stable 60 FPS across the whole game is not yet established.
+- **Widescreen cutscenes:** some scenes and effects can expose framing issues
+  outside the original 4:3 area. This is confirmed in **Tails' first cutscene**.
+  Original 4:3 remains available as a workaround.
+- **Test-build coverage:** completed story playtests do not cover every Chao,
+  minigame, device or display configuration.
 
-## Experimental Vulkan
+Check [existing reports](https://github.com/sonicfreak1337/SARecomp/issues)
+before opening a [bug report](https://github.com/sonicfreak1337/SARecomp/issues/new/choose).
+Include the build, platform, character, stage and steps to reproduce. If reporting
+performance, distinguish the game's **SIM FPS** from an external display FPS overlay.
+Diagnostic reports are optional; do not attach original game files or personal saves.
 
-Open **Optionen > Renderer (Neustart)** and select **Vulkan (experimentell)**,
-then restart. Direct3D 11 remains the default and selectable fallback. Both
-backends support the existing widescreen modes. The selection persists in
-`sonic-display.ini`; builds preserve the user's current configuration.
-Vulkan also supports **Alt+Enter** for borderless fullscreen and return to the
-previous window size and position.
+## FAQ
 
-This is a native Vulkan backend using the same scene and shader contracts as
-D3D11. It requires a compatible Vulkan 1.3 driver; the SDK/compiler are not
-needed to play. Linux host support and the replacement ingame Options screen
-are subsequent work. See `docs/vulkan-renderer.md` for implementation,
-requirements, source provenance and bounded validation results.
+**Can I use Sonic Adventure DX or another Dreamcast release?**<br>
+No. The current installer supports the specific PAL Dreamcast release listed
+in the [installation guide](docs/INSTALLATION.md#supported-game-files).
 
-The benchmark helper accepts `--renderer d3d11` or `--renderer vulkan`.
-The earlier measurements identify translated game execution as the main CPU
-cost, so a new GPU backend alone does not establish a simulation-FPS gain.
-The matched D3D11/Vulkan probes found no consistent CPU or simulation gain;
-both maintained roughly 144 output FPS. See `docs/vulkan-performance-2026-09-12.md`.
+**Does the game run through an emulator or Proton?**<br>
+The port uses native compiled code and native rendering. Linux and Steam Deck
+builds run directly; leave Steam's forced compatibility-tool setting disabled.
 
-## First-start configuration
+**Will an update remove my progress?**<br>
+Supported installers and update packages preserve saves and settings. Close
+the game before updating and follow the package's version requirements. Save
+backups can also be created from **Options → Profiles**.
 
-The first interactive launch opens the English **`sonic-config.exe`** beside
-`game.exe`. Save & start continues into the game; Cancel exits before starting
-the game. Run `sonic-config.exe` again whenever settings should change.
+**How do I build or contribute?**<br>
+See [development setup](docs/DEVELOPMENT.md) and [contributing](CONTRIBUTING.md).
+Playing a release build does not require building the project.
 
-Choose Direct3D 11 or Vulkan; windowed, borderless or exclusive fullscreen;
-resolution; original 4:3 or widescreen; render scale; VSync; Original/Recompiled
-game timing; camera style; text language, voice language and subtitles.
-Recompiled targets 60 updates and 60 output FPS without VSync; VSync follows
-the display. Original retains its scene-owned cadence. Exclusive fullscreen falls back to borderless when
-the driver cannot acquire it. Alt+Enter returns to the saved window rectangle.
-Settings apply on the next launch and builds preserve an existing INI.
+## Credits
 
-Text supports Japanese, English, French, Spanish and German. Voices support
-Japanese and English. **Use game setting** leaves that original setting alone.
-Explicit choices are applied when loading a save and merged into its language
-options on the next normal game save, using the original checksum and existing
-VMU persistence. Loading does not undo the configuration. The config program
-does not edit save files or force a story-progress save during loading.
+**Original game created by SEGA, 1998, 1999.**<br>
+**Port created by SoNiCFReaK, 2026.**<br>
+**Powered by KatanaRecomp.**
 
-Direct launches store `sonic-display.ini` under
-`%LOCALAPPDATA%/SARecomp/experimental`, alongside the existing save namespace.
-The old INI beside the EXE is copied once if no user INI exists; it is never
-overwritten or deleted by migration. Crash logs and automatic input recordings
-use `logs/` and `recordings/` in the same user root. Cache and development-state
-paths also honor `KATANA_USER_DATA_ROOT`. An explicit `SARECOMP_PORTABLE=1` or
-`sarecomp-portable.txt` beside the EXE selects its `user-data/` directory.
-The user-root override takes precedence over portable mode.
-`tools/start.ps1` retains separate settings per run profile. `SARECOMP_DISPLAY_CONFIG` selects
-an explicit config file (also understood by `sonic-config.exe`). Background
-tests skip the popup and use their own settings and copied saves.
+Additional software and license notices are documented under
+[third-party dependencies](third_party/README.md) and included with the packages.
 
-## Experimental camera
-
-Choose **Camera style: Recompiled** in `sonic-config.exe` and restart.
-The right stick rotates freely around the character and adjusts camera
-elevation; the view follows the character during movement. **Original** is
-the default and keeps the original camera. Scripted camera overrides and
-reviewed fixed/path/timed sections retain their original control, including
-in-level event mechanisms. See `docs/camera-style.md` for the exact policy,
-hidden gameplay verification and current collision limitations.
+**This is an independent, non-profit fan project. Sonic Adventure and its
+original characters, game content and trademarks belong to SEGA.**
+This project is not affiliated with, sponsored by or endorsed by SEGA.
