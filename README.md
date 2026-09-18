@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sonicfreak1337/SARecomp/releases">Releases</a> &nbsp;·&nbsp;
+  <a href="https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1">Download Beta 1</a> &nbsp;·&nbsp;
   <a href="#installation">Installation</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#known-issues">Known issues</a> &nbsp;·&nbsp;
@@ -34,7 +34,8 @@ player installer. See [supported game files](docs/INSTALLATION.md#supported-game
 
 ## Installation
 
-Choose the installer for your platform and follow the on-screen setup.
+Download **[v0.50.0-beta.1](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1)**,
+choose the installer for your platform and follow the on-screen setup.
 **Setup is in English.** In-game text and voice languages can be changed in Options.
 
 | Platform | Package | Getting started |
@@ -49,11 +50,10 @@ No development tools, compilation or Katana export are needed to install a playe
 
 **[Full installation guide and disc hashes →](docs/INSTALLATION.md)**
 
-Player installers and their update instructions belong on the
+Player installers, checksums and update instructions are on the
 [Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
-The `r354-baseline` development archive and GitHub's source-code ZIPs are not
-player installers. Until a player release is published, use the test package
-provided by the project maintainer.
+GitHub's source-code ZIPs are not player installers. The full Beta 1 installers already include the latest CPU update;
+no separate performance patch is required.
 
 ## Features
 

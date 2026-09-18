@@ -1,11 +1,10 @@
-"""Restore the private, hash-pinned r354 development bundle into a fresh clone."""
+"""Restore an existing local, hash-pinned r354 backup; never download retail data."""
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
-import subprocess
 import zipfile
 
 root=Path(__file__).resolve().parents[1]
@@ -34,8 +33,8 @@ for part in record['parts']:
     if Path(name).name!=name: raise SystemExit('Invalid archive part name')
     destination=checked_path(archives,name)
     if not destination.exists():
-        subprocess.run(['gh','release','download',record['tag'],'--repo','sonicfreak1337/SARecomp',
-                        '--pattern',name,'--dir',str(archives)],check=True)
+        raise SystemExit('Local development backup part required: '+name+
+                         '. This archive is not distributed through GitHub.')
     verify(destination,part['bytes'],part['sha256'])
 archive=archives/'r354-development.zip'
 if not archive.exists():

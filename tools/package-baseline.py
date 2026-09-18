@@ -1,4 +1,4 @@
-"""Archive the private development baseline, excluding personal state and disc images."""
+"""Create a LOCAL development backup. Contains installed retail data: never upload."""
 import hashlib
 import json
 from pathlib import Path

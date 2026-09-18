@@ -23,11 +23,14 @@ The port consumes a pinned Katana runtime and retained compiled game partitions.
 It is not a standalone generic CMake checkout: a clone alone does not contain
 the local SDK, generated AOT build inputs or original disc data.
 
-Authorized development access can restore the private `r354-baseline` bundle
-using `tools/restore-baseline.py` and authenticated GitHub CLI access. Its exact
-contents and hashes are recorded in `baseline/development-bundle.json`.
-The archive transfer was verified; a complete clean-machine restoration is not
-yet claimed to be tested. Do not present this recovery archive as a player download.
+The old development recovery archive contained installed original game data
+and has been removed from GitHub, together with its release tag. It must not
+be uploaded again. The JSON identity manifests contain paths, sizes and hashes,
+not the corresponding game files.
+
+Maintainers with an existing local backup can use `tools/restore-baseline.py`;
+it requires local archive parts and does not download them. A complete
+clean-machine source bootstrap is not yet provided or claimed to be tested.
 
 Original disc images and personal saves are excluded from Git. The frozen
 `.local/baseline/r354` snapshot is never a writable build, run or cleanup target.

@@ -823,3 +823,24 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   private remote; never original disc images. Installed assets are authorized
   for development, but the eventual end-user package requires installation
   from the user's original media. Personal saves stay local.
+
+## Beta release packaging
+
+- The release version lives in `VERSION`; CMake's numeric project version
+  excludes the prerelease suffix. `tools/package-installers.py --game` selects
+  the explicitly verified current runtime, and `resources/release.json` binds
+  the release version, edition, source revision and packaged executable.
+- Keep `runs/` local and ignored, including raw logs, profiles and test captures.
+  Do not force-add them again. Concise findings belong in `docs/`; distributed
+  artifacts need checksums and a release manifest. Development settings are
+  templated by `cmake/development-display.ini`, not a live file at repository root.
+- New Deck setup defaults are Original timing and VSync Off, native 1280x800
+  fullscreen. Preserve explicit existing settings on reinstall. The legacy
+  application-directory prefix is retained for compatibility with existing
+  update scripts; it is not the player-facing release version.
+- Keep the repository private. The user authorized three complete prerelease
+  installers, not a public repository or a version 1.0 release.
+- The old `r354-baseline` GitHub release and its 13 assets were removed because
+  they contain installed original game data. Never upload that development
+  archive again. Local baseline protection and hash-only identity manifests
+  remain in place. Recovery tooling must use local backup parts, not downloads.

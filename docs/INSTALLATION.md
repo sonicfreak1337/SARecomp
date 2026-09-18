@@ -38,13 +38,13 @@ are decisive; do not edit or substitute files to bypass a failed verification.
 
 ## Get the right package
 
-Use the Windows, Linux or Steam Deck **player installer** from the relevant
-[project release](https://github.com/sonicfreak1337/SARecomp/releases).
-Player-facing releases are being prepared. For current private testing, use
-the package supplied by the maintainer.
+Use the Windows, Linux or Steam Deck **player installer** from
+[v0.50.0-beta.1](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1).
+All three full installers include the latest CPU update. No separate
+performance patch is needed for this release.
 
-The `r354-baseline` development recovery archive and automatically generated
-source-code ZIPs are not installers. A `.run` CPU update is also not a full
+Automatically generated source-code ZIPs are not installers.
+A `.run` CPU update is also not a full
 installer: it requires one of the existing builds named in its release notes.
 
 ## Windows
