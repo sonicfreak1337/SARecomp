@@ -12,6 +12,16 @@ after a slower Linux comparison. Continue with the distinct activation/lifetime
 scope in `native-object-activation-next-20260917.md`; do not repeat this plan
 as if its shared-capture step had not been attempted.
 
+September 18 status: the later combined model-ownership/SIMD-projection group
+was qualified and shipped in the September 17 v2 update; see
+`cpu-update-native-objects-20260917.md`. The compact packet consumer is a
+separate switch and stays OFF. Its new comparison with the completed native
+render hierarchy saves 2.81% execution CPU, 0.63% process CPU, and changes new
+images/s by -0.006% at matching endpoints. The completed byte verification and
+remaining whole producer/consumer boundary are recorded in
+`native-groups-next-profile-20260918.md`. Do not repeat the old isolated capture
+or unchanged packet-toggle experiments as new work.
+
 Title owners `8C037098`, `8C037108` and `8C03700C` surround native transform,
 palette and draw operations. Replacing only their wrapper with three native
 calls mostly removes wrapper overhead. A larger replacement needs a shared

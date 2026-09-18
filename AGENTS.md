@@ -539,6 +539,27 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   a Deck FPS claim. The final package/installed checks are recorded separately
   in `docs/cpu-update-native-groups-20260918.md`.
 
+- September 18 update delivered ahead of the requested 05:20 deadline. Runtime
+  source is commit `2e745a5`; see `docs/cpu-update-native-groups-20260918.md`.
+  The exact tested package is
+  `out/patches/SonicAdventureRecompiled-CPU-Update-2026-09-18.run` (262,349,464
+  bytes), with matching dated diagnostics ON/OFF switches. Program SHA-256 is
+  `55889c92ee5c5ab6a34f1d8733a8698bab6da3b20eaa416fa48b593c0b335f71`.
+  Actual Linux application passes both supported bases, Story/Chao/settings
+  preservation, policy preservation, backups and repeated installation. Both
+  timing modes pass actual installed Linux and hidden Windows checks. Final
+  direct-v2 Gamma/Sky/Lost pairs match all 16 endpoint fields and 68 updates:
+  execution CPU -11.55%/-5.73%/-8.05%, new images +0.33%/-0.71%/+8.94%.
+  Use these final installed results, not the preliminary 13.37% Gamma result.
+  These are short VM measurements, not Deck FPS. No further unchanged tests
+  or full matrix are needed. The uncaptured Deck crash and 20-25 ms target
+  remain open; do not claim the overarching native-work goal complete.
+  `docs/native-groups-next-profile-20260918.md` records the next full
+  model-submission and movement/contact boundaries. The related model-packet
+  follow-up with the newly qualified hierarchy has byte-exact Windows output
+  but only -2.81% execution CPU and unchanged Linux image throughput; it stays
+  OFF. Do not repeat that unchanged comparison or revive isolated micro-work.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
