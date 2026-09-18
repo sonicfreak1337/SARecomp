@@ -1,0 +1,182 @@
+SONIC_INTERNAL_DIAGNOSTICS version=1 enabled=0
+KATANA_NATIVE_PORT_BRINGUP unresolved_hardware_sites=96 probes=1
+KATANA_NATIVE_BUILD_PROFILE name=performance pgo_mode=off pgo_profile_sha256=none aot_all_o2=1
+SONIC_PRESENTATION mode=original output=1280x800 renderer=vulkan camera=original render_percent=100 x_scale=1 gameplay_timing=original
+SONIC_STARTUP phase=Loading game code (MB)
+SONIC_STARTUP_PREFETCH requested_bytes=1927991806 completed_bytes=1927991806 elapsed_ms=1382.351 error=0
+SONIC_STARTUP phase=Loading game data...
+SONIC_STARTUP phase=Connecting controllers...
+SONIC_INPUT_PROBE isolated_hardware=1 profile=3 remapping=normal
+SONIC_STARTUP phase=Preparing graphics...
+SONIC_VULKAN_OFFSCREEN_TEST active=1
+SONIC_VULKAN_DEVICE name=AMD Radeon RX 7900 XTX api=1.4 type2_nodes=22369621
+SONIC_SHADER_CACHE backend=vulkan driver_hit=0 bytes=0
+SONIC_VULKAN_WARMUP pipelines=0
+SONIC_STARTUP phase=Starting game...
+KATANA_NATIVE_FRAME_PACING simulation_fps=30 presentation_fps=60 catch_up=disabled
+KATANA_NATIVE_PORT_BUILD_IDENTITY_V1:sha256:05a1c67fc1d6e5aee33963d0c1456242e84507378b637b71a9b3dd885ddc8e47
+SONIC_NATIVE_PERIODIC_ADOPT reload=12500000 observed=12251537
+SONIC_NATIVE_TEXTURE_SET acquired domain=main index=0 rows=7 archives=7 publication=guest-registry
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=0 action=present open=1 draws=0 clear=0,0,0,1
+SONIC_NATIVE_INPUT slot=0 connected=0 buttons=0x0 pressed=0x0 released=0x0
+SONIC_NATIVE_INPUT slot=1 connected=0 buttons=0x0 pressed=0x0 released=0x0
+SONIC_NATIVE_INPUT slot=2 connected=0 buttons=0x0 pressed=0x0 released=0x0
+SONIC_NATIVE_INPUT slot=3 connected=0 buttons=0x0 pressed=0x0 released=0x0
+SONIC_NATIVE_PRETRANSFORMED_PROBE r4=0x8c00f358 pr=0x8c09b4ea sp=0x8c00f350 fullscreen=1 r5=0x4 r6=0x60 fr4=0xbc23d70a streams=0x8c00f368,0x8c00f388,0x0 v0=[0x0,0x0,0xef000000] v1=[0x0,0x43f00000,0xef000000] v2=[0x44200000,0x43f00000,0xef000000] v3=[0x44200000,0x0,0xef000000]
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=0 vertices=4 topology=4 cull=0 shading=0 blend=1:6:7 depth=1:1:6 list=2 material=1:1:1:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=0 index=0 position=0,0,1 color=0,0,0,0.937255
+SONIC_NATIVE_DRAW_VERTEX ordinal=0 index=1 position=640,0,1 color=0,0,0,0.937255
+SONIC_NATIVE_DRAW_VERTEX ordinal=0 index=2 position=0,480,1 color=0,0,0,0.937255
+SONIC_NATIVE_DRAW_VERTEX ordinal=0 index=3 position=640,480,1 color=0,0,0,0.937255
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=1 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=1 index=0 position=-64,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=1 index=1 position=-64,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=1 index=2 position=192,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=1 index=3 position=192,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=2 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=2 index=0 position=192,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=2 index=1 position=192,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=2 index=2 position=448,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=2 index=3 position=448,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=3 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=3 index=0 position=448,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=3 index=1 position=448,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=3 index=2 position=704,0,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=3 index=3 position=704,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=4 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=4 index=0 position=-64,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=4 index=1 position=-64,512,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=4 index=2 position=192,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=4 index=3 position=192,512,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=5 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=5 index=0 position=192,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=5 index=1 position=192,512,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=5 index=2 position=448,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=5 index=3 position=448,512,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_PACKET frame=1 ordinal=6 vertices=4 topology=4 cull=0 shading=1 blend=0:1:0 depth=1:1:6 list=0 material=1:0:0:0
+SONIC_NATIVE_DRAW_VERTEX ordinal=6 index=0 position=448,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=6 index=1 position=448,512,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=6 index=2 position=704,256,0.1 color=1,1,1,1
+SONIC_NATIVE_DRAW_VERTEX ordinal=6 index=3 position=704,512,0.1 color=1,1,1,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=1 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_STARTUP ready=1 elapsed_ms=3651.363
+SONIC_VULKAN_PIPELINE kind=0 warmup=0 elapsed_ms=0.125
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=2 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_VULKAN_PIPELINE kind=1 warmup=0 elapsed_ms=0.115
+SONIC_VULKAN_PIPELINE kind=2 warmup=0 elapsed_ms=0.041
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=3 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=4 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=5 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=6 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=7 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=8 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_FRAME_BOUNDARY owner=frame-begin index=9 action=present open=1 draws=7 clear=0,0,0,1
+SONIC_NATIVE_MOVIE_SEQUENCE diagnostic-menu-edge=1
+SONIC_NATIVE_MOVIE_SEQUENCE skip id=0 clip=0 input=menu
+SONIC_NATIVE_MOVIE_SEQUENCE completed id=0 clips=0 skipped=1 completion_status=1 decoded_video=0 presented_video=0 audio_frames=0 visibly_non_black=0
+SONIC_NATIVE_CONTENT request=advertise.prs normalized=ADVERTISE.PRS destination=0xcd00000
+SONIC_NATIVE_PRS_SOURCE staged=SONICAD/ADVERTISE.PRS decoded=sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5 encoded_start=0xcd00000 encoded_bytes=0x2b000 sequence=1
+SONIC_NATIVE_CONTENT loaded=SONICAD/ADVERTISE.PRS destination=0xcd00000 bytes=0x2ae96 sector_bytes=0x2b000
+SONIC_NATIVE_PRS retired_runtime_images=1 retired_loaded_aot=0 destination=0xc900000
+SONIC_NATIVE_PRS_MODULE identity=sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5 source=0x8088b000 runtime=0xc900000 bytes=0xe4648 generation=3 transition_epoch=1
+SONIC_NATIVE_SOUND_BANK_MAP collection=0:1 available=13 retained=0 replaced=0 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/MOBILE1.MLT bytes=1222016 active=1
+SONIC_NATIVE_SOUND_BANK_MAP collection=1:1 available=13 retained=0 replaced=13 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/EGGCARRIER.MLT bytes=1311520 active=2
+SONIC_NATIVE_SOUND_BANK_MAP collection=2:1 available=5 retained=10 replaced=3 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/V_SONICTAILS_E.MLT bytes=201472 active=3
+SONIC_NATIVE_SOUND_BANK_MAP collection=3:1 available=5 retained=12 replaced=3 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/P_SONICTAILS.MLT bytes=144000 active=4
+SONIC_NATIVE_SCENARIO_STAGE_QUEUED id=gamma-emerald-coast stage=1:0 context=6 table=3:5 main=11->2 tuple_override=0 gameplay_probe=1 protocol=3 input_profile=3 frame=193 presentations=190
+SONIC_NATIVE_CONTENT request=e_mot.PRS normalized=E_MOT.PRS destination=0xcd00000
+SONIC_NATIVE_CONTENT loaded=SONICAD/E_MOT.PRS destination=0xcd00000 bytes=0x15c76 sector_bytes=0x16000
+SONIC_NATIVE_TEXTURE_SET acquired domain=character index=6 rows=5 archives=5 publication=guest-registry
+SONIC_NATIVE_TEXTURE_SET acquired domain=main index=0 rows=7 archives=7 publication=guest-registry
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=0 acquired=1 copied=1 texlist=0x8c1bee94
+SONIC_NATIVE_PRETRANSFORMED_STREAM kind=textured source=0x8c798718 count=4 texture_key=0x9897fc translucent=0
+SONIC_VULKAN_PIPELINE kind=0 warmup=0 elapsed_ms=0.124
+SONIC_NATIVE_SOUND_BANK_MAP collection=4:1 available=13 retained=4 replaced=13 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/EMERALDCOAST.MLT bytes=1125984 active=5
+SONIC_NATIVE_SOUND_BANK_MAP collection=5:1 available=5 retained=12 replaced=5 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/V_E102_E.MLT bytes=102144 active=6
+SONIC_NATIVE_SOUND_BANK_MAP collection=6:1 available=5 retained=12 replaced=5 retired_one_shot=0 retired_sequence=0 stale_handles=0
+SONIC_NATIVE_SOUND_COLLECTION loaded=SONICAD/P_E102.MLT bytes=198400 active=7
+SONIC_NATIVE_CONTENT request=stg01.PRS normalized=STG01.PRS destination=0xcd00000
+SONIC_NATIVE_PRS_SOURCE staged=SONICAD/STG01.PRS decoded=sha256:4c4478ef6bc50c53a85e2c08d88bed8fcfcfdf47c9db378f7ad8f693f8b29538 encoded_start=0xcd00000 encoded_bytes=0x13e000 sequence=2
+SONIC_NATIVE_CONTENT loaded=SONICAD/STG01.PRS destination=0xcd00000 bytes=0x13d9dc sector_bytes=0x13e000
+SONIC_NATIVE_OVERLAY_TASK_RETIRE destination=0xc900000 bytes=0x1dd108 owners=1 tasks=2 roots=2 child_graph=1 transition=sha256:4c4478ef6bc50c53a85e2c08d88bed8fcfcfdf47c9db378f7ad8f693f8b29538
+SONIC_NATIVE_OVERLAY_TASK_OWNER kind=loaded-aot identity=sha256:6e8a5806f1f32e6c17c70c30c953600f16fcdb4959b8cd91094c4b32062793d5 runtime=0x8c900000 bytes=0xe4648 generation=3
+SONIC_NATIVE_PRS retired_runtime_images=0 retired_loaded_aot=1 destination=0xc900000
+SONIC_NATIVE_PRS_MODULE identity=sha256:4c4478ef6bc50c53a85e2c08d88bed8fcfcfdf47c9db378f7ad8f693f8b29538 source=0x82f44000 runtime=0xc900000 bytes=0x1dd108 generation=5 transition_epoch=2
+SONIC_NATIVE_CONTENT request=set0100E.bin normalized=SET0100E.BIN destination=0xcb68000
+SONIC_NATIVE_CONTENT loaded=SONICAD/SET0100E.BIN destination=0xcb68000 bytes=0x4b80 sector_bytes=0x5000
+SONIC_NATIVE_CONTENT request=set0101E.bin normalized=SET0101E.BIN destination=0xcb70000
+SONIC_NATIVE_CONTENT missing_path=SET0101E.BIN guest_pointer=0x8c00f314 destination=0xcb70000
+SONIC_NATIVE_CONTENT request=set0101S.bin normalized=SET0101S.BIN destination=0xcb70000
+SONIC_NATIVE_CONTENT loaded=SONICAD/SET0101S.BIN destination=0xcb70000 bytes=0x7bc0 sector_bytes=0x8000
+SONIC_NATIVE_CONTENT request=set0102E.bin normalized=SET0102E.BIN destination=0xcb78000
+SONIC_NATIVE_CONTENT missing_path=SET0102E.BIN guest_pointer=0x8c00f314 destination=0xcb78000
+SONIC_NATIVE_CONTENT request=set0102S.bin normalized=SET0102S.BIN destination=0xcb78000
+SONIC_NATIVE_CONTENT loaded=SONICAD/SET0102S.BIN destination=0xcb78000 bytes=0x40 sector_bytes=0x800
+SONIC_NATIVE_CONTENT request=cam0100E.bin normalized=CAM0100E.BIN destination=0xcb50000
+SONIC_NATIVE_CONTENT loaded=SONICAD/CAM0100E.BIN destination=0xcb50000 bytes=0x1780 sector_bytes=0x1800
+SONIC_NATIVE_CONTENT request=cam0101E.bin normalized=CAM0101E.BIN destination=0xcb58000
+SONIC_NATIVE_CONTENT missing_path=CAM0101E.BIN guest_pointer=0x8c00f318 destination=0xcb58000
+SONIC_NATIVE_CONTENT request=cam0101S.bin normalized=CAM0101S.BIN destination=0xcb58000
+SONIC_NATIVE_CONTENT loaded=SONICAD/CAM0101S.BIN destination=0xcb58000 bytes=0x2180 sector_bytes=0x2800
+SONIC_NATIVE_CONTENT request=cam0102E.bin normalized=CAM0102E.BIN destination=0xcb60000
+SONIC_NATIVE_CONTENT missing_path=CAM0102E.BIN guest_pointer=0x8c00f338 destination=0xcb60000
+SONIC_NATIVE_CONTENT request=cam0102S.bin normalized=CAM0102S.BIN destination=0xcb60000
+SONIC_NATIVE_CONTENT loaded=SONICAD/CAM0102S.BIN destination=0xcb60000 bytes=0x80 sector_bytes=0x800
+SONIC_NATIVE_TEXTURE_SET acquired domain=character index=6 rows=5 archives=5 publication=guest-registry
+SONIC_NATIVE_TEXTURE_SET acquired domain=main index=0 rows=7 archives=7 publication=guest-registry
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=90 copied=90 texlist=0xca1e21c
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=12 copied=12 texlist=0x8c5b81a4
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=26 copied=26 texlist=0x8c5993d0
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=23 copied=23 texlist=0x8c59f7f4
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=0 acquired=1 copied=1 texlist=0xca84470
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=0 acquired=1 copied=1 texlist=0xcaafb90
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=2 copied=2 texlist=0x8c5c0f04
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=2 copied=2 texlist=0x8c5c16cc
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=10 copied=10 texlist=0xcaa14dc
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=3 copied=3 texlist=0xca1ec64
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=5 copied=5 texlist=0x8c165980
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=5 copied=5 texlist=0x8c16887c
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=4 copied=4 texlist=0x8c18b724
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=4 copied=4 texlist=0x8c17bb5c
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=4 copied=4 texlist=0x8c172db4
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=7 copied=7 texlist=0xcab21a0
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=6 copied=6 texlist=0xcab9ef0
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=6 copied=6 texlist=0xcabc1f8
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=8 copied=8 texlist=0xcac0a10
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=7 copied=7 texlist=0xcacca40
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=7 copied=7 texlist=0xcac5e74
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=12 copied=12 texlist=0xcac81e0
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=6 copied=6 texlist=0xcad0c18
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=8 copied=8 texlist=0x8c5661a8
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=1 acquired=97 copied=97 texlist=0xc911ec0
+SONIC_NATIVE_LIGHTING_CONTENT loaded=SONICAD/SL_10B.BIN destination=0x8c6aeec4 backing=0xc6aeec4 bytes=0xa00 sector_bytes=0x1000
+SONIC_NATIVE_LIGHTING_CONTENT loaded=SONICAD/PL_10B.BIN destination=0x8c038f60 backing=0xc038f60 bytes=0x2400 sector_bytes=0x2800
+SONIC_NATIVE_SDK_TEXTURE_VIEW pvm=0 acquired=1 copied=1 texlist=0x8c6b67b8
+SONIC_VULKAN_PIPELINE kind=0 warmup=0 elapsed_ms=0.121
+SONIC_VULKAN_PIPELINE kind=0 warmup=0 elapsed_ms=0.042
+SONIC_VULKAN_PIPELINE kind=1 warmup=0 elapsed_ms=0.056
+SONIC_VULKAN_PIPELINE kind=1 warmup=0 elapsed_ms=0.020
+SONIC_VULKAN_PIPELINE kind=1 warmup=0 elapsed_ms=0.086
+SONIC_VULKAN_PIPELINE kind=1 warmup=0 elapsed_ms=0.027
+SONIC_NATIVE_CONTENT_RANGE bound=SONICAD/EVENT_ADX_US.AFS start_sector=450138 sectors=31836 bytes=65200128
+SONIC_NATIVE_ADX_AFS bound=SONICAD/EVENT_ADX_US.AFS identity=sha256:58a427309d55eb6613b09a056461c5d5f4e3c82e61936980d2d2d1bf04cd0dcd afs_id=0 entries=2044
+SONIC_NATIVE_PCM_STREAM_RING registered bank=15 offset=0x1fbfc0 bytes=0x4000 resource=0x141f8 mirror=0x8c8d371c
+SONIC_NATIVE_PCM_STREAM_RING registered bank=14 offset=0x1f7f80 bytes=0x4000 resource=0x141f0 mirror=0x8c8d3714
+SONIC_NATIVE_PCM_STREAM_RING registered bank=13 offset=0x1f3f40 bytes=0x4000 resource=0x141e8 mirror=0x8c8d370c
+[adx @ 000001a68609a540] Estimating duration from bitrate, this may be inaccurate
+SONIC_NATIVE_ADX start=SONICAD/ECOAST1.ADX identity=sha256:07d941ddf108678898194bdf04a43ca789e0371e0098cbd46fa02f7a3f939e32 guest_handle=0x8c6736f0 callsite=0x8c107892 pr=0x8c107894 bgm_signature=0x0 bgm_trace=0 bgm_frame=0 bgm_selection=0 bgm_request=0 bgm_mirror=0 bgm_handles=0x0,0x0 voice=0:1 active=1 playing=1 queued=2119 loop=1 loop_start=1888096 loop_end=4944080 gain=0.891251 wrapper_valid=1 wrapper=0x2000301,0x8c8a3850,0x0,0x8c8a4950,0x8c8a64f8,0x8c8a64f8
+SONIC_NATIVE_SCENARIO_GAMEPLAY_STARTED id=gamma-emerald-coast protocol=3 input_profile=3 monotonic_ns=127846401731200 frame=252 presentations=247 load_ms=2984 owner_generation=5 stage_state=0 stage_mode=1
+SONIC_NATIVE_INPUT slot=0 connected=1 buttons=0x0 pressed=0x0 released=0x0
+SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id=gamma-emerald-coast protocol=3 input_profile=3 monotonic_ns=127846600709900 elapsed_ms=198 collision_debug_signed=-1 frame=257 presentations=252 relative_frame=5 max_frame_ns=40358300 input_applied_frames=5 completed_frames=6 drawn_frames=5 cadence_readable=1 active_video_hz=50 clock_owner=postpal-checkpoint clock_bound_frame=0 tv_mode_readable=1 tv_mode_word=1 release_slots=2 logical_delta=2 sixty_frame_fixture=0 native_gameplay_math=1 native_leaf_math=1 math_scope_readable=1 main_state=4 scene=15 palette_native_calls=16348 palette_original_calls=0 vertex_normals_native_calls=0 vertex_normals_original_calls=0 matrix_push_native_calls=15034 matrix_push_original_calls=0 matrix_pop_native_calls=16924 matrix_pop_original_calls=0 matrix_staged_groups=0 collision_cross_native_calls=136 collision_length_native_calls=2687 collision_normalize_native_calls=1859 collision_cross_original_calls=0 collision_length_original_calls=0 collision_normalize_original_calls=0 matrix_inverse_native_calls=537 triangle_contacts_native_calls=0 triangle_contacts_original_calls=0 triangle_contacts_scope_blocked_calls=0 collision_candidates_native_calls=1887 collision_candidates_scope_blocked_calls=0 collision_candidates_original_calls=0 motion_sampling_native_calls=0 motion_sampling_original_calls=0 animation_hierarchy_native_calls=271 model_packets=0 model_snapshots=0 model_packet_verified=0 model_packet_vertices=0 model_gpu_draws=0 model_point_uploads=0 model_corner_uploads=0 closed_memory_calls=100243 closed_memory_words=2011043 collision_memory_intervals=0 collision_memory_reads=0 collision_memory_writes=0 model_pipeline_calls=21446 model_pipeline_declined=0 model_pipeline_points=496263 model_pipeline_normals=13183 model_pipeline_draws=13183 model_pipeline_direct_outputs=13239 model_pipeline_root_operations=0 model_pipeline_closed_children=0 object_distance_calls=83135 object_distance_native=83135 object_distance_fallback=0 object_activation_calls=135 object_lifetime_calls=8472 object_records=81405 object_created=56 object_retired=0 object_declined=0 object_slow_accesses=0 movement_calls=0 movement_declined=0 movement_callbacks=0 movement_reentries=0 contact_family_calls=0 object_contact_calls=0 camera_operation_calls=0 contact_family_internal=0 contact_family_foreign=0 contact_family_resumes=0 world_calls=136 world_declined=0 world_internal=8914 world_callbacks=25072 world_resumes=0 world_membership=2312 world_eligibility=2430 render_hierarchy_calls=5308 render_hierarchy_declined=0 render_hierarchy_internal=299161 render_hierarchy_callbacks=27394 render_model_calls=0 render_model_revocations=0 render_hierarchy_resumes=0 rigid_hierarchy_calls=4429 morph_hierarchy_calls=0 land_render_calls=0 collision_fused_cross=0 collision_fused_length=0 collision_fused_normalize=0 matrix_bulk_pushes=0 matrix_bulk_pops=0 matrix_bulk_saved=0 matrix_bulk_loaded=0 render_context_captures=8970 render_context_commits=8970 render_context_fallbacks=0 render_context_direct_calls=17940 palette_batch_calls=16348 palette_batch_vertices=582304 palette_batch_declined=0 palette_batch_closed_loops=16348 projection_batch_calls=16843 projection_batch_vertices=586154 projection_batch_declined=2 projection_batch_verified=0 sound_metadata_hits=0 sound_metadata_misses=0 sound_metadata_verified=0 deferred_midi_notes=0 animation_hierarchy_original_calls=0 animation_hierarchy_nodes=10803 animation_direct_write_calls=271 pose_blend_native_calls=0 pose_blend_original_calls=0 pose_direct_write_calls=0 matrix_vector_point_native_calls=5788 matrix_vector_point_original_calls=0 matrix_vector_direction_native_calls=4323 matrix_vector_direction_original_calls=0 matrix_vector_store_native_calls=0 matrix_vector_store_original_calls=0 matrix_vector_translation_native_calls=0 matrix_vector_translation_original_calls=0 atan_native_calls=0 inverse_trig_native_calls=29689 inverse_trig_declined=0 inverse_memory_calls=0 inverse_memory_stores=0 atan_original_calls=0 atan_quotient_native_calls=2 atan_quotient_original_calls=0 atan_polynomial_native_calls=0 atan_polynomial_original_calls=0 atan_scale_native_calls=0 atan_scale_original_calls=0 matrix_inverse_original_calls=0 matrix_determinant_native_calls=0 matrix_determinant_original_calls=0 player_state_readable=1 player_x=-0.334294 player_y=3.6936 player_z=0.33119 player_x_bits=3198888071 player_y_bits=1080845304 player_z_bits=1051300271 frame_window_begin=5 frame_window_end=25 game_ticks=136 hud_timer_ticks=10783 update_timing=0 update_tasks=0 update_tails=0 update_main_tasks=0 update_alternate_tasks=0 update_waits=0 update_elapsed=0 update_elapsed_extra=0 update_timer_setups=0 periodic_epoch_ns=127846561132500 periodic_callbacks=0 render_completion_experiment=0 guest_render_submitted=0 guest_render_completed=0 guest_render_dispatched=0 guest_render_callback=0 guest_render_counter=0 guest_render_nonzero_callbacks=0 update_unreadable=0 execution_thread_id=20568 execution_cpu_valid=1 execution_cpu_100ns=49375000 process_cpu_valid=1 process_cpu_100ns=61718750 execution_cycles_valid=1 execution_cycles=21636512040 phase=0 final=0
+SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id=gamma-emerald-coast protocol=3 input_profile=3 monotonic_ns=127847677296500 elapsed_ms=1275 collision_debug_signed=-1 frame=275 presentations=270 relative_frame=23 max_frame_ns=396511200 input_applied_frames=23 completed_frames=24 drawn_frames=23 cadence_readable=1 active_video_hz=50 clock_owner=postpal-checkpoint clock_bound_frame=0 tv_mode_readable=1 tv_mode_word=1 release_slots=2 logical_delta=2 sixty_frame_fixture=0 native_gameplay_math=1 native_leaf_math=1 math_scope_readable=1 main_state=4 scene=15 palette_native_calls=21730 palette_original_calls=0 vertex_normals_native_calls=0 vertex_normals_original_calls=0 matrix_push_native_calls=19840 matrix_push_original_calls=0 matrix_pop_native_calls=22323 matrix_pop_original_calls=0 matrix_staged_groups=0 collision_cross_native_calls=180 collision_length_native_calls=3483 collision_normalize_native_calls=2456 collision_cross_original_calls=0 collision_length_original_calls=0 collision_normalize_original_calls=0 matrix_inverse_native_calls=709 triangle_contacts_native_calls=0 triangle_contacts_original_calls=0 triangle_contacts_scope_blocked_calls=0 collision_candidates_native_calls=2487 collision_candidates_scope_blocked_calls=0 collision_candidates_original_calls=0 motion_sampling_native_calls=0 motion_sampling_original_calls=0 animation_hierarchy_native_calls=357 model_packets=0 model_snapshots=0 model_packet_verified=0 model_packet_vertices=0 model_gpu_draws=0 model_point_uploads=0 model_corner_uploads=0 closed_memory_calls=130664 closed_memory_words=2654287 collision_memory_intervals=0 collision_memory_reads=0 collision_memory_writes=0 model_pipeline_calls=28097 model_pipeline_declined=0 model_pipeline_points=656785 model_pipeline_normals=17383 model_pipeline_draws=17383 model_pipeline_direct_outputs=17457 model_pipeline_root_operations=0 model_pipeline_closed_children=0 object_distance_calls=109592 object_distance_native=109592 object_distance_fallback=0 object_activation_calls=178 object_lifetime_calls=11192 object_records=107334 object_created=57 object_retired=0 object_declined=0 object_slow_accesses=0 movement_calls=0 movement_declined=0 movement_callbacks=0 movement_reentries=0 contact_family_calls=0 object_contact_calls=0 camera_operation_calls=0 contact_family_internal=0 contact_family_foreign=0 contact_family_resumes=0 world_calls=179 world_declined=0 world_internal=10677 world_callbacks=32640 world_resumes=0 world_membership=3043 world_eligibility=3204 render_hierarchy_calls=6995 render_hierarchy_declined=0 render_hierarchy_internal=391377 render_hierarchy_callbacks=35936 render_model_calls=0 render_model_revocations=0 render_hierarchy_resumes=0 rigid_hierarchy_calls=5848 morph_hierarchy_calls=0 land_render_calls=0 collision_fused_cross=0 collision_fused_length=0 collision_fused_normalize=0 matrix_bulk_pushes=0 matrix_bulk_pops=0 matrix_bulk_saved=0 matrix_bulk_loaded=0 render_context_captures=12001 render_context_commits=12001 render_context_fallbacks=0 render_context_direct_calls=24002 palette_batch_calls=21730 palette_batch_vertices=772920 palette_batch_declined=0 palette_batch_closed_loops=21730 projection_batch_calls=22387 projection_batch_vertices=778030 projection_batch_declined=2 projection_batch_verified=0 sound_metadata_hits=0 sound_metadata_misses=0 sound_metadata_verified=0 deferred_midi_notes=0 animation_hierarchy_original_calls=0 animation_hierarchy_nodes=14243 animation_direct_write_calls=357 pose_blend_native_calls=0 pose_blend_original_calls=0 pose_direct_write_calls=0 matrix_vector_point_native_calls=7299 matrix_vector_point_original_calls=0 matrix_vector_direction_native_calls=5698 matrix_vector_direction_original_calls=0 matrix_vector_store_native_calls=0 matrix_vector_store_original_calls=0 matrix_vector_translation_native_calls=0 matrix_vector_translation_original_calls=0 atan_native_calls=0 inverse_trig_native_calls=38501 inverse_trig_declined=0 inverse_memory_calls=0 inverse_memory_stores=0 atan_original_calls=0 atan_quotient_native_calls=2 atan_quotient_original_calls=0 atan_polynomial_native_calls=0 atan_polynomial_original_calls=0 atan_scale_native_calls=0 atan_scale_original_calls=0 matrix_inverse_original_calls=0 matrix_determinant_native_calls=0 matrix_determinant_original_calls=0 player_state_readable=1 player_x=-8.74396 player_y=3.9971 player_z=6.13163 player_x_bits=3238782790 player_y_bits=1082118272 player_z_bits=1086600779 frame_window_begin=5 frame_window_end=25 game_ticks=179 hud_timer_ticks=10740 update_timing=0 update_tasks=0 update_tails=0 update_main_tasks=0 update_alternate_tasks=0 update_waits=0 update_elapsed=0 update_elapsed_extra=0 update_timer_setups=0 periodic_epoch_ns=127847280817900 periodic_callbacks=0 render_completion_experiment=0 guest_render_submitted=0 guest_render_completed=0 guest_render_dispatched=0 guest_render_callback=0 guest_render_counter=0 guest_render_nonzero_callbacks=0 update_unreadable=0 execution_thread_id=20568 execution_cpu_valid=1 execution_cpu_100ns=52656250 process_cpu_valid=1 process_cpu_100ns=71250000 execution_cycles_valid=1 execution_cycles=23137473040 phase=0 final=0
+SONIC_NATIVE_SCENARIO_GAMEPLAY_SAMPLE id=gamma-emerald-coast protocol=3 input_profile=3 monotonic_ns=127847743828300 elapsed_ms=1342 collision_debug_signed=-1 frame=277 presentations=272 relative_frame=25 max_frame_ns=396511200 input_applied_frames=25 completed_frames=26 drawn_frames=25 cadence_readable=1 active_video_hz=50 clock_owner=postpal-checkpoint clock_bound_frame=0 tv_mode_readable=1 tv_mode_word=1 release_slots=2 logical_delta=2 sixty_frame_fixture=0 native_gameplay_math=1 native_leaf_math=1 math_scope_readable=1 main_state=4 scene=15 palette_native_calls=22331 palette_original_calls=0 vertex_normals_native_calls=0 vertex_normals_original_calls=0 matrix_push_native_calls=20380 matrix_push_original_calls=0 matrix_pop_native_calls=22933 matrix_pop_original_calls=0 matrix_staged_groups=0 collision_cross_native_calls=187 collision_length_native_calls=3577 collision_normalize_native_calls=2527 collision_cross_original_calls=0 collision_length_original_calls=0 collision_normalize_original_calls=0 matrix_inverse_native_calls=729 triangle_contacts_native_calls=0 triangle_contacts_original_calls=0 triangle_contacts_scope_blocked_calls=0 collision_candidates_native_calls=2557 collision_candidates_scope_blocked_calls=0 collision_candidates_original_calls=0 motion_sampling_native_calls=0 motion_sampling_original_calls=0 animation_hierarchy_native_calls=367 model_packets=0 model_snapshots=0 model_packet_verified=0 model_packet_vertices=0 model_gpu_draws=0 model_point_uploads=0 model_corner_uploads=0 closed_memory_calls=133817 closed_memory_words=2725440 collision_memory_intervals=0 collision_memory_reads=0 collision_memory_writes=0 model_pipeline_calls=28817 model_pipeline_declined=0 model_pipeline_points=674398 model_pipeline_normals=17828 model_pipeline_draws=17828 model_pipeline_direct_outputs=17904 model_pipeline_root_operations=0 model_pipeline_closed_children=0 object_distance_calls=112672 object_distance_native=112672 object_distance_fallback=0 object_activation_calls=183 object_lifetime_calls=11512 object_records=110349 object_created=57 object_retired=0 object_declined=0 object_slow_accesses=0 movement_calls=0 movement_declined=0 movement_callbacks=0 movement_reentries=0 contact_family_calls=0 object_contact_calls=0 camera_operation_calls=0 contact_family_internal=0 contact_family_foreign=0 contact_family_resumes=0 world_calls=184 world_declined=0 world_internal=10882 world_callbacks=33520 world_resumes=0 world_membership=3128 world_eligibility=3294 render_hierarchy_calls=7189 render_hierarchy_declined=0 render_hierarchy_internal=401604 render_hierarchy_callbacks=36901 render_model_calls=0 render_model_revocations=0 render_hierarchy_resumes=0 rigid_hierarchy_calls=6013 morph_hierarchy_calls=0 land_render_calls=0 collision_fused_cross=0 collision_fused_length=0 collision_fused_normalize=0 matrix_bulk_pushes=0 matrix_bulk_pops=0 matrix_bulk_saved=0 matrix_bulk_loaded=0 render_context_captures=12369 render_context_commits=12369 render_context_fallbacks=0 render_context_direct_calls=24738 palette_batch_calls=22331 palette_batch_vertices=794283 palette_batch_declined=0 palette_batch_closed_loops=22331 projection_batch_calls=23006 projection_batch_vertices=799533 projection_batch_declined=2 projection_batch_verified=0 sound_metadata_hits=0 sound_metadata_misses=0 sound_metadata_verified=0 deferred_midi_notes=0 animation_hierarchy_original_calls=0 animation_hierarchy_nodes=14643 animation_direct_write_calls=367 pose_blend_native_calls=0 pose_blend_original_calls=0 pose_direct_write_calls=0 matrix_vector_point_native_calls=7458 matrix_vector_point_original_calls=0 matrix_vector_direction_native_calls=5844 matrix_vector_direction_original_calls=0 matrix_vector_store_native_calls=0 matrix_vector_store_original_calls=0 matrix_vector_translation_native_calls=0 matrix_vector_translation_original_calls=0 atan_native_calls=0 inverse_trig_native_calls=39333 inverse_trig_declined=0 inverse_memory_calls=0 inverse_memory_stores=0 atan_original_calls=0 atan_quotient_native_calls=2 atan_quotient_original_calls=0 atan_polynomial_native_calls=0 atan_polynomial_original_calls=0 atan_scale_native_calls=0 atan_scale_original_calls=0 matrix_inverse_original_calls=0 matrix_determinant_native_calls=0 matrix_determinant_original_calls=0 player_state_readable=1 player_x=-10.4518 player_y=3.99677 player_z=7.28779 player_x_bits=3240573580 player_y_bits=1082116880 player_z_bits=1089025431 frame_window_begin=5 frame_window_end=25 game_ticks=184 hud_timer_ticks=10735 update_timing=0 update_tasks=0 update_tails=0 update_main_tasks=0 update_alternate_tasks=0 update_waits=0 update_elapsed=0 update_elapsed_extra=0 update_timer_setups=0 periodic_epoch_ns=127847702321800 periodic_callbacks=0 render_completion_experiment=0 guest_render_submitted=0 guest_render_completed=0 guest_render_dispatched=0 guest_render_callback=0 guest_render_counter=0 guest_render_nonzero_callbacks=0 update_unreadable=0 execution_thread_id=20568 execution_cpu_valid=1 execution_cpu_100ns=52968750 process_cpu_valid=1 process_cpu_100ns=71718750 execution_cycles_valid=1 execution_cycles=23316986440 phase=0 final=1
+SONIC_NATIVE_SCENARIO_GAMEPLAY_COMPLETE id=gamma-emerald-coast protocol=3 input_profile=3 monotonic_ns=127847743828300 elapsed_ms=1342 frame=277 presentations=273 relative_frame=25 input_applied_frames=25 completed_frames=26 drawn_frames=25 max_frame_ns=396511200 p95_frame_ns=41538300 p99_frame_ns=396511200 frame_samples=25 frame_samples_truncated=0
+SONIC_NATIVE_SCENARIO_DEADLINE_ARMED frame=277 presentations=273
+KATANA_NATIVE_PRODUCT_GATE status=not-reached milestone=FirstVisibleGameFrame stop_reason=2 bootstrap_phase=2
+KATANA_RUNTIME_STOP_FRONTIER {"version":2,"stop_reason":2,"pc":2349152670,"pr":2349152670,"active_instruction":2349161410,"active_instruction_physical":201677762,"active_block":0,"active_block_physical":0,"active_block_size":0,"gpr":[8031589,2356798248,0,2349143952,0,2356800708,2356800704,4,2356545712,2349898930,2350259184,2348878714,2348878680,2349252608,2350509724,2348872648],"gbr":2358246912,"vbr":2348872704,"sr":1610612992,"mach":0,"macl":1924,"fpul":91,"fpscr":262245,"retired_guest_instructions":61708880,"attempted_guest_instructions":61708880}

@@ -32,7 +32,7 @@ bool nonnegative(std::uint32_t value) noexcept {return !(value&0x80000000u);}
 std::uint32_t signed8(std::uint8_t v) noexcept {return std::uint32_t(std::int32_t(std::bit_cast<std::int8_t>(v)));}
 std::uint32_t signed16(std::uint16_t v) noexcept {return std::uint32_t(std::int32_t(std::bit_cast<std::int16_t>(v)));}
 
-// Shared live movement, NEAR eligibility, TOUCH and contact data between
+// Shared live movement, camera positioning, NEAR, TOUCH and contact data between
 // genuine foreign callbacks. No persistent data or permission cache.
 class Access {
     CpuState& c;
@@ -269,6 +269,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     (void)access.admit_stack(cpu.r[15]-4096u,4096u);
     --counts.declined;++counts.calls;Flow flow;
     if(cpu.pc==object_entry)++counts.object_calls;
+    if(cpu.pc==camera_entry)++counts.camera_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

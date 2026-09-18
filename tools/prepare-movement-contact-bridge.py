@@ -14,7 +14,8 @@ resumes=module('contact_continuations','prepare-render-hierarchy-bridge.py')
 resumes.author=source
 ROOTS={'unit-v8C073018-8C073018-457a60bdbd02a56b.cpp':0x8C073018,
        'unit-v8C074214-8C075154-1bc56e9d4bd882fb.cpp':0x8C074214,
-       'unit-v8C033122-8C0342E0-7edcb8468a2b4534.cpp':0x8C0342E0}
+       'unit-v8C033122-8C0342E0-7edcb8468a2b4534.cpp':0x8C0342E0,
+       'unit-v8C01995E-8C01AAE0-6cf3d8aa9df0e7a3.cpp':0x8C019F4A}
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
 def readonly_resume_routers(text):
@@ -56,7 +57,7 @@ def main():
         # Must precede the older isolated root hook when chaining its prepared unit.
         old=text.find('    if (sonic::movement::enabled())',start,point)
         if old>=0:point=old
-        feature='object_enabled' if root==0x8C0342E0 else 'enabled'
+        feature='object_enabled' if root==0x8C0342E0 else 'camera_enabled' if root==0x8C019F4A else 'enabled'
         injection=f"""    if (sonic::movement_contact::{feature}() && cpu.pc==0x{root:08X}u) {{
         const auto outcome=sonic::movement_contact::try_dispatch(cpu,*services);
         if(outcome!=sonic::movement_contact::Outcome::Declined) {{

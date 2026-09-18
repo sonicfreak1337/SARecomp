@@ -705,6 +705,29 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   bounded comparison. Continue substantial connected native work. The
   September 18 delivered patch/installers, baseline and saves are unchanged.
 
+- The common original camera operation is now private-OFF under
+  SARECOMP_NATIVE_CAMERA_OPERATION=1; see docs/native-camera-operation-20260918.md.
+  Its 33 additional owners connect 019F4A, the measured camera handlers,
+  adjustment/transition modes and shared geometric helpers (147 contact/camera
+  owners total). The existing Recompiled pre-update/publication hooks and real
+  scene callbacks are preserved. Windows/Linux each pass 50 CPU/RAM/AOT cases;
+  the hidden Windows Gamma frame is byte exact. Both games build incrementally.
+  Current binaries are bound by runs/camera-operation-executables-20260918.json;
+  Linux staging is out/camera-operation-linux-20260918, SHA
+  9ff104baff27941026fa52ff8197d8ff845920e4fd692764e538d2a1f3822866.
+  The private Windows filename is reused. The combined five-group Gamma Linux
+  pair matches all 16 endpoints and 68 updates: execution CPU -17.59%, process
+  CPU -5.01%, new images +4.21%. Sky Deck completes but has a one-game-tick
+  initial offset and different palette work; exclude its raw percentages.
+  Both scenes run 68 native camera updates without resumes/revocations.
+  These are combined TCG results, not incremental gains or measured Deck FPS.
+  Retain the work internally; no default promotion/new export or unchanged
+  reruns. Continue substantial native groups. The older profile is not an
+  updated distribution after these changes; computed-dispatch actor families
+  remain unconverted and require reviewed original local targets. The delivered
+  September 18 patch/installers, baseline and saves remain untouched. Only an
+  older verified duplicate VM game was removed; its local copy is preserved.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

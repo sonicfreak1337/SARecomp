@@ -1,0 +1,243 @@
+{
+  "schema": "sarecomp-native-camera-operation-composition-comparison-v1",
+  "scenario": "knuckles-sky-deck",
+  "exe_sha256": [
+    "9ff104baff27941026fa52ff8197d8ff845920e4fd692764e538d2a1f3822866",
+    "9ff104baff27941026fa52ff8197d8ff845920e4fd692764e538d2a1f3822866"
+  ],
+  "fields": [
+    "main_state",
+    "scene",
+    "game_ticks",
+    "player_state_readable",
+    "player_x_bits",
+    "player_y_bits",
+    "player_z_bits",
+    "hud_timer_ticks",
+    "active_video_hz",
+    "release_slots",
+    "logical_delta",
+    "native_gameplay_math",
+    "native_leaf_math",
+    "animation_hierarchy_native_calls",
+    "animation_hierarchy_original_calls",
+    "palette_native_calls"
+  ],
+  "off": {
+    "new_frames": 20,
+    "elapsed_ms": 37981,
+    "new_frames_per_second": 0.5265790790131908,
+    "execution_cpu_ms_per_frame": 896.3084699999999,
+    "process_cpu_ms_per_frame": 6186.73194,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 263.6201382352941,
+    "process_cpu_ms_per_game_update": 1819.6270411764704
+  },
+  "on": {
+    "new_frames": 20,
+    "elapsed_ms": 38137,
+    "new_frames_per_second": 0.5244250989852375,
+    "execution_cpu_ms_per_frame": 817.5835,
+    "process_cpu_ms_per_frame": 6021.64441,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 240.46573529411762,
+    "process_cpu_ms_per_game_update": 1771.0718852941177
+  },
+  "endpoints": {
+    "5": {
+      "game_ticks": [
+        "190",
+        "189"
+      ],
+      "animation_hierarchy_native_calls": [
+        "189",
+        "188"
+      ],
+      "palette_native_calls": [
+        "22983",
+        "22995"
+      ]
+    },
+    "25": {
+      "game_ticks": [
+        "258",
+        "257"
+      ],
+      "animation_hierarchy_native_calls": [
+        "257",
+        "256"
+      ],
+      "palette_native_calls": [
+        "31377",
+        "31326"
+      ]
+    }
+  },
+  "configuration_differences": {},
+  "group_configuration": {
+    "off": {
+      "native_movement_contact": "off",
+      "native_model_submission": "off",
+      "native_land_render": "off",
+      "native_object_contact": "off",
+      "native_camera_operation": "off"
+    },
+    "on": {
+      "native_movement_contact": "on",
+      "native_model_submission": "on",
+      "native_land_render": "on",
+      "native_object_contact": "on",
+      "native_camera_operation": "on"
+    }
+  },
+  "percent": {
+    "execution_cpu_ms_per_game_update": -8.783245125419835,
+    "process_cpu_ms_per_game_update": -2.6684125254018864,
+    "new_frames_per_second": -0.4090515772084746
+  },
+  "window_counters": {
+    "off": {
+      "model_pipeline_calls": 8426,
+      "model_pipeline_declined": 0,
+      "model_pipeline_points": 217879,
+      "model_pipeline_normals": 7883,
+      "model_pipeline_draws": 7883,
+      "model_pipeline_direct_outputs": 7923,
+      "model_pipeline_root_operations": 0,
+      "model_pipeline_closed_children": 0,
+      "contact_family_calls": 0,
+      "object_contact_calls": 0,
+      "camera_operation_calls": 0,
+      "contact_family_internal": 0,
+      "contact_family_foreign": 0,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1748,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 24931,
+      "render_hierarchy_callbacks": 2806,
+      "render_model_calls": 0,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 1555,
+      "morph_hierarchy_calls": 0,
+      "land_render_calls": 0,
+      "inverse_trig_native_calls": 24188,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    },
+    "on": {
+      "model_pipeline_calls": 8363,
+      "model_pipeline_declined": 0,
+      "model_pipeline_points": 213910,
+      "model_pipeline_normals": 7820,
+      "model_pipeline_draws": 7820,
+      "model_pipeline_direct_outputs": 7860,
+      "model_pipeline_root_operations": 0,
+      "model_pipeline_closed_children": 25811,
+      "contact_family_calls": 204,
+      "object_contact_calls": 68,
+      "camera_operation_calls": 68,
+      "contact_family_internal": 158585,
+      "contact_family_foreign": 1845,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1753,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 42459,
+      "render_hierarchy_callbacks": 196,
+      "render_model_calls": 8363,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 1492,
+      "morph_hierarchy_calls": 0,
+      "land_render_calls": 68,
+      "inverse_trig_native_calls": 8802,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    }
+  },
+  "matched_work": false,
+  "endpoint_values": {
+    "off": {
+      "5": {
+        "main_state": "4",
+        "scene": "15",
+        "game_ticks": "190",
+        "player_state_readable": "1",
+        "player_x_bits": "1143466929",
+        "player_y_bits": "1128791521",
+        "player_z_bits": "1094948998",
+        "hud_timer_ticks": "24",
+        "active_video_hz": "50",
+        "release_slots": "2",
+        "logical_delta": "2",
+        "native_gameplay_math": "1",
+        "native_leaf_math": "1",
+        "animation_hierarchy_native_calls": "189",
+        "animation_hierarchy_original_calls": "0",
+        "palette_native_calls": "22983"
+      },
+      "25": {
+        "main_state": "4",
+        "scene": "15",
+        "game_ticks": "258",
+        "player_state_readable": "1",
+        "player_x_bits": "1143252702",
+        "player_y_bits": "1128791274",
+        "player_z_bits": "1096715792",
+        "hud_timer_ticks": "92",
+        "active_video_hz": "50",
+        "release_slots": "2",
+        "logical_delta": "2",
+        "native_gameplay_math": "1",
+        "native_leaf_math": "1",
+        "animation_hierarchy_native_calls": "257",
+        "animation_hierarchy_original_calls": "0",
+        "palette_native_calls": "31377"
+      }
+    },
+    "on": {
+      "5": {
+        "main_state": "4",
+        "scene": "15",
+        "game_ticks": "189",
+        "player_state_readable": "1",
+        "player_x_bits": "1143466929",
+        "player_y_bits": "1128791521",
+        "player_z_bits": "1094948998",
+        "hud_timer_ticks": "24",
+        "active_video_hz": "50",
+        "release_slots": "2",
+        "logical_delta": "2",
+        "native_gameplay_math": "1",
+        "native_leaf_math": "1",
+        "animation_hierarchy_native_calls": "188",
+        "animation_hierarchy_original_calls": "0",
+        "palette_native_calls": "22995"
+      },
+      "25": {
+        "main_state": "4",
+        "scene": "15",
+        "game_ticks": "257",
+        "player_state_readable": "1",
+        "player_x_bits": "1143252702",
+        "player_y_bits": "1128791274",
+        "player_z_bits": "1096715792",
+        "hud_timer_ticks": "92",
+        "active_video_hz": "50",
+        "release_slots": "2",
+        "logical_delta": "2",
+        "native_gameplay_math": "1",
+        "native_leaf_math": "1",
+        "animation_hierarchy_native_calls": "256",
+        "animation_hierarchy_original_calls": "0",
+        "palette_native_calls": "31326"
+      }
+    }
+  },
+  "performance_qualified": false,
+  "performance_exclusion": "Selected workload/configuration endpoints differ or a run is incomplete."
+}

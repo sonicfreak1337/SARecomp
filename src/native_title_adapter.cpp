@@ -18151,6 +18151,7 @@ void emit_sonic_native_gameplay_probe_sample(
               << " movement_reentries=" << sonic::movement::counts.slow_accesses
               << " contact_family_calls=" << sonic::movement_contact::counts.calls
               << " object_contact_calls=" << sonic::movement_contact::counts.object_calls
+              << " camera_operation_calls=" << sonic::movement_contact::counts.camera_calls
               << " contact_family_internal=" << sonic::movement_contact::counts.internal_calls
               << " contact_family_foreign=" << sonic::movement_contact::counts.callbacks
               << " contact_family_resumes=" << sonic::movement_contact::counts.resumes

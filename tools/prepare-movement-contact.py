@@ -21,6 +21,10 @@ OBJECT_ROWS=json.loads(Path(__file__).with_name('object-contact-owners.json').re
 OBJECT_ENTRIES={r['entry'] for r in OBJECT_ROWS}
 if OBJECT_ENTRIES.intersection(r['entry'] for r in ROWS):raise ValueError('Duplicate contact owner')
 ROWS+=OBJECT_ROWS
+CAMERA_ROWS=json.loads(Path(__file__).with_name('camera-operation-owners.json').read_text())
+CAMERA_ENTRIES={r['entry'] for r in CAMERA_ROWS}
+if CAMERA_ENTRIES.intersection(r['entry'] for r in ROWS):raise ValueError('Duplicate camera owner')
+ROWS+=CAMERA_ROWS
 OWNERS=tuple((f'owner_{r["entry"]:08X}',r['entry'],r['begin'],r['end']) for r in ROWS)
 EPOCHS={r['entry']:tuple(map(tuple,r['epochs'])) for r in ROWS}
 UNITS={r['unit']:r['unit_sha'] for r in ROWS}
@@ -118,8 +122,9 @@ def main():
               'for(const auto& s:identities)for(auto p=(s.address&0xFFFFFFu)>>12u;p<=((s.address&0xFFFFFFu)+s.bytes.size()-1u)>>12u;++p)out[p]=true;return out;}();']
     (args.output/'contact-identities.inc').write_text('\n'.join(proof)+'\n')
     (args.output/'contact-switch.inc').write_text('\n'.join(f'case 0x{entry:08X}u: {{\n#include "contact-{name}.inc"\n}}' for name,entry,_,_ in OWNERS)+'\n')
-    members='\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in OBJECT_ENTRIES)+'\nreturn true;\n'
+    members='\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in OBJECT_ENTRIES and entry not in CAMERA_ENTRIES)+'\nreturn true;\n'
     members+='\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(OBJECT_ENTRIES))+'\nreturn object_selected();\n'
+    members+='\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(CAMERA_ENTRIES))+'\nreturn camera_selected();\n'
     (args.output/'contact-members.inc').write_text(members)
     (args.output/'contact-epochs.inc').write_text('struct OriginalEpoch {std::uint32_t begin,end;bool single;};\nconstexpr OriginalEpoch original_epochs[]{\n'+'\n'.join(f'{{0x{a:08X}u,0x{b:08X}u,true}},' for es in EPOCHS.values() for a,b in es)+'\n};\n')
     (args.output/'contact-inventory.json').write_text(json.dumps(dict(schema='sarecomp-movement-contact-v1',generation=generation,owners=reports,units=UNITS),indent=2)+'\n')

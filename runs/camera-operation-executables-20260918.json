@@ -1,0 +1,21 @@
+{
+  "allocated_sections_identical": true,
+  "sections": 27,
+  "files": [
+    {
+      "path": "build-linux/game",
+      "bytes": 1767318016,
+      "sha256": "3d18f7283ebbeead9ad7060dc9cb607c87b22b453eaf2f6d40b5543f217fb138"
+    },
+    {
+      "path": "out/camera-operation-linux-20260918/game",
+      "bytes": 1751482976,
+      "sha256": "9ff104baff27941026fa52ff8197d8ff845920e4fd692764e538d2a1f3822866"
+    },
+    {
+      "path": "out/model-submission-windows-20260918/game.exe",
+      "bytes": 1937141760,
+      "sha256": "bb62433b3cccb0579212fb7a15c4047f77d33b27c6bef7667691b3cbe0b8a1df"
+    }
+  ]
+}

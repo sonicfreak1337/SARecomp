@@ -7,7 +7,7 @@
 namespace katana::runtime {class NativePortImmutableWriteGuard;class NativePortAotServices;}
 namespace sonic::movement_contact {
 inline constexpr std::uint32_t entry=0x8C073018u,query_entry=0x8C074214u;
-inline constexpr std::uint32_t object_entry=0x8C0342E0u;
+inline constexpr std::uint32_t object_entry=0x8C0342E0u,camera_entry=0x8C019F4Au;
 inline thread_local unsigned resume_depth{};
 inline thread_local std::uint32_t return_site{};
 inline bool enabled() noexcept {
@@ -22,6 +22,12 @@ inline bool object_selected() noexcept {
     return on && !diagnostics::runtime_checks_enabled();
 }
 inline bool object_enabled() noexcept {return object_selected() && !resume_depth;}
+inline bool camera_selected() noexcept {
+    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_CAMERA_OPERATION");
+        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_CAMERA_OPERATION");}();
+    return on && !diagnostics::runtime_checks_enabled();
+}
+inline bool camera_enabled() noexcept {return camera_selected() && !resume_depth;}
 std::span<const SourceSpan> source_spans() noexcept;
 enum class Outcome {Declined,Complete,ResumeOriginal,Interrupted};
 struct Calls {
@@ -29,7 +35,7 @@ struct Calls {
     bool (*invoke)(void*,katana::runtime::CpuState&,std::uint32_t){};
     bool (*resume)(void*,katana::runtime::CpuState&,std::uint32_t,std::uint32_t){};
 };
-struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},object_calls{};};
+struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},object_calls{},camera_calls{};};
 inline thread_local Statistics counts;
 bool contains(std::uint32_t) noexcept;
 Outcome execute(katana::runtime::CpuState&,const katana::runtime::NativePortImmutableWriteGuard*,Calls);
