@@ -119,8 +119,19 @@ and new-image throughput falls 2.96%. The window contains 85,707 internal calls,
 1,203 foreign calls and no unsupported-access resumes. These results do not
 demonstrate a whole-frame gain. See
 `runs/contact-closure-gamma-comparison-linux-20260918.json`.
-The requested short Knuckles Sky Deck/Lost World qualification is pending;
-the group remains private-OFF and the delivered patch is unchanged.
+The requested short Knuckles pairs are complete, with all sixteen endpoint
+fields and 68 updates matched in each scene. Sky Deck reduces execution
+CPU/update 4.08%, changes process CPU +0.66% and new images/s -2.89%.
+Lost World reduces execution CPU/update 15.96%, process CPU/update 11.17%,
+and increases new images/s 18.03%. The active windows have zero resumes.
+See `runs/contact-closure-sky-comparison-linux-20260918.json` and
+`runs/contact-closure-lost-comparison-linux-20260918.json`.
+
+This is a consistent reduction in measured Linux execution CPU, but a useful
+whole-frame improvement is currently demonstrated only in Lost World. Keep
+the group private-OFF while the next complete model-submission composition
+is qualified; the delivered patch is unchanged. Do not repeat these unchanged
+three scene pairs or convert the VM result into a Deck FPS claim.
 
 Revision-two executable identities:
 

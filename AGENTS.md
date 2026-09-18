@@ -591,7 +591,11 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Matched Windows Gamma saves 6.69% execution cycles but no thread CPU and
   costs 10% more process CPU. Matched Linux Gamma saves 7.03% execution CPU,
   with neutral process CPU and -2.96% images/s. This is not a whole-frame win.
-  The source remains private-OFF; the bounded Knuckles pair is still running.
+  The bounded Knuckles pairs are complete with all 16 endpoints / 68 updates
+  matching: Sky saves 4.08% execution CPU but loses 2.89% images/s; Lost saves
+  15.96% execution CPU / 11.17% process CPU and gains 18.03% images/s. No Deck
+  FPS is measured. Keep the group private-OFF while the next full model-submission
+  composition is qualified; do not repeat these unchanged three scene pairs.
   Do not rerun the unchanged Gamma pair or component cases. Current artifacts
   are `build-linux/game` and `out/movement-contact-closure-windows-20260918`;
   see the report for exact hashes. Three replaced Linux VM experiment programs
