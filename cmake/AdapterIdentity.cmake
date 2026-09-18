@@ -23,6 +23,9 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_object_activation.hpp sonic_object_activation.cpp sonic_object_activation_identity.inc
     ../tools/prepare-object-activation-bridge.py
     sonic_movement_resolver.hpp sonic_movement_resolver.cpp
+    sonic_movement_contact.hpp sonic_movement_contact.cpp
+    ../tools/prepare-movement-contact.py ../tools/prepare-movement-contact-bridge.py
+    ../tools/movement-contact-owners.json
     ../tools/prepare-movement-resolver.py ../tools/prepare-movement-bridge.py
     sonic_collision_world.hpp sonic_collision_world.cpp
     ../tools/prepare-collision-world.py ../tools/prepare-collision-world-bridge.py

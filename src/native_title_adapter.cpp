@@ -65,6 +65,7 @@
 #include "sonic_model_pipeline.hpp"
 #include "sonic_object_activation.hpp"
 #include "sonic_movement_resolver.hpp"
+#include "sonic_movement_contact.hpp"
 #include "sonic_collision_world.hpp"
 #include "sonic_render_hierarchy.hpp"
 #include "sonic_native_model_memory.hpp"
@@ -18145,6 +18146,10 @@ void emit_sonic_native_gameplay_probe_sample(
               << " movement_declined=" << sonic::movement::counts.declined
               << " movement_callbacks=" << sonic::movement::counts.callbacks
               << " movement_reentries=" << sonic::movement::counts.slow_accesses
+              << " contact_family_calls=" << sonic::movement_contact::counts.calls
+              << " contact_family_internal=" << sonic::movement_contact::counts.internal_calls
+              << " contact_family_foreign=" << sonic::movement_contact::counts.callbacks
+              << " contact_family_resumes=" << sonic::movement_contact::counts.resumes
               << " world_calls=" << sonic::collision_world::counts.calls
               << " world_declined=" << sonic::collision_world::counts.declined
               << " world_internal=" << sonic::collision_world::counts.internal_calls
@@ -38655,6 +38660,35 @@ sonic::render_hierarchy::Outcome sonic::render_hierarchy::try_dispatch(katana::r
     if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
     SonicRenderHierarchyBridge bridge{services};
     return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_render_hierarchy_call,sonic_render_hierarchy_resume});
+}
+namespace {
+struct SonicMovementContactBridge {katana::runtime::NativePortAotServices& services;};
+bool sonic_movement_contact_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t target){
+    auto& bridge=*static_cast<SonicMovementContactBridge*>(opaque);
+    return sonic_object_activation_call(&bridge.services.context(),cpu,target);
+}
+bool sonic_movement_contact_resume(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t owner,std::uint32_t continuation){
+    using namespace sonic::movement_contact;
+    auto& services=static_cast<SonicMovementContactBridge*>(opaque)->services;
+    auto& context=services.context();
+    if(cpu.trap_pending || context.stop_reason!=katana::runtime::NativePortStopReason::None ||
+       !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
+    struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
+    bool handled=resume_original(cpu,owner);
+    // Retained dynamic tails publish the target for the outer dispatcher.
+    // Finish that boundary here, with the same restored PR and callback path.
+    if(handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None &&
+       cpu.pc!=continuation && cpu.pr==continuation &&
+       katana_port_generated::runtime_dispatch_detail::active_exit_kind==katana::runtime::BlockEndKind::DynamicBranch)
+        handled=sonic_object_activation_call(&context,cpu,cpu.pc);
+    return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
+}
+}
+sonic::movement_contact::Outcome sonic::movement_contact::try_dispatch(katana::runtime::CpuState& cpu,
+                                                                     katana::runtime::NativePortAotServices& services){
+    if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
+    SonicMovementContactBridge bridge{services};
+    return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_movement_contact_call,sonic_movement_contact_resume});
 }
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;

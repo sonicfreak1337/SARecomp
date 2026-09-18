@@ -576,6 +576,16 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   NEAR eligibility / TOUCH candidate / contact-classification group, rather
   than re-enabling any old isolated movement or NEAR switch.
 
+- The connected 37-owner movement/contact family is private-OFF; see
+  `docs/native-movement-contact-20260918.md`. Windows and Linux each pass 164
+  full CPU/RAM comparisons and twelve actual-AOT continuation cases. Matched
+  Windows Gamma saves 4.08% execution cycles; matched Linux Gamma saves 4.67%
+  execution CPU/update, with neutral (-0.04%) image throughput. No Deck gain
+  or promotion is established. The active window still crosses 12,022 foreign
+  calls; review the complete remaining math/copy closure before another test.
+  Do not repeat unchanged pairs or enable the retired isolated movement path.
+  The delivered September 18 patch and saves remain untouched.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

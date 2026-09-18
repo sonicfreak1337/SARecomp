@@ -1,0 +1,24 @@
+{
+  "exe_sha256": "db554b7b7d8b5557bdc1c56cbe3f22a2de293268859d11e9cb4506877966d2fc",
+  "scenario": "gamma-emerald-coast",
+  "endpoints": {
+    "5": {},
+    "25": {}
+  },
+  "matched_work": true,
+  "off": {
+    "execution_thread_cpu_ms_per_title_boundary": 17.1875,
+    "aligned_process_cpu_ms_per_title_boundary": 24.21875,
+    "execution_cycles_per_title_boundary": 77300828.0
+  },
+  "on": {
+    "execution_thread_cpu_ms_per_title_boundary": 17.1875,
+    "aligned_process_cpu_ms_per_title_boundary": 24.21875,
+    "execution_cycles_per_title_boundary": 74144576.0
+  },
+  "percent": {
+    "execution_thread_cpu_ms_per_title_boundary": 0.0,
+    "aligned_process_cpu_ms_per_title_boundary": 0.0,
+    "execution_cycles_per_title_boundary": -4.0830765745484605
+  }
+}

@@ -130,6 +130,7 @@ target_link_libraries(sonic-linux-procedure-register-tests PRIVATE sonic_linux_s
 include("${SONIC_ROOT}/cmake/SonicAnimationBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicObjectActivationBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicMovementBridge.cmake")
+include("${SONIC_ROOT}/cmake/SonicMovementContactBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicCollisionWorldBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicRenderHierarchyBridge.cmake")
 include("${SONIC_ROOT}/cmake/SonicInverseTrig.cmake")
