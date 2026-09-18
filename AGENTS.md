@@ -3,7 +3,9 @@
 ## Scope and current state
 
 - This is the Sonic port project. Work on `main` and use only its private remote:
-  https://github.com/sonicfreak1337/SARecomp. Keep the repository private.
+  https://github.com/sonicfreak1337/SARecompZZZZZ. Keep the repository private.
+- Development was discontinued at the user's request. Do not resume development,
+  builds or scheduled work; perform only explicitly requested maintenance.
 - KatanaRecomp is a pinned SDK dependency, not the development target. Do not
   modify or rebuild the old Katana workspace as a side effect. SA2 is out of scope.
 - All seven stories are playable from start to finish. The release is a
