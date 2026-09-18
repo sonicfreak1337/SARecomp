@@ -154,6 +154,9 @@ Playing a release build does not require building the project.
 **Port created by SoNiCFReaK, 2026.**<br>
 **Powered by KatanaRecomp.**
 
+**Development disclosure:** AI tools were used as coding assistants during
+the development of this port.
+
 Additional software and license notices are documented under
 [third-party dependencies](third_party/README.md) and included with the packages.
 
