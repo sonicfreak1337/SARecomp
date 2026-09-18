@@ -48,6 +48,9 @@ the original authenticated title inputs. The Linux test VM and packaging helpers
 are under `tools/`. A general end-user source-build bootstrap is not yet provided.
 
 Development outputs belong in `out/` and build directories inside this project.
+Raw profiles and machine-specific test evidence in `runs/` stay local and ignored.
+Do not force-add them to Git; retain concise findings in `docs/` and bind published
+installers with release manifests and checksums.
 Run experiments with a separate `KATANA_USER_DATA_ROOT`; never overwrite the
 baseline or the player's save directory. Use focused checks for the changed path.
 

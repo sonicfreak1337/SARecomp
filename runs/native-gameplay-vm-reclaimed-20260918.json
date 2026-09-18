@@ -1,7 +1,0 @@
-{
-  "removed_vm_duplicate": "/home/sonic/preloaded-v1/player-operation-20260918/game",
-  "sha256": "de07199d47fc88114a05d701aee48c0d9c29384bba3d62d1ecd4a0c46ed0f1cd",
-  "bytes": 1720072968,
-  "preserved_local_copy": "out/player-operation-linux-20260918/game",
-  "local_hash_checked_before_dispatch": true
-}

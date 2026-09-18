@@ -29,8 +29,8 @@ player installer. See [supported game files](docs/INSTALLATION.md#supported-game
 
 > [!NOTE]
 > **Work in progress.** These are test builds, not a finished v1.0 release.
-> All seven stories have been completed in project playtests, but performance
-> and compatibility work continues. Player-facing GitHub releases are being prepared.
+> **The game is fully playable**, and all seven stories have been completed in
+> project playtests. Further work focuses on polish, compatibility and performance.
 
 ## Installation
 

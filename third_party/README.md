@@ -40,7 +40,9 @@ included Vulkan API headers; upstream notices are retained.
 
 - Source: https://github.com/KhronosGroup/Vulkan-Headers
 - Commit: `ee2ec5fd83dafce291024683b50dc89219333076`
-- Included unchanged: upstream `include/`, `LICENSE.md`, and `LICENSES/`.
+- Included unchanged: upstream C API headers under `include/`, `LICENSE.md`,
+  and `LICENSES/`. The unused Vulkan-Hpp C++ bindings are omitted; the renderer
+  and volk use the C API.
 - Upstream ZIP SHA-256: `6dc2fb9e72afd2e90887a57e7ca799acb6100b98a6b222c8c52e91082d74cd44`
 - Source licenses: `vulkan-headers/LICENSE.md` and `vulkan-headers/LICENSES/`.
 - Packaged licenses: `licenses/vulkan-headers/`.

@@ -1,1 +1,0 @@
-KATANA_NATIVE_FRAME_PACING_SNAPSHOT {"schema":1,"simulation_frames":277,"presentation_frames":273,"repeated_presentations":0,"late_simulation_frames":0,"missed_presentation_deadlines":23,"simulation_rate_hz":30,"presentation_rate_hz":60,"enabled":true}

@@ -5,6 +5,7 @@ import lzma
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -57,7 +58,11 @@ def media_runtime(windows):
     return root,names
 
 
-def stage(edition, destination):
+def stage(edition, destination, game=None, version=None):
+    if version is None and (ROOT / 'VERSION').is_file():
+        version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+    if version is not None and not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', version):
+        raise RuntimeError('A valid release version is required')
     destination = owned(destination)
     if destination.exists():
         raise RuntimeError('Use a fresh staging directory; existing files are preserved')
@@ -76,7 +81,7 @@ def stage(edition, destination):
     if windows:
         build = ROOT / 'out/windows-installer-build'
         for name in ('game.exe', 'sonic-config.exe', 'SDL3.dll'):
-            copy(build / name, name)
+            copy(game if name == 'game.exe' and game is not None else build / name, name)
         copy(ROOT / 'build-windows-setup/sonic-setup.exe', 'sonic-setup.exe')
         redist = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC'
         versions = sorted(redist.glob('*/x64/Microsoft.VC143.CRT'), key=lambda p: p.parts[-3])
@@ -87,7 +92,7 @@ def stage(edition, destination):
             copy(versions[-1] / name, name)
     else:
         for name, source in {
-            'game': ROOT / 'build-linux/game',
+            'game': game if game is not None else ROOT / 'build-linux/game',
             'sonic-startup-ui': ROOT / 'build-linux/sonic-startup-ui',
             'sonic-setup': ROOT / 'build-linux-setup/sonic-setup',
             'lib/libSDL3.so.0': ROOT / 'build-linux/sdl/libSDL3.so.0.4.16',
@@ -156,6 +161,12 @@ def stage(edition, destination):
             subprocess.run([str(objcopy), '--strip-all', str(file), str(temporary)], check=True)
             temporary.replace(file)
             print(f'SONIC_PACKAGE_STRIPPED file={relative} removed_bytes={before-file.stat().st_size}', flush=True)
+    if version is not None:
+        executable = destination / ('game.exe' if windows else 'game')
+        release = {'version': version, 'edition': edition,
+                   'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                   'runtime_sha256': digest(executable)}
+        (destination / 'resources/release.json').write_text(json.dumps(release, indent=2) + '\n', encoding='utf-8')
     files = sorted(p for p in destination.rglob('*') if p.is_file())
     records = []
     for file in files:
@@ -262,5 +273,9 @@ if __name__ == '__main__':
     parser.add_argument('--stage', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--reuse-stage', action='store_true')
+    parser.add_argument('--game', type=Path, help='Verified current runtime instead of the default build location')
+    parser.add_argument('--version', help='Release version; defaults to the repository VERSION file')
     args = parser.parse_args()
-    package(args.edition, owned(args.stage) if args.reuse_stage else stage(args.edition, args.stage), args.output)
+    if args.reuse_stage and (args.game is not None or args.version is not None):
+        parser.error('--game/--version require fresh staging')
+    package(args.edition, owned(args.stage) if args.reuse_stage else stage(args.edition, args.stage, args.game, args.version), args.output)

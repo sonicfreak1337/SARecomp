@@ -65,7 +65,8 @@ def main():
     settings = dict(row.split('=', 1) for row in (a.run/'state/sonic-display.ini').read_text().splitlines() if '=' in row)
     deck = a.edition == 'steam-deck'
     for key, value in {'gameplay_timing': '0' if deck else '1', 'width': '1280', 'height': '800' if deck else '720',
-                       'renderer': 'd3d11' if windows else 'vulkan', 'window_mode': 'fullscreen' if deck else 'windowed'}.items():
+                       'renderer': 'd3d11' if windows else 'vulkan', 'window_mode': 'fullscreen' if deck else 'windowed',
+                       'vsync': '2'}.items():
         assert settings[key] == value, (key, settings)
     env.update(LD_LIBRARY_PATH=str(app/'lib'), KATANA_USER_DATA_ROOT=str(a.run/'defaults-check'))
     with (a.run/'defaults.log').open('w') as log:

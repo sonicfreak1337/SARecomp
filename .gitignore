@@ -17,5 +17,8 @@ user-data/
 *.ilk
 *.ksave
 *.ksave.bak
+*.vmu
+*.dmp
+# Local settings must not be mistaken for the development template in cmake/.
+/sonic-display.ini
 __pycache__/
-

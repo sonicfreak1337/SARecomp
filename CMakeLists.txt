@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(SonicAdventureRecompiled VERSION 0.49.9 LANGUAGES CXX)
+project(SonicAdventureRecompiled VERSION 0.50.0 LANGUAGES CXX)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     include(cmake/SonicLinux.cmake)
@@ -476,7 +476,7 @@ add_custom_command(TARGET game POST_BUILD
 file(GENERATE OUTPUT "${SONIC_ROOT}/out/experimental/katana-content-root.txt"
     CONTENT "../../.local/baseline/r354/native-content\n")
 if(NOT EXISTS "${SONIC_ROOT}/out/experimental/sonic-display.ini")
-    configure_file(sonic-display.ini "${SONIC_ROOT}/out/experimental/sonic-display.ini" COPYONLY)
+    configure_file(cmake/development-display.ini "${SONIC_ROOT}/out/experimental/sonic-display.ini" COPYONLY)
 endif()
 add_executable(sonic_presentation_tests EXCLUDE_FROM_ALL tools/test_presentation.cpp src/sonic_presentation.cpp)
 set(SONIC_COLLISION_BODY "${CMAKE_BINARY_DIR}/generated/collision-candidates/touch-poly-body.inc")

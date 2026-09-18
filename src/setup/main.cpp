@@ -57,7 +57,7 @@ void save_defaults(const fs::path& program,bool deck){
 #endif
     settings.width=1280;settings.height=deck?800:720;settings.widescreen=true;
     settings.window_mode=deck?sonic::rendering::WindowMode::Fullscreen:sonic::rendering::WindowMode::Windowed;
-    settings.vsync=deck?1:2;
+    settings.vsync=2; // Off: recommended on Deck; preserve explicit settings on reinstall.
     // Temporary Deck default while Recompiled timing cannot sustain 60 SIM.
     // Reinstallation preserves the user's existing timing choice.
     if(deck)settings.gameplay_timing=0;
@@ -215,11 +215,11 @@ int main(int argc,char** argv){
             if(fs::exists(file))throw std::runtime_error("Defaults check requires a fresh directory");
             const bool deck=std::string_view(argv[2])=="steam-deck";
             save_defaults(program,deck);auto value=sonic::presentation::read_settings(file);
-            if(value.gameplay_timing!=unsigned(!deck)||!value.setup_complete||value.width!=1280||value.height!=(deck?800:720))throw std::runtime_error("Incorrect edition defaults");
-            value.gameplay_timing=unsigned(deck);value.music_volume=37;
+            if(value.gameplay_timing!=unsigned(!deck)||value.vsync!=2||!value.setup_complete||value.width!=1280||value.height!=(deck?800:720))throw std::runtime_error("Incorrect edition defaults");
+            value.gameplay_timing=unsigned(deck);value.music_volume=37;value.vsync=1;
             sonic::presentation::save_settings(file,value);save_defaults(program,deck);
             const auto kept=sonic::presentation::read_settings(file);
-            if(kept.gameplay_timing!=value.gameplay_timing||kept.music_volume!=37)throw std::runtime_error("Reinstall changed existing settings");
+            if(kept.gameplay_timing!=value.gameplay_timing||kept.music_volume!=37||kept.vsync!=value.vsync)throw std::runtime_error("Reinstall changed existing settings");
             std::cout<<"SONIC_SETUP_DEFAULTS_OK edition="<<argv[2]<<" default_timing="<<(deck?"original":"recompiled")<<" reinstall=preserved\n";return 0;
         }
         if(argc==3&&std::string_view(argv[1])=="--full-install-check"){
