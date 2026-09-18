@@ -1,0 +1,21 @@
+{
+  "allocated_sections_identical": true,
+  "sections": 27,
+  "files": [
+    {
+      "path": "build-linux/game",
+      "bytes": 1756365528,
+      "sha256": "81b0c7ade520e8fd66f9014ca58e15bb93a00d740541b4433ce2b87eb0663098"
+    },
+    {
+      "path": "out/model-roots-linux-20260918/game",
+      "bytes": 1693153560,
+      "sha256": "4282c491d95e32fa3b07ce7c52eb2153cae5a871f9b662f8f4b64d0cce81f280"
+    },
+    {
+      "path": "out/model-submission-windows-20260918/game.exe",
+      "bytes": 1925198848,
+      "sha256": "c5f66eb73deaa1532528d5f4cac383acf22d1659e20ca69b465bdd041720a565"
+    }
+  ]
+}

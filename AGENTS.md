@@ -640,6 +640,23 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   hierarchy callback 040784 -> 0D209C has real character-node transform work;
   it must not be deleted or treated as an unnecessary diagnostic callback.
 
+- The private model-submission group now also composes all three direct model
+  roots and lends its admitted memory/source proof to palette/context children.
+  See `docs/native-model-roots-20260918.md`. Windows/Linux each pass 94 new root
+  cases and 73 affected shared cases; the Windows Gamma capture is byte exact.
+  All 27 allocated ELF sections match the staged Linux program. Both groups
+  OFF/ON Linux pairs match all 16 endpoints and 68 updates, with no resumes or
+  revocations: Gamma execution CPU -7.04%, images -0.80%; Lost World CPU -2.71%,
+  images +1.98%. These explicitly use LP_NUM_THREADS=2; do not compare absolute
+  times to the preceding default-worker visibility pair or sum percentages.
+  This is no substantial throughput win. Keep both groups private-OFF; no
+  unchanged reruns or new export. Current SHA bindings are in
+  `runs/model-roots-executables-20260918.json`, staged Linux under
+  out/model-roots-linux-20260918; the private Windows filename is reused.
+  The delivered September 18 patch remains untouched. A separately instrumented
+  current call profile is being collected to choose a different broad native
+  function area rather than repeat small model-copy/admission changes.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

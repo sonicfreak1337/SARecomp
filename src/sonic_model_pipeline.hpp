@@ -8,6 +8,7 @@
 namespace katana::runtime { class NativePortImmutableWriteGuard; }
 namespace sonic::model_pipeline {
 using Vector = std::array<float,3>;
+struct SharedOperation;
 struct Capture {
     katana::runtime::CpuState* cpu{};
     katana::runtime::DirectLinearMemoryGuard memory{};
@@ -15,12 +16,13 @@ struct Capture {
     // One authenticated writable capability for this model's disjoint output.
     // Cleared with active before any retained guest callback.
     std::uint8_t* projected_bytes{};
+    SharedOperation* operation{};
     std::vector<Vector> points,normals; // includes each leaf's authored extra read
 };
 // Synchronous title-model scope only. Never retained across an arbitrary guest
 // callback, frame submission, scene change, or another model owner.
 inline thread_local const Capture* active = nullptr;
-struct Statistics { std::uint64_t calls{},declined{},culled{},points{},normal_reuses{},draw_reuses{},direct_outputs{}; };
+struct Statistics { std::uint64_t calls{},declined{},culled{},points{},normal_reuses{},draw_reuses{},direct_outputs{},root_operations{},closed_children{}; };
 inline thread_local Statistics counts;
 inline const Statistics& statistics() noexcept{return counts;}
 bool enabled() noexcept;
@@ -36,6 +38,11 @@ struct SharedOperation {
     bool sources_proven{},intact{};
     void revoke() noexcept {sources_proven=false;intact=false;}
 };
+inline SharedOperation* borrowed_operation(katana::runtime::CpuState& cpu) noexcept {
+    auto* operation=active && active->cpu==&cpu ? active->operation : nullptr;
+    return operation && operation->cpu==&cpu && operation->intact && operation->sources_proven
+        ? operation : nullptr;
+}
 bool source_overlap(std::uint32_t physical,std::uint32_t size) noexcept;
 enum class ClosedCall { Declined, Complete, Interrupted };
 struct Calls {

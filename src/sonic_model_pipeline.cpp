@@ -57,7 +57,9 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     const auto entry=cpu.pc;
     const bool material_owner=entry==0x8C037108u;
     const bool context_owner=entry==0x8C03700Cu;
-    const bool composed=shared || context_owner;
+    const bool owns_operation=!shared && calls.closed && submission_enabled();
+    const bool composed=shared || owns_operation || context_owner;
+    SharedOperation local_operation;
     auto& memory=cpu.memory;const auto fpscr=cpu.read_fpscr();
     if((entry!=0x8C037098u && !material_owner && !context_owner) || active || !calls.invoke || !immutable ||
        immutable->write_detected() || !cpu.privileged_mode_inline() || cpu.trap_pending || cpu.sleeping ||
@@ -85,6 +87,14 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
        writable.generation!=guard.generation || writable.physical_base!=guard.physical_base ||
        writable.physical_span!=guard.physical_span || writable.backing_mask!=guard.backing_mask)
         return Outcome::Declined;
+    // Direct model owners use the same complete synchronous operation as
+    // hierarchy children. This capability lasts only until the first retained
+    // call; no pointer identity or mapping generation is used as a source cache.
+    if(owns_operation){
+        local_operation={&cpu,immutable,guard,writable,nullptr,
+            [](void*,std::uint32_t a,std::uint32_t n)noexcept{return !source_overlap(a,n);},true,true};
+        shared=&local_operation;
+    }
     const auto model=cpu.r[4],points=read(guard,model),normals=read(guard,model+4),count=read(guard,model+8);
     if(count<2u || count>65536u)return Outcome::Declined;
     const auto even=(count+1u)&~1u,point_bytes=(even+1u)*12u,normal_bytes=(count+!(count&1u))*12u;
@@ -122,11 +132,12 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
            overlap({output,even*16u},{mesh,4}) || overlap({output,even*16u},{material,20}))return Outcome::Declined;
     }
     --counts.declined;++counts.calls;
+    if(owns_operation)++counts.root_operations;
     const auto invoke=[&](std::uint32_t address,std::uint32_t continuation){
         cpu.pc=address;cpu.pr=continuation;
         if(shared && shared->intact){
             const auto result=calls.closed(calls.context,cpu,address,shared);
-            if(result==ClosedCall::Complete)return cpu.pc==continuation;
+            if(result==ClosedCall::Complete){++counts.closed_children;return cpu.pc==continuation;}
             shared->revoke();active=nullptr;
             if(result==ClosedCall::Interrupted)return false;
         }
@@ -147,6 +158,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     thread_local Capture capture;
     capture.cpu=&cpu;capture.memory=guard;capture.model=model;capture.count=count;
     capture.output_address=output;capture.gbr=cpu.gbr;
+    capture.operation=shared && shared->intact?shared:nullptr;
     capture.projected_bytes=writable.write_bytes+(output&0xFFFFFFu);
     capture.points_address=points;capture.normals_address=normals;
     capture.points.resize(even+1u);capture.normals.resize(count+!(count&1u));

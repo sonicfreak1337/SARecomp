@@ -87,6 +87,7 @@ struct Fixture {
     }
     static bool child(void* opaque,CpuState& c,std::uint32_t entry){
         auto& f=*static_cast<Fixture*>(opaque);f.entries.push_back(architecture(c));
+        if(f.decline_closed_at==entry)require(!family::active && !family::borrowed_operation(c),"retained child borrowed revoked model operation");
         if(f.interrupt_at==entry){c.r[0]=0xBADCA11u;return false;}
         if(entry==sonic::render_context::capture_entry || entry==sonic::render_context::commit_entry){
             require(sonic::render_context::try_execute(c,&f.immutable),"context fixture declined");return true;
@@ -224,15 +225,80 @@ unsigned visibility_checks(std::span<const std::uint8_t> image){
     std::cout<<"SONIC_MODEL_VISIBILITY_OK cases="<<cases<<"\n";return cases;
 }
 
+unsigned root_checks(std::span<const std::uint8_t> image){
+    unsigned cases=0;
+    // The control executes the actual PAL wrapper and visibility instructions;
+    // transform/draw are existing fixture children, palette/context are real
+    // native owners. Their borrowed and independent paths must publish the
+    // same complete CPU/RAM and child-entry states.
+    const auto reference=[](Fixture& f){
+        unsigned steps=0;
+        while(f.cpu.pc!=returned && ++steps<2000u){
+            const auto pc=f.cpu.pc;
+            if(pc==0x8C03718Cu || pc==0x8C037294u || pc==0x8C037350u || pc==0x8C0376D0u ||
+               pc==sonic::render_context::capture_entry || pc==sonic::render_context::commit_entry)
+                Fixture::child(&f,f.cpu,pc);
+            else (void)execute_dynamic_sh4_block(f.cpu,services,1u);
+        }
+        require(f.cpu.pc==returned && !f.cpu.trap_pending,"root original failed");
+    };
+    for(unsigned owner:{0x8C03700Cu,0x8C037098u,0x8C037108u})for(unsigned n:{3u,16u})
+    for(unsigned mode:{0u,1u,fpscr_fr_mask})for(bool normal_gbr:{false,true})for(unsigned mask:{0u,1u}){
+        Fixture a(image,owner,n,0u,mode),b(image,owner,n,0u,mode);
+        for(auto* f:{&a,&b}){
+            if(normal_gbr){
+                std::memcpy(f->ram->writable_bytes().data()+0x8FFE00u,f->ram->bytes().data()+(f->cpu.gbr&0xFFFFFFu),96u);
+                f->cpu.gbr=0x8C8FFE00u;
+            }
+            f->real_visibility=true;f->horizontal_extra=mask?106.66667f:0.0f;
+            visibility_setup(*f,0,0,100,f->horizontal_extra,mask);
+        }
+        const auto before=family::statistics().root_operations;
+        require(family::execute(a.cpu,&a.immutable,{&a,Fixture::child,Fixture::closed})==family::Outcome::Complete,"root operation declined");
+        require(family::statistics().root_operations==before+1u,"root was not composed");
+        reference(b);
+        require(architecture(a.cpu)==architecture(b.cpu) && a.entries==b.entries,"root CPU or child frontier differs");
+        require(std::ranges::equal(a.ram->bytes(),b.ram->bytes()) && !family::active,"root RAM differs or scope leaked");++cases;
+    }
+    for(unsigned target:{0x8C03718Cu,0x8C037294u,0x8C037350u,0x8C0376D0u,
+                         sonic::render_context::capture_entry,sonic::render_context::commit_entry})for(bool stop:{false,true}){
+        Fixture a(image,0x8C03700Cu,3u,0u,0u),b(image,0x8C03700Cu,3u,0u,0u);
+        a.decline_closed_at=stop?0u:target;a.interrupt_at=b.interrupt_at=stop?target:0u;
+        const auto actual=family::execute(a.cpu,&a.immutable,{&a,Fixture::child,Fixture::closed});
+        const auto expected=family::execute(b.cpu,&b.immutable,{&b,Fixture::child});
+        require(actual==expected && actual==(stop?family::Outcome::Interrupted:family::Outcome::Complete),"root fallback frontier");
+        require(architecture(a.cpu)==architecture(b.cpu) && std::ranges::equal(a.ram->bytes(),b.ram->bytes()),"root fallback differs");
+        require(!family::active,"root fallback scope leaked");++cases;
+    }
+    for(unsigned kind=0;kind<10;++kind){
+        Fixture f(image,0x8C03700Cu,3u,0u,0u);
+        if(kind<6){const std::array addresses{0x8C03700Cu,0x8C03718Cu,0x8C037294u,0x8C037350u,0x8C605CECu,0x8C605D4Au};f.put(addresses[kind],0u);}
+        if(kind==6)f.put(0x8C88FC14u,points);
+        if(kind==7)f.put(0x8C88FC14u,0x8C605CECu);
+        if(kind==8)sonic::scalar_writes::unbind(&f.cpu.memory,&f.immutable);
+        if(kind==9)f.cpu.memory.set_guest_write_observer([](const GuestWriteEvent&)noexcept{},GuestWriteObserverContract::StableForPrevalidatedLinearWrites);
+        const auto before=architecture(f.cpu);const std::vector<std::uint8_t> bytes(f.ram->bytes().begin(),f.ram->bytes().end());
+        require(family::execute(f.cpu,&f.immutable,{&f,Fixture::child,Fixture::closed})==family::Outcome::Declined,"unsafe root admitted");
+        require(before==architecture(f.cpu) && std::ranges::equal(bytes,f.ram->bytes()),"root decline mutated state");++cases;
+    }
+    require(family::statistics().closed_children>0u,"no closed children");
+    std::cout<<"SONIC_MODEL_ROOT_OK cases="<<cases<<" roots="<<family::statistics().root_operations
+        <<" closed_children="<<family::statistics().closed_children<<'\n';return cases;
+}
+
 int main(int argc,char** argv){try{
-    require(argc==2 || (argc==3 && (std::string(argv[2])=="--shared-only" || std::string(argv[2])=="--visibility-only")),"usage: test_model_pipeline RAM [--shared-only|--visibility-only]");
+    const bool roots=argc==3 && std::string(argv[2])=="--root-only";
+    require(argc==2 || (argc==3 && (roots || std::string(argv[2])=="--shared-only" || std::string(argv[2])=="--visibility-only")),"usage: test_model_pipeline RAM [--shared-only|--visibility-only|--root-only]");
 #ifdef _WIN32
     _putenv_s("SARECOMP_INTERNAL_DIAGNOSTICS","0");
+    if(roots)_putenv_s("SARECOMP_NATIVE_MODEL_SUBMISSION","1");
 #else
     setenv("SARECOMP_INTERNAL_DIAGNOSTICS","0",1);
+    if(roots)setenv("SARECOMP_NATIVE_MODEL_SUBMISSION","1",1);
 #endif
     std::ifstream file(argv[1],std::ios::binary);std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
+    if(roots){root_checks(image);return 0;}
     if(argc==3 && std::string(argv[2])=="--visibility-only"){visibility_checks(image);return 0;}
     if(argc==2){
     for(unsigned owner:{0x8C037098u,0x8C037108u})for(unsigned n:{2u,3u,16u,17u})for(unsigned v=0;v<8;++v)for(unsigned mode:{0u,1u}){

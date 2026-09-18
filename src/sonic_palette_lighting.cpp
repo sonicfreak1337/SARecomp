@@ -93,6 +93,8 @@ bool try_execute(katana::runtime::CpuState& cpu,
         return false;
     const auto* shared=sonic::model_pipeline::active;
     if(shared && shared->cpu!=&cpu)shared=nullptr;
+    const auto* operation=sonic::model_pipeline::borrowed_operation(cpu);
+    if(operation && operation->immutable!=immutable_guard)operation=nullptr;
     const auto guard = shared ? shared->memory : memory.direct_linear_memory_guard(false);
     // MMU control projects MMUCR.AT into RuntimeAddressSpace::mode(). Require
     // both views to say NoMmu before admitting P0; a stale/inconsistent binding
@@ -102,7 +104,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
     if (!admitted_range(guard, allow_p0, {entry, 0x110u}) ||
         !admitted_range(guard, allow_p0, {cpu.gbr, 92u}) ||
         !admitted_range(guard, allow_p0, {cpu.r[4], 12u}) ||
-        std::memcmp(guard.read_bytes + 0x37350u, original_words.data(), 0x110u) != 0)
+        (!operation && std::memcmp(guard.read_bytes + 0x37350u, original_words.data(), 0x110u) != 0))
         return false;
 
     // Preflight reads deliberately do not publish register or metrics changes.
@@ -139,6 +141,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
             immutable_guard->tracks_address(range.address & 0x1FFFFFFFu, range.size) ||
             !memory.is_writable_linear_range(range.address & 0x1FFFFFFFu, range.size, false))
             return false;
+        if(operation && !operation->allows_write(operation->context,range.address&0x1FFFFFFFu,range.size))return false;
         for (const auto source : reads)
             if (overlaps(range, source)) return false;
         for (std::size_t j = 0; j < i; ++j)
@@ -146,7 +149,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
     }
 
     // From here admission is complete: no fallback after any guest mutation.
-    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,guard);
+    sonic::model_memory::ClosedLeafWrites native_writes(cpu,*immutable_guard,guard,operation?&operation->write:nullptr);
     const auto load = [&](std::uint32_t address) {
         std::uint32_t value = 0;
         // This SDK helper accepts only P1/P2. Admission above proves that an

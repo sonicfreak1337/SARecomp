@@ -18132,6 +18132,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " model_pipeline_normals=" << sonic::model_pipeline::statistics().normal_reuses
               << " model_pipeline_draws=" << sonic::model_pipeline::statistics().draw_reuses
               << " model_pipeline_direct_outputs=" << sonic::model_pipeline::statistics().direct_outputs
+              << " model_pipeline_root_operations=" << sonic::model_pipeline::statistics().root_operations
+              << " model_pipeline_closed_children=" << sonic::model_pipeline::statistics().closed_children
               << " object_distance_calls=" << sonic::object_activation::counts.distance_calls
               << " object_distance_native=" << sonic::object_activation::counts.distance_native
               << " object_distance_fallback=" << sonic::object_activation::counts.distance_fallback
@@ -38749,7 +38751,7 @@ sonic_native_model_pipeline(katana::runtime::NativePortContext& context) noexcep
     if(!services)return {NativePortHookAction::ContinueOriginal,0u,0u};
     try{
         const auto result=sonic::model_pipeline::execute(*context.cpu,services->immutable_write_guard(),
-            {&context,sonic_model_pipeline_call});
+            {&context,sonic_model_pipeline_call,sonic_model_pipeline_closed_call});
         if(result==sonic::model_pipeline::Outcome::Declined)return {NativePortHookAction::ContinueOriginal,0u,0u};
         if(result==sonic::model_pipeline::Outcome::Complete)return {NativePortHookAction::Return,0u,0u};
     }catch(const std::exception& error){std::cerr<<"SONIC_MODEL_PIPELINE_FAILURE "<<error.what()<<'\n';}

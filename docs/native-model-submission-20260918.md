@@ -4,6 +4,10 @@ Private switch: `SARECOMP_NATIVE_MODEL_SUBMISSION=1`. Default OFF. Global native
 CPU/model zero overrides and diagnostics retain the previous implementation.
 The September 18 delivered patch is unchanged.
 
+The subsequent direct-root and shared-leaf extension is documented in
+`native-model-roots-20260918.md`; the original scope and measurements below
+describe the earlier hierarchy-only composition.
+
 The operation joins the existing complete live render hierarchy to all three
 PAL model submissions: `037098`, `037108` and the blended model's `03700C`.
 The latter includes its renderer-context capture, ordered drawing, `036FFC`

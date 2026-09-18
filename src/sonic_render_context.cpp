@@ -1,5 +1,6 @@
 #include "sonic_render_context.hpp"
 #include "sonic_native_model_memory.hpp"
+#include "sonic_model_pipeline.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include <array>
 #include <bit>
@@ -29,7 +30,9 @@ bool try_execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable){
        !cpu.privileged_mode_inline() || cpu.trap_pending || cpu.sleeping ||
        m.watchpoint_count() || m.has_trace_handler() || m.has_guest_memory_access_sink() ||
        m.has_mmio_trace_handler() || !m.guest_write_observer_allows_prevalidated_linear_writes())return false;
-    const auto g=m.direct_linear_memory_guard(false);
+    const auto* operation=model_pipeline::borrowed_operation(cpu);
+    if(operation && operation->immutable!=immutable)operation=nullptr;
+    const auto g=operation?operation->read:m.direct_linear_memory_guard(false);
     const bool p0=!(cpu.mmucr&1u) && (!cpu.address_space || cpu.address_space->mode()==AddressTranslationMode::NoMmu);
     const auto valid=[&](Range r,unsigned alignment=4u){
         const auto p=r.address&0x1FFFFFFFu;
@@ -46,7 +49,7 @@ bool try_execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable){
     if(renderer>0xFFFFFFFFu-0x90u)return false;
     const Range header{renderer+0x90u,16u},cursors{cursor,20u},snapshot{packet,36u};
     if(!valid(header) || !valid(cursors) || !valid(snapshot))return false;
-    for(auto s:identities){
+    if(!operation)for(auto s:identities){
         if(!valid({s.address,std::uint32_t(s.bytes.size())},2u) ||
            std::memcmp(g.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return false;
     }
@@ -54,13 +57,14 @@ bool try_execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable){
     for(auto out:outputs){
         if(immutable->tracks_address(out.address&0x1FFFFFFFu,out.size) ||
            !m.is_writable_linear_range(out.address&0x1FFFFFFFu,out.size,false))return false;
+        if(operation && !operation->allows_write(operation->context,out.address&0x1FFFFFFFu,out.size))return false;
         for(auto r:control)if(overlap(out,r))return false;
         for(auto s:identities)if(overlap(out,{s.address,std::uint32_t(s.bytes.size())}))return false;
     }
     // No callback, dispatch or changed mapping can occur from here to return.
     // Keep live ordered reads/writes: header, packet and cursor data may alias.
     // Only pointers, branch flags and source bytes were required disjoint.
-    sonic::model_memory::Writes writes(cpu,*immutable,g);
+    sonic::model_memory::Writes writes(cpu,*immutable,g,operation?&operation->write:nullptr);
     if(writes.direct())++counters.direct_calls;
     const auto store=[&](std::uint32_t a,std::uint32_t v){writes.store(a,v,CodeWriteSource::Cpu);};
     auto& r=cpu.r;

@@ -1,0 +1,2 @@
+SONIC_MODEL_ROOT_OK cases=94 roots=84 closed_children=342
+SONIC_MODEL_PIPELINE_OK cases=73 normal_reuses=40 direct_outputs=52

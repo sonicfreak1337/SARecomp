@@ -13,10 +13,14 @@ class Writes {
 public:
     Writes(katana::runtime::CpuState& cpu,
            const katana::runtime::NativePortImmutableWriteGuard& immutable,
-           const katana::runtime::DirectLinearMemoryGuard& read)
+           const katana::runtime::DirectLinearMemoryGuard& read,
+           const katana::runtime::DirectLinearMemoryGuard* operation_write=nullptr)
         : memory_(cpu.memory) {
-        const sonic::scalar_writes::View view(memory_,&immutable,false,false,true);
-        const auto writable=view.closed_region_snapshot();
+        // A whole model operation may lend its already authenticated writable
+        // mapping. The caller still admits this leaf's live reads and writes;
+        // the lender revokes the capability before any retained guest call.
+        const auto writable=operation_write?*operation_write:
+            sonic::scalar_writes::View(memory_,&immutable,false,false,true).closed_region_snapshot();
         if(writable && writable.write_bytes==read.read_bytes && writable.generation==read.generation &&
            writable.physical_base==read.physical_base && writable.physical_span==read.physical_span &&
            writable.backing_mask==read.backing_mask){
@@ -66,8 +70,9 @@ class ClosedLeafWrites final {
 public:
     ClosedLeafWrites(katana::runtime::CpuState& cpu,
         const katana::runtime::NativePortImmutableWriteGuard& immutable,
-        const katana::runtime::DirectLinearMemoryGuard& read) {
-        if(closed_leaves_enabled())writes_.emplace(cpu,immutable,read);
+        const katana::runtime::DirectLinearMemoryGuard& read,
+        const katana::runtime::DirectLinearMemoryGuard* operation_write=nullptr) {
+        if(closed_leaves_enabled())writes_.emplace(cpu,immutable,read,operation_write);
         if(direct())++closed_leaf_counts.calls;
     }
     ~ClosedLeafWrites(){if(direct())closed_leaf_counts.words+=writes_->word_count();}
