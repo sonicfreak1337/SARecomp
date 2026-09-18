@@ -40,12 +40,8 @@ are decisive; do not edit or substitute files to bypass a failed verification.
 
 Use the Windows, Linux or Steam Deck **player installer** from
 [v0.50.0-beta.1](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1).
-All three full installers include the latest CPU update. No separate
-performance patch is needed for this release.
 
 Automatically generated source-code ZIPs are not installers.
-A `.run` CPU update is also not a full
-installer: it requires one of the existing builds named in its release notes.
 
 ## Windows
 
@@ -100,20 +96,15 @@ an external display is connected. Handheld display choices are constrained to
 keep the internal screen usable. Existing settings are preserved on updates.
 For the best current Steam Deck performance, use **Game timing → Original**
 and **VSync → Off** in Options.
-New Deck test installations default to Original; **Recompiled** remains
+The Deck installer defaults to Original; **Recompiled** remains
 selectable in Options. The port is a **work in progress**, and further
 performance improvements are planned.
 
-## Updating
+## Saves and reinstalling
 
-Close the game first and read the update's supported-version list. Installers
-and supported patches preserve existing saves and settings. A runtime patch
-updates the installed program without needing the GDI again; continue using
-your existing desktop or Steam shortcut afterward.
-
-Use only diagnostic switches that match the installed build. Diagnostics are
-off for normal play. Never mix older patches or diagnostic packages into a
-newer installation unless its release notes explicitly support that combination.
+Reinstalling preserves existing saves and settings. Close the game before
+running setup. Backups and save-profile management are available in
+**Options → Profiles**.
 
 ## Troubleshooting
 
@@ -125,7 +116,7 @@ newer installation unless its release notes explicitly support that combination.
   return to the previous configuration. Do not confirm an unusable mode.
 - **Slow gameplay:** include timing mode, renderer, character, stage and the
   game's SIM FPS in a report. Display FPS alone does not measure simulation speed.
-- **Crash:** record the build and exact scene or transition. A diagnostic
+- **Crash:** record the version and exact scene or transition. A diagnostic
   report can be exported when offered; sharing it is optional.
 
 Report reproducible problems through the

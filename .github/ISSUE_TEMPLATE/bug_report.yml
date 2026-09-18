@@ -10,8 +10,8 @@ body:
   - type: input
     id: build
     attributes:
-      label: Build or update
-      description: Give the version, installer/update filename or commit you tested.
+      label: Game version
+      description: Enter the release version, for example 0.50.0-beta.1.
     validations:
       required: true
   - type: dropdown

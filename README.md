@@ -28,9 +28,9 @@ Original gameplay files are installed from your disc data, not supplied in the
 player installer. See [supported game files](docs/INSTALLATION.md#supported-game-files).
 
 > [!NOTE]
-> **Work in progress.** These are test builds, not a finished v1.0 release.
-> **The game is fully playable**, and all seven stories have been completed in
-> project playtests. Further work focuses on polish, compatibility and performance.
+> **First release — work in progress.** This is a beta release.
+> **The game is fully playable**, with all seven stories playable from start to
+> finish. Further work focuses on polish, compatibility and performance.
 
 ## Installation
 
@@ -46,14 +46,12 @@ choose the installer for your platform and follow the on-screen setup.
 
 Keep the `.gdi` and **all of its track files together**, with the filenames
 referenced by the descriptor. Extract archives before selecting the game files.
-No development tools, compilation or Katana export are needed to install a player build.
 
 **[Full installation guide and disc hashes →](docs/INSTALLATION.md)**
 
-Player installers, checksums and update instructions are on the
+Player installers, checksums and installation instructions are on the
 [Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
-GitHub's source-code ZIPs are not player installers. The full Beta 1 installers already include the latest CPU update;
-no separate performance patch is required.
+GitHub's source-code ZIPs are not player installers.
 
 ## Features
 
@@ -71,8 +69,7 @@ no separate performance patch is required.
 **Original timing** retains the game's scene-dependent cadence.
 **Recompiled timing** targets 60 gameplay updates per second at the original
 intended game speed. VSync controls presentation against the display's refresh rate.
-Both modes use the same native CPU optimizations; actual performance depends
-on the scene and hardware.
+Actual performance depends on the scene and hardware.
 
 **Original camera** keeps the original behavior. The optional **Recompiled
 camera** adds right-stick orbit and vertical control, with mouse camera support,
@@ -124,12 +121,12 @@ for the source disc files, temporary extraction and update backups.
 - **Widescreen cutscenes:** some scenes and effects can expose framing issues
   outside the original 4:3 area. This is confirmed in **Tails' first cutscene**.
   Original 4:3 remains available as a workaround.
-- **Test-build coverage:** completed story playtests do not cover every Chao,
-  minigame, device or display configuration.
+- **Stability:** bugs and isolated crashes may still occur. Please report
+  reproducible problems so they can be investigated.
 
 Check [existing reports](https://github.com/sonicfreak1337/SARecomp/issues)
 before opening a [bug report](https://github.com/sonicfreak1337/SARecomp/issues/new/choose).
-Include the build, platform, character, stage and steps to reproduce. If reporting
+Include the version, platform, character, stage and steps to reproduce. If reporting
 performance, distinguish the game's **SIM FPS** from an external display FPS overlay.
 Diagnostic reports are optional; do not attach original game files or personal saves.
 
@@ -143,10 +140,9 @@ in the [installation guide](docs/INSTALLATION.md#supported-game-files).
 The port uses native compiled code and native rendering. Linux and Steam Deck
 builds run directly; leave Steam's forced compatibility-tool setting disabled.
 
-**Will an update remove my progress?**<br>
-Supported installers and update packages preserve saves and settings. Close
-the game before updating and follow the package's version requirements. Save
-backups can also be created from **Options → Profiles**.
+**Will reinstalling remove my progress?**<br>
+Reinstalling preserves saves and settings. Close the game before running setup.
+Save backups can also be created from **Options → Profiles**.
 
 **How do I build or contribute?**<br>
 See [development setup](docs/DEVELOPMENT.md) and [contributing](CONTRIBUTING.md).
