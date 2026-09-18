@@ -33,12 +33,15 @@ struct Services final:PlatformServices {
     PlatformFallbackResult controlled_fallback(CpuState&,const PlatformFallbackRequest&)override{throw std::runtime_error("fallback");}
     bool prefetch(CpuState&,GuestInstructionOrigin,std::uint32_t)override{throw std::runtime_error("PREF");}
 } services;
+struct Fixture;
+void visibility_reference(Fixture&,float);
 struct Fixture {
     CpuState cpu{.memory=Memory{0u}};
     std::shared_ptr<LinearMemoryDevice> ram=std::make_shared<LinearMemoryDevice>(0x1000000u);
     NativePortImmutableWriteGuard immutable{std::vector<NativePortImmutableRange>{
         {0x0C036FFCu,0x29Cu,native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)}}};
     unsigned variant,count,interrupt_at=0,decline_closed_at=0;
+    bool real_visibility{};float horizontal_extra{};
     std::uint32_t protected_address{},protected_size{};
     std::vector<decltype(architecture(cpu))> entries;
     Fixture(std::span<const std::uint8_t> image,unsigned owner,unsigned n,unsigned v,unsigned mode):variant(v),count(n){
@@ -74,9 +77,12 @@ struct Fixture {
                 return !f.protected_size || !(a<std::uint64_t(b)+f.protected_size && b<std::uint64_t(a)+n);
             },false,true};
     }
-    static family::ClosedCall closed(void* opaque,CpuState& c,std::uint32_t entry){
+    static family::ClosedCall closed(void* opaque,CpuState& c,std::uint32_t entry,family::SharedOperation* operation){
         auto& f=*static_cast<Fixture*>(opaque);
         if(f.decline_closed_at==entry)return family::ClosedCall::Declined;
+        if(entry==0x8C03718Cu && f.real_visibility){
+            f.entries.push_back(architecture(c));return family::visibility(c,*operation,f.horizontal_extra);
+        }
         return child(opaque,c,entry)?family::ClosedCall::Complete:family::ClosedCall::Interrupted;
     }
     static bool child(void* opaque,CpuState& c,std::uint32_t entry){
@@ -86,6 +92,7 @@ struct Fixture {
             require(sonic::render_context::try_execute(c,&f.immutable),"context fixture declined");return true;
         }
         if(entry==0x8C037350u){require(sonic::palette_lighting::try_execute(c,&f.immutable),"palette fixture declined");return true;}
+        if(entry==0x8C03718Cu && f.real_visibility){visibility_reference(f,f.horizontal_extra);return true;}
         if(entry==0x8C03718Cu){c.r[0]=0x1234;c.r[1]=0x5678;c.fr[0]=0x41200000;c.t=f.variant==2;}
         else if(entry==0x8C037294u){
             require(c.r[13]==0u,"clip count not reset");
@@ -121,8 +128,104 @@ struct Fixture {
         c.pc=c.pr;return true;
     }
 };
+
+void visibility_setup(Fixture& f,float x,float y,float z,float extra,unsigned variant){
+    const auto bits=[](float v){return std::bit_cast<std::uint32_t>(v);};
+    f.cpu.fr[12]=bits(-extra);f.cpu.fr[13]=bits(640.0f+extra);
+    f.put(model+24,bits(x));f.put(model+28,bits(y));f.put(model+32,bits(z));f.put(model+36,bits(2.0f));
+    f.put(f.cpu.gbr+8,bits(320));f.put(f.cpu.gbr+12,bits(1));f.put(f.cpu.gbr+16,bits(1));
+    f.put(0x8C88F530u,bits(320));f.put(0x8C88F534u,bits(240));
+    f.put(0x8C88F540u,bits(0));f.put(0x8C88F544u,bits(0));f.put(0x8C88F548u,bits(640));f.put(0x8C88F54Cu,bits(480));
+    f.put(0x8C88F554u,bits(1000));f.put(0x8C88F56Cu,variant?0x34u:0u);
+    f.put(0x8C88F5A0u,0x00FFFFFFu);f.put(0x8C88F5A4u,0x80000000u);
+    f.put(0x8C8FFE1Cu,variant);f.put(0x8C754E08u,0u);
+}
+void visibility_reference(Fixture& f,float extra){
+    // Only widen the two X FCMP operands. The rest is the actual PAL owner.
+    auto bytes=f.ram->writable_bytes();std::uint16_t left=extra?0xF0C5:0xF085,right=extra?0xFBD5:0xFB85;
+    std::memcpy(bytes.data()+0x371D2,&left,2);std::memcpy(bytes.data()+0x371E0,&right,2);
+    const auto end=f.cpu.pr;unsigned steps=0;
+    while(f.cpu.pc!=end && ++steps<512u)(void)execute_dynamic_sh4_block(f.cpu,services,1u);
+    require(f.cpu.pc==end && !f.cpu.trap_pending,"real visibility reference failed");
+    left=0xF085;right=0xFB85;
+    std::memcpy(bytes.data()+0x371D2,&left,2);std::memcpy(bytes.data()+0x371E0,&right,2);
+}
+unsigned visibility_checks(std::span<const std::uint8_t> image){
+    unsigned cases=0;
+    const std::array positions{
+        std::array{-400.0f,0.0f,100.0f},std::array{-120.0f,0.0f,100.0f},std::array{0.0f,0.0f,100.0f},
+        std::array{120.0f,0.0f,100.0f},std::array{400.0f,0.0f,100.0f},std::array{0.0f,-300.0f,100.0f},
+        std::array{0.0f,300.0f,100.0f},std::array{0.0f,0.0f,-10.0f},std::array{0.0f,0.0f,1200.0f},
+        std::array{0.0f,0.0f,1.0f}};
+    for(float extra:{0.0f,106.66667f,253.33333f})for(unsigned mode:{0u,1u,fpscr_fr_mask})for(auto p:positions)for(bool normal_gbr:{false,true}){
+        Fixture a(image,0x8C03718Cu,3u,0u,mode),b(image,0x8C03718Cu,3u,0u,mode);
+        if(normal_gbr){a.cpu.gbr=b.cpu.gbr=0x8C8FFE00u;}
+        visibility_setup(a,p[0],p[1],p[2],extra,cases&1u);visibility_setup(b,p[0],p[1],p[2],extra,cases&1u);
+        auto op=a.operation();op.sources_proven=true;
+        require(family::visibility(a.cpu,op,extra)==family::ClosedCall::Complete,"visibility declined");
+        visibility_reference(b,extra);
+        if(architecture(a.cpu)!=architecture(b.cpu))std::cerr<<"visibility case="<<cases<<" fpscr="<<std::hex<<a.cpu.read_fpscr()<<' '<<b.cpu.read_fpscr()<<std::dec<<'\n';
+        require(architecture(a.cpu)==architecture(b.cpu),"real visibility CPU differs");
+        require(std::ranges::equal(a.ram->bytes(),b.ram->bytes()),"real visibility RAM differs");++cases;
+    }
+    // Exceptional operands retain SDK semantics inside the closed body.
+    for(auto value:{0x7FC00000u,0x7F800000u,0xFF800000u,1u,0x00800000u,0x80000000u})for(unsigned axis:{0u,2u}){
+        Fixture a(image,0x8C03718Cu,3u,0u,0u),b(image,0x8C03718Cu,3u,0u,0u);
+        visibility_setup(a,0,0,100,0,1);visibility_setup(b,0,0,100,0,1);
+        a.put(model+24+axis*4,value);b.put(model+24+axis*4,value);
+        auto op=a.operation();op.sources_proven=true;
+        require(family::visibility(a.cpu,op,0)==family::ClosedCall::Complete,"exceptional visibility declined");
+        visibility_reference(b,0);
+        require(architecture(a.cpu)==architecture(b.cpu) && std::ranges::equal(a.ram->bytes(),b.ram->bytes()),"exceptional visibility differs");++cases;
+    }
+    for(unsigned kind=0;kind<17u;++kind){
+        Fixture f(image,0x8C03718Cu,3u,0u,0u);visibility_setup(f,0,0,100,0,1);
+        auto op=f.operation();op.sources_proven=true;
+        if(kind<6){f.protected_address=f.cpu.gbr+(kind==5?52u:28u+kind*4u);f.protected_size=4;}
+        if(kind==6)op.revoke();if(kind==7)op.sources_proven=false;if(kind==8)op.write={};
+        if(kind==9)f.put(model+12,0x8CFFFFFEu);
+        if(kind==10)f.put(model+16,0xFFFFFFF0u);
+        if(kind==11)f.put(model+16,f.cpu.gbr+28u-20u);
+        if(kind==12)f.cpu.write_fpscr(fpscr_dn_mask|fpscr_sz_mask);
+        if(kind==13)f.cpu.write_fpscr(fpscr_dn_mask|fpscr_exception_enable_mask);
+        if(kind==14)f.cpu.gbr=model-28u;
+        if(kind==15)f.cpu.gbr=0x8C037198u-28u;
+        if(kind==16)op.cpu=nullptr;
+        const auto before=architecture(f.cpu);const std::vector<std::uint8_t> bytes(f.ram->bytes().begin(),f.ram->bytes().end());
+        require(family::visibility(f.cpu,op,0)==family::ClosedCall::Declined,"unsafe visibility accepted");
+        require(before==architecture(f.cpu) && std::ranges::equal(bytes,f.ram->bytes()),"visibility decline mutated guest");++cases;
+    }
+    // Every newly admitted GBR publication is also fenced at the parent entry.
+    for(unsigned offset:{28u,32u,36u,40u,44u,52u})for(unsigned owner:{0x8C03700Cu,0x8C037098u}){
+        Fixture f(image,owner,3u,0u,0u);f.protected_address=f.cpu.gbr+offset;f.protected_size=4;
+        auto op=f.operation();const auto before=architecture(f.cpu);
+        const std::vector<std::uint8_t> bytes(f.ram->bytes().begin(),f.ram->bytes().end());
+        require(family::execute(f.cpu,&f.immutable,{&f,Fixture::child,Fixture::closed},&op)==family::Outcome::Declined,"parent missed visibility publication");
+        require(before==architecture(f.cpu) && std::ranges::equal(bytes,f.ram->bytes()),"parent rejection mutated guest");++cases;
+    }
+    for(unsigned owner:{0x8C03700Cu,0x8C037098u})for(float extra:{0.0f,106.66667f})for(float z:{100.0f,-10.0f})for(unsigned mode:{0u,1u})for(bool normal_gbr:{false,true}){
+        Fixture a(image,owner,3u,0u,mode),b(image,owner,3u,0u,mode);
+        if(normal_gbr)for(auto* f:{&a,&b}){
+            std::memcpy(f->ram->writable_bytes().data()+0x8FFE00u,f->ram->bytes().data()+(f->cpu.gbr&0xFFFFFFu),96u);
+            f->cpu.gbr=0x8C8FFE00u;
+        }
+        for(auto* f:{&a,&b}){visibility_setup(*f,0,0,z,extra,1);f->real_visibility=true;f->horizontal_extra=extra;}
+        auto op=a.operation();
+        require(family::execute(a.cpu,&a.immutable,{&a,Fixture::child,Fixture::closed},&op)==family::Outcome::Complete,"real cull composition declined");
+        unsigned steps=0;
+        while(b.cpu.pc!=returned && ++steps<2000u){
+            if(b.cpu.pc==0x8C03718Cu || b.cpu.pc==0x8C037294u || b.cpu.pc==0x8C037350u || b.cpu.pc==0x8C0376D0u ||
+               b.cpu.pc==sonic::render_context::capture_entry || b.cpu.pc==sonic::render_context::commit_entry)Fixture::child(&b,b.cpu,b.cpu.pc);
+            else (void)execute_dynamic_sh4_block(b.cpu,services,1u);
+        }
+        require(op.intact && architecture(a.cpu)==architecture(b.cpu) && a.entries==b.entries,"real cull parent CPU differs");
+        require(std::ranges::equal(a.ram->bytes(),b.ram->bytes()),"real cull parent RAM differs");++cases;
+    }
+    std::cout<<"SONIC_MODEL_VISIBILITY_OK cases="<<cases<<"\n";return cases;
+}
+
 int main(int argc,char** argv){try{
-    require(argc==2 || (argc==3 && std::string(argv[2])=="--shared-only"),"usage: test_model_pipeline RAM [--shared-only]");
+    require(argc==2 || (argc==3 && (std::string(argv[2])=="--shared-only" || std::string(argv[2])=="--visibility-only")),"usage: test_model_pipeline RAM [--shared-only|--visibility-only]");
 #ifdef _WIN32
     _putenv_s("SARECOMP_INTERNAL_DIAGNOSTICS","0");
 #else
@@ -130,6 +233,7 @@ int main(int argc,char** argv){try{
 #endif
     std::ifstream file(argv[1],std::ios::binary);std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
+    if(argc==3 && std::string(argv[2])=="--visibility-only"){visibility_checks(image);return 0;}
     if(argc==2){
     for(unsigned owner:{0x8C037098u,0x8C037108u})for(unsigned n:{2u,3u,16u,17u})for(unsigned v=0;v<8;++v)for(unsigned mode:{0u,1u}){
         Fixture a(image,owner,n,v,mode),b(image,owner,n,v,mode);

@@ -38,6 +38,13 @@ and nineteen composed-hierarchy cases. These compare all registers and all
 registers, source protection under a narrow guard, rejected aliases and real
 fallback/interruption boundaries. No comparison tolerance was relaxed.
 
+These are wrapper/composition oracles: cull, transform and draw are mocked
+at their call boundaries; palette and render-context children use their
+native implementations. The subsequent real-cull qualification and corrected
+six-word material admission are documented in
+`native-model-visibility-20260918.md`. The earlier suite alone did not prove
+the cull child's complete write footprint.
+
 Evidence:
 
 - `runs/model-submission-components-windows-final-20260918.log`

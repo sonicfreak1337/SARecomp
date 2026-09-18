@@ -618,6 +618,28 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   Current outputs are `out/model-submission-windows-20260918/game.exe`,
   `build-linux/game` and its staged Linux copy. Delivered binaries stay intact.
 
+- The private model-submission follow-up now includes the complete visibility
+  and material owner, using the shared RAM/FPU operation in 4:3 and widescreen.
+  See `docs/native-model-visibility-20260918.md`. Parent admission now covers
+  all six GBR publications; the normal GBR=8C8FFE00 intentionally aliases the
+  mask inputs, which must stay live and ordered. Windows/Linux each pass 253
+  actual-cull CPU/RAM cases; the Windows 4:3 frame is byte exact and all 5,811
+  model calls stay closed. Linux Gamma with contact ON in both sides saves
+  18.73% execution CPU/update and gains 23.70% new images/s with exact selected
+  endpoints. This pair uses the default software-raster worker setting, not
+  the earlier LP_NUM_THREADS=2 setting; do not compare absolute costs across
+  them or sum toggle percentages. Lost World matches but is neutral in CPU
+  (-1.02%) and slower in images (-3.78%). Sky Deck has a one-HUD-tick start
+  offset and different positions/palette work; exclude its percentages.
+  Keep the groups OFF pending a useful broader composition. No unchanged
+  reruns or full matrix. The actual game outputs are build-linux/game and
+  out/model-submission-windows-20260918/game.exe, plus the stripped Linux copy
+  under out/model-visibility-linux-20260918. The earlier Windows candidate
+  filename is reused; use the new visibility executable manifest for its SHA.
+  The delivered September 18 patch is unchanged. The remaining measured Gamma
+  hierarchy callback 040784 -> 0D209C has real character-node transform work;
+  it must not be deleted or treated as an unnecessary diagnostic callback.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

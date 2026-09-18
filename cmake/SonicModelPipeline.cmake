@@ -4,6 +4,11 @@ add_executable(sonic-model-pipeline-tests EXCLUDE_FROM_ALL
     "${render_context_identity}" "${animation_reference}")
 target_include_directories(sonic-model-pipeline-tests PRIVATE "${SONIC_ROOT}/src" "${CMAKE_BINARY_DIR}/generated/render-context")
 target_link_libraries(sonic-model-pipeline-tests PRIVATE sonic_palette_batch)
+if(TARGET sonic_fpu_body)
+    target_link_libraries(sonic-model-pipeline-tests PRIVATE sonic_fpu_body)
+else()
+    target_include_directories(sonic-model-pipeline-tests PRIVATE "${CMAKE_BINARY_DIR}/generated/fpu-body")
+endif()
 if(TARGET sonic_linux_title)
     target_sources(sonic-model-pipeline-tests PRIVATE
         "${SONIC_LINUX_SDK}/src/decoder/decoder.cpp" "${SONIC_LINUX_SDK}/src/decoder/instruction_metadata.cpp")

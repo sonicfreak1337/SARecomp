@@ -43,8 +43,12 @@ struct Calls {
     bool (*invoke)(void*,katana::runtime::CpuState&,std::uint32_t){};
     // Complete promises no guest callback, mapping/observer change or writes
     // outside the complete model footprint admitted by execute().
-    ClosedCall (*closed)(void*,katana::runtime::CpuState&,std::uint32_t){};
+    ClosedCall (*closed)(void*,katana::runtime::CpuState&,std::uint32_t,SharedOperation*){};
 };
+// Synchronous child of an admitted model operation. The parent authenticates
+// sources and preserves the borrowed mapping until this callback-free leaf returns.
+ClosedCall visibility(katana::runtime::CpuState&,SharedOperation&,float horizontal_extra);
+
 enum class Outcome { Declined, Complete, Interrupted };
 // Runs the authenticated PAL 03700C/037098/037108 owners. Declined is mutation-free;
 // an interrupted child preserves its frontier and must never restart Original.

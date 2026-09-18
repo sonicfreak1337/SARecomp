@@ -1,6 +1,7 @@
 #include "sonic_model_pipeline.hpp"
 #include "sonic_native_model_memory.hpp"
 #include "sonic_render_context.hpp"
+#include "sonic_fpu_body.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -90,7 +91,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     const auto output=read(guard,0x8C88F58Cu);
     if((output&31u) || !range(guard,p0,{points,point_bytes}) || !range(guard,p0,{normals,normal_bytes}))return Outcome::Declined;
     std::array writes{Range{frame,48},Range{output,even*16u},Range{0x8C03D760u,count*4u},
-        Range{cpu.gbr+44u,4},Range{cpu.gbr+52u,4},Range{cpu.gbr+60u,8},
+        material_owner?Range{cpu.gbr+44u,4}:Range{cpu.gbr+28u,20},Range{cpu.gbr+52u,4},Range{cpu.gbr+60u,8},
         context_owner?Range{0x8C890044u,36}:Range{0x8C89004Cu,4},Range{},Range{}};
     const std::array captured{Range{model,40},Range{points,point_bytes},Range{normals,normal_bytes},
         Range{0x8C8FFE00u,20},Range{0x8C88F58Cu,4},Range{0x8C88FBF4u,4},
@@ -124,7 +125,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     const auto invoke=[&](std::uint32_t address,std::uint32_t continuation){
         cpu.pc=address;cpu.pr=continuation;
         if(shared && shared->intact){
-            const auto result=calls.closed(calls.context,cpu,address);
+            const auto result=calls.closed(calls.context,cpu,address,shared);
             if(result==ClosedCall::Complete)return cpu.pc==continuation;
             shared->revoke();active=nullptr;
             if(result==ClosedCall::Interrupted)return false;
@@ -139,8 +140,8 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
         cpu.pr=cpu.r[7];
         if(cpu.t){cpu.pc=cpu.pr;++counts.culled;return Outcome::Complete;}
     }
-    // The authenticated cull contains no stores/callbacks. From here every
-    // child is a reviewed model leaf; a retained fallback drops active first.
+    // Cull publishes GBR material state before these snapshots. Its complete
+    // store footprint is admitted above; a retained fallback drops active first.
     // Buffers retain capacity between models, but their contents and identity
     // are replaced on every call. This is not a pointer-keyed asset cache.
     thread_local Capture capture;
@@ -202,6 +203,105 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     if(!material_owner && !context_owner){cpu.r[1]=0x8C890044u;cpu.r[0]=read(guard,cpu.r[1]+8u)|0xC0u;store(cpu.r[1]+8u,cpu.r[0]);}
     cpu.pc=cpu.pr;return Outcome::Complete;
 }
+ClosedCall visibility(CpuState& c,SharedOperation& operation,float extra) {
+    if(c.pc!=0x8C03718Cu || !operation.intact || !operation.sources_proven ||
+       operation.cpu!=&c || !operation.immutable || operation.immutable->write_detected() ||
+       !operation.allows_write || !std::isfinite(extra) || extra<0.0f)return ClosedCall::Declined;
+    const auto& guard=operation.read;const auto& writable=operation.write;
+    const bool p0=!(c.mmucr&1u) && (!c.address_space || c.address_space->mode()==AddressTranslationMode::NoMmu);
+    if(!writable || !writable.write_bytes || writable.write_bytes!=guard.read_bytes ||
+       writable.generation!=guard.generation || writable.physical_base!=guard.physical_base ||
+       writable.physical_span!=guard.physical_span || writable.backing_mask!=guard.backing_mask ||
+       !range(guard,p0,{c.r[4],40u}) || !range(guard,p0,{c.gbr,56u}))return ClosedCall::Declined;
+    const auto mesh=read(guard,c.r[4]+12u),materials=read(guard,c.r[4]+16u);
+    if(!range(guard,p0,{mesh,4u}))return ClosedCall::Declined;
+    const auto offset=(read(guard,mesh)&0x3FFFu)*20u;
+    if(materials>0xFFFFFFFFu-offset)return ClosedCall::Declined;
+    const auto material=materials+offset;
+    const std::array inputs{Range{c.r[4],40u},Range{c.gbr+8u,12u},Range{mesh,4u},Range{material,20u},
+        Range{0x8C88F530u,8u},Range{0x8C88F540u,24u},Range{0x8C88F56Cu,4u},
+        Range{0x8C88F5A0u,8u},Range{0x8C8FFE1Cu,12u}};
+    for(const auto r:inputs)if(!range(guard,p0,r))return ClosedCall::Declined;
+    // Cull is also the material-state owner: all six publications must be
+    // admitted before mutation, including parent source and input aliases.
+    for(const auto w:{Range{c.gbr+28u,20u},Range{c.gbr+52u,4u}}){
+        const auto physical=w.address&0x1FFFFFFFu;
+        if(operation.immutable->tracks_address(physical,w.size) || source_overlap(physical,w.size) ||
+           !c.memory.is_writable_linear_range(physical,w.size,false) ||
+           !operation.allows_write(operation.context,physical,w.size))return ClosedCall::Declined;
+        // At the normal GBR=8C8FFE00, the mask is precisely GBR+28..36.
+        // It is intentionally written, then read live in instruction order.
+        // Only the pre-write inputs need to be disjoint; never snapshot masks.
+        for(const auto r:std::span{inputs}.first(inputs.size()-1u))
+            if(overlap(w,r))return ClosedCall::Declined;
+    }
+    HostFpuExecutionEpoch epoch(c);
+    sonic::fpu_body::NontrappingSingleBody fp(c,epoch);
+    if(!fp.admitted() || c.fpu_transfer_pair())return ClosedCall::Declined;
+    struct Accounting {
+        CpuState& c;std::uint64_t accesses{};
+        ~Accounting(){auto& p=const_cast<MemoryPerformanceCounters&>(c.memory.performance_counters());
+            p.unobserved_accesses+=accesses;p.indexed_region_hits+=accesses;}
+    } accounting{c};
+    const auto load=[&](CpuState&,std::uint32_t a){++accounting.accesses;return read(guard,a);};
+    const auto load_half=[&](std::uint32_t a){++accounting.accesses;std::uint16_t v;
+        std::memcpy(&v,guard.read_bytes+(a&0xFFFFFFu),2);return v;};
+    const auto post=[&](CpuState&,unsigned r){const auto v=load(c,c.r[r]);c.r[r]+=4u;return v;};
+    const auto store_gbr=[&](CpuState&,std::uint32_t offset){++accounting.accesses;
+        std::memcpy(writable.write_bytes+((c.gbr+offset)&0xFFFFFFu),&c.r[0],4u);};
+    const auto compare_x=[&](CpuState&,unsigned point,float widen){
+        const auto original=c.fr[8];const auto value=std::bit_cast<float>(original);
+        if(widen!=0.0f && std::isfinite(value))c.fr[8]=std::bit_cast<std::uint32_t>(value+widen);
+        fpu_compare_greater(c,8u,point);c.fr[8]=original;
+    };
+    const auto reject=[&] {c.t=true;c.pc=c.pr;return ClosedCall::Complete;};
+    // 03718C..0371B6: sphere transform and unchanged near/far gates.
+    c.r[0]=c.r[4]+24u;
+    c.fr[0]=post(c,0); c.fr[1]=post(c,0); c.fr[2]=post(c,0);
+    c.fr[3]=0x3f800000u; if(!try_fpu_transform_vector_simd(c,0u))fpu_transform_vector(c,0u); c.fr[3]=post(c,0);
+    c.r[0]=load(c,c.gbr+16u); c.fpul=c.r[0]; c.fr[4]=c.fpul;
+    fp.binary<FpuBinaryOperation::Subtract,3u,4u>(); fpu_compare_greater(c,4u,2u);
+    if (!c.t) return reject();
+    c.r[1]=0x8c88f554u; c.fr[4]=load(c,c.r[1]); fp.binary<FpuBinaryOperation::Add,3u,4u>();
+    fpu_compare_greater(c,4u,2u); if (c.t) return reject();
+    c.fr[5]=0x3f800000u; fp.binary<FpuBinaryOperation::Add,3u,2u>(); fp.binary<FpuBinaryOperation::Divide,2u,5u>();
+    // 0371B8..0371E2: only these two comparisons widen.
+    c.r[0]=load(c,c.gbr+8u); c.fpul=c.r[0]; c.fr[4]=c.fpul; c.fr[6]=c.fr[4];
+    c.r[3]=0x8c88f540u; c.fr[8]=post(c,3);
+    c.r[1]=0x8c88f530u; c.fr[4]=post(c,1); fp.binary<FpuBinaryOperation::Multiply,5u,6u>(); c.fr[11]=c.fr[0];
+    fp.binary<FpuBinaryOperation::Add,3u,0u>(); fp.binary<FpuBinaryOperation::Multiply,6u,0u>(); fp.binary<FpuBinaryOperation::Add,4u,0u>(); compare_x(c,0,-extra);
+    if (!c.t) return reject();
+    c.fr[9]=post(c,3); c.fr[8]=post(c,3);
+    fp.binary<FpuBinaryOperation::Subtract,3u,11u>(); fp.binary<FpuBinaryOperation::Multiply,6u,11u>(); fp.binary<FpuBinaryOperation::Add,4u,11u>(); compare_x(c,11,extra);
+    if (c.t) return reject();
+    // 0371E4..03720A: retain the original cross-register Y calculations.
+    c.r[0]=load(c,c.gbr+12u); c.fpul=c.r[0]; c.fr[7]=c.fpul;
+    fp.binary<FpuBinaryOperation::Multiply,4u,7u>(); c.fr[4]=post(c,1); fp.binary<FpuBinaryOperation::Multiply,5u,7u>(); c.fr[11]=c.fr[1];
+    fp.binary<FpuBinaryOperation::Add,3u,1u>(); fp.binary<FpuBinaryOperation::Multiply,7u,1u>(); fp.binary<FpuBinaryOperation::Add,4u,1u>(); fpu_compare_greater(c,9u,1u);
+    if (!c.t) return reject();
+    c.fr[9]=post(c,3); fp.binary<FpuBinaryOperation::Subtract,3u,11u>(); fp.binary<FpuBinaryOperation::Multiply,6u,11u>(); fp.binary<FpuBinaryOperation::Add,4u,11u>();
+    fpu_compare_greater(c,8u,11u); if (c.t) return reject();
+    // 037218..037274: visible models must publish the complete material ABI.
+    c.r[0]=0u; c.r[2]=0x8c88f56cu; c.r[6]=load(c,c.r[2]); c.r[3]=4u;
+    c.t=(c.r[3]&c.r[6])==0u; if (!c.t) c.r[0]=1u; store_gbr(c,28u);
+    c.r[0]=0x8c88f5a0u; c.r[0]=load(c,c.r[0]); store_gbr(c,32u);
+    c.r[0]=0x8c88f5a4u; c.r[0]=load(c,c.r[0]); store_gbr(c,36u);
+    c.r[0]=0u; c.r[3]=0x20u; c.t=(c.r[3]&c.r[6])==0u;
+    if (!c.t) c.r[0]=0xffffffffu;
+    c.r[3]=0x10u; c.t=(c.r[3]&c.r[6])==0u; if (!c.t) c.r[0]=1u;
+    store_gbr(c,40u);
+    c.r[2]=load(c,c.r[4]+12u); c.r[3]=load(c,c.r[4]+16u);
+    c.r[0]=static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(load_half(c.r[2]))));
+    c.r[6]=0x3fffu; c.r[0]&=c.r[6]; c.r[5]=20u;
+    c.macl=(c.r[0]&0xffffu)*(c.r[5]&0xffffu);
+    c.r[5]=c.macl; c.r[5]+=c.r[3]; c.r[0]=c.r[5]; store_gbr(c,52u);
+    c.r[0]=load(c,c.r[5]+16u); c.r[1]=0x8c8ffe1cu; c.r[6]=post(c,1);
+    c.t=c.r[6]==0u;
+    if (!c.t) { c.r[6]=post(c,1); c.r[0]&=c.r[6]; c.r[6]=post(c,1); c.r[0]|=c.r[6]; }
+    store_gbr(c,44u); c.t=false; c.pc=c.pr;
+    return ClosedCall::Complete;
+}
+
 std::span<std::uint8_t> projection_output(CpuState& cpu,std::uint32_t model,
     std::uint32_t count,std::uint32_t output) noexcept {
     const auto* capture=active;

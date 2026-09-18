@@ -28,6 +28,11 @@ add_executable(sonic-render-hierarchy-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tool
 target_include_directories(sonic-render-hierarchy-tests PRIVATE "${SONIC_ROOT}/src" "${render_hierarchy_dir}" "${CMAKE_BINARY_DIR}/generated/render-context")
 target_compile_definitions(sonic-render-hierarchy-tests PRIVATE SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE=1)
 target_link_libraries(sonic-render-hierarchy-tests PRIVATE sonic_palette_batch)
+if(TARGET sonic_fpu_body)
+    target_link_libraries(sonic-render-hierarchy-tests PRIVATE sonic_fpu_body)
+else()
+    target_include_directories(sonic-render-hierarchy-tests PRIVATE "${CMAKE_BINARY_DIR}/generated/fpu-body")
+endif()
 if(TARGET sonic_linux_title)
     # Use the game's already qualified bounded/glibc comparison bridge. The
     # oracle compares all 16 MiB at every callback; Zig's bytewise bcmp otherwise

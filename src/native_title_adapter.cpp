@@ -38696,12 +38696,16 @@ sonic::movement_contact::Outcome sonic::movement_contact::try_dispatch(katana::r
     return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_movement_contact_call,sonic_movement_contact_resume});
 }
 static sonic::model_pipeline::ClosedCall sonic_model_pipeline_closed_call(
-    void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
+    void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry,
+    sonic::model_pipeline::SharedOperation* operation){
     using namespace katana::runtime;
     using Result=sonic::model_pipeline::ClosedCall;
     auto& context=*static_cast<NativePortContext*>(opaque);
     const auto continuation=cpu.pr;
     NativePortHookResult result{NativePortHookAction::Abort,0u,0u};
+    if(entry==0x8C03718Cu && operation)
+        return sonic::model_pipeline::visibility(cpu,*operation,sonic::presentation::settings().widescreen?
+            sonic::presentation::extra_horizontal_pixels():0.0f);
     if(entry==0x8C03718Cu)result=sonic_native_widescreen_model_cull(context);
     else if(entry==0x8C037294u)result=sonic_native_ninja_model_transform(context);
     else if(entry==0x8C037350u)result=sonic_native_palette_lighting(context);
@@ -38717,7 +38721,7 @@ static sonic::model_pipeline::ClosedCall sonic_model_pipeline_closed_call(
 }
 static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using Result=sonic::model_pipeline::ClosedCall;
-    const auto result=sonic_model_pipeline_closed_call(opaque,cpu,entry);
+    const auto result=sonic_model_pipeline_closed_call(opaque,cpu,entry,nullptr);
     if(result==Result::Complete)return true;
     if(result==Result::Interrupted)return false;
     // This is the only retained boundary; revoke borrowed capture before it.
