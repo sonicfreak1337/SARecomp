@@ -1,0 +1,2 @@
+[ perf record: Woken up 1 times to write data ]
+[ perf record: Captured and wrote 0.340 MB /home/sonic/preloaded-v1/model-roots-profile-gamma-20260918/perf.data (1457 samples) ]

@@ -653,9 +653,14 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   unchanged reruns or new export. Current SHA bindings are in
   `runs/model-roots-executables-20260918.json`, staged Linux under
   out/model-roots-linux-20260918; the private Windows filename is reused.
-  The delivered September 18 patch remains untouched. A separately instrumented
-  current call profile is being collected to choose a different broad native
-  function area rather than repeat small model-copy/admission changes.
+  The delivered September 18 patch remains untouched. The separate current
+  profile is complete; see docs/native-model-roots-profile-20260918.md. Its
+  1,457 samples have exact resolved-leaf cross-checks, but perf record exited 1;
+  disclose this limitation rather than claim a clean full-duration recording.
+  Next is the common land task/list/display/transform family 0519C0, 051E56,
+  051F64, 052048 and 0520C8. Preserve initialization, live list order and mutable
+  callbacks; do not repeat small model-copy changes or the already-native
+  collision-world producer. The original camera is also present in this profile.
 
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

@@ -96,6 +96,7 @@ executable hashes and counters:
 - `runs/model-roots-gamma-comparison-linux-20260918.json`
 - `runs/model-roots-knuckles-lost-world-comparison-linux-20260918.json`
 
-A fresh execution-thread call profile with both groups active is collected
-separately to choose the next whole-function area. Its instrumented run is
-excluded from these performance comparisons.
+A separate execution-thread call profile with both groups active is complete;
+see `native-model-roots-profile-20260918.md`, including its recorder-status
+limitation. It selects the common land display/list/transform family as the
+next connected scope. Its instrumented run is excluded from these comparisons.
