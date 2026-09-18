@@ -2,6 +2,7 @@
 #include "katana/runtime/runtime.hpp"
 #include "sonic_internal_diagnostics.hpp"
 #include "sonic_native_cpu_policy.hpp"
+#include "sonic_model_pipeline.hpp"
 #include <array>
 #include <span>
 namespace katana::runtime {class NativePortImmutableWriteGuard;class NativePortAotServices;}
@@ -41,8 +42,9 @@ struct Calls {
     void* context{};
     bool (*invoke)(void*,katana::runtime::CpuState&,std::uint32_t){};
     bool (*resume)(void*,katana::runtime::CpuState&,std::uint32_t,std::uint32_t){};
+    model_pipeline::Outcome (*model)(void*,katana::runtime::CpuState&,model_pipeline::SharedOperation&){};
 };
-struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},rigid_calls{},morph_calls{};};
+struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},rigid_calls{},morph_calls{},model_calls{},model_revocations{};};
 inline thread_local Statistics counts;
 bool contains(std::uint32_t) noexcept;
 Outcome execute(katana::runtime::CpuState&,const katana::runtime::NativePortImmutableWriteGuard*,Calls);

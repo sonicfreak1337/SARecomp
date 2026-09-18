@@ -1,0 +1,69 @@
+{
+  "scenario": "gamma-emerald-coast",
+  "exe_sha256": [
+    "058c090ed4347dbc32d479bcdd7d9422e94f24d1ff041af747bb040247cef76f",
+    "058c090ed4347dbc32d479bcdd7d9422e94f24d1ff041af747bb040247cef76f"
+  ],
+  "fields": [
+    "main_state",
+    "scene",
+    "game_ticks",
+    "player_state_readable",
+    "player_x_bits",
+    "player_y_bits",
+    "player_z_bits",
+    "hud_timer_ticks",
+    "active_video_hz",
+    "release_slots",
+    "logical_delta",
+    "native_gameplay_math",
+    "native_leaf_math",
+    "animation_hierarchy_native_calls",
+    "animation_hierarchy_original_calls",
+    "palette_native_calls"
+  ],
+  "endpoints": {
+    "5": {},
+    "25": {}
+  },
+  "window_counters": {
+    "off": {
+      "contact_family_calls": 0,
+      "contact_family_internal": 0,
+      "contact_family_foreign": 0,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1881,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 102443,
+      "render_hierarchy_callbacks": 9507,
+      "render_model_calls": 0,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0
+    },
+    "on": {
+      "contact_family_calls": 48,
+      "contact_family_internal": 67515,
+      "contact_family_foreign": 843,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1881,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 102443,
+      "render_hierarchy_callbacks": 3696,
+      "render_model_calls": 5811,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0
+    }
+  },
+  "image_sha256": [
+    "96077af800ac42a61315d75fda50804d2c601d411701ab32a1a4dd0034abb0de",
+    "96077af800ac42a61315d75fda50804d2c601d411701ab32a1a4dd0034abb0de"
+  ],
+  "image_byte_equal": true,
+  "completed": [
+    true,
+    true
+  ],
+  "performance_qualified": false,
+  "performance_exclusion": "Exact image captures and readback were enabled.",
+  "matched_work": true
+}

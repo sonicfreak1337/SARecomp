@@ -1,0 +1,109 @@
+{
+  "schema": "sarecomp-native-model-contact-comparison-v1",
+  "scenario": "gamma-emerald-coast",
+  "exe_sha256": [
+    "f5305bd8a54f2415b36d4ab07baf2c7c6e7fc1b169917de8e2e401e241e88305",
+    "f5305bd8a54f2415b36d4ab07baf2c7c6e7fc1b169917de8e2e401e241e88305"
+  ],
+  "fields": [
+    "main_state",
+    "scene",
+    "game_ticks",
+    "player_state_readable",
+    "player_x_bits",
+    "player_y_bits",
+    "player_z_bits",
+    "hud_timer_ticks",
+    "active_video_hz",
+    "release_slots",
+    "logical_delta",
+    "native_gameplay_math",
+    "native_leaf_math",
+    "animation_hierarchy_native_calls",
+    "animation_hierarchy_original_calls",
+    "palette_native_calls"
+  ],
+  "off": {
+    "new_frames": 20,
+    "elapsed_ms": 22677,
+    "new_frames_per_second": 0.8819508753362437,
+    "execution_cpu_ms_per_frame": 638.4302,
+    "process_cpu_ms_per_frame": 3582.7643150000004,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 187.7735882352941,
+    "process_cpu_ms_per_game_update": 1053.7542102941177
+  },
+  "on": {
+    "new_frames": 20,
+    "elapsed_ms": 22665,
+    "new_frames_per_second": 0.8824178248400618,
+    "execution_cpu_ms_per_frame": 596.881425,
+    "process_cpu_ms_per_frame": 3532.43543,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 175.55336029411765,
+    "process_cpu_ms_per_game_update": 1038.9515970588236
+  },
+  "endpoints": {
+    "5": {},
+    "25": {}
+  },
+  "configuration_differences": {},
+  "group_configuration": {
+    "off": {
+      "native_movement_contact": "off",
+      "native_model_submission": "off"
+    },
+    "on": {
+      "native_movement_contact": "on",
+      "native_model_submission": "on"
+    }
+  },
+  "percent": {
+    "execution_cpu_ms_per_game_update": -6.507958896681265,
+    "process_cpu_ms_per_game_update": -1.4047500916900213,
+    "new_frames_per_second": 0.05294506949040656
+  },
+  "window_counters": {
+    "off": {
+      "contact_family_calls": 0,
+      "contact_family_internal": 0,
+      "contact_family_foreign": 0,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 2608,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 147224,
+      "render_hierarchy_callbacks": 13584,
+      "render_model_calls": 0,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 2176,
+      "morph_hierarchy_calls": 0,
+      "inverse_trig_native_calls": 12343,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    },
+    "on": {
+      "contact_family_calls": 68,
+      "contact_family_internal": 85707,
+      "contact_family_foreign": 1203,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 2608,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 147224,
+      "render_hierarchy_callbacks": 5236,
+      "render_model_calls": 8348,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 2176,
+      "morph_hierarchy_calls": 0,
+      "inverse_trig_native_calls": 2864,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    }
+  },
+  "matched_work": true
+}

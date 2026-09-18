@@ -1,5 +1,6 @@
 #include "sonic_model_pipeline.hpp"
 #include "sonic_palette_lighting.hpp"
+#include "sonic_render_context.hpp"
 #include "sonic_scalar_write_view.hpp"
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/fpu.hpp"
@@ -37,7 +38,8 @@ struct Fixture {
     std::shared_ptr<LinearMemoryDevice> ram=std::make_shared<LinearMemoryDevice>(0x1000000u);
     NativePortImmutableWriteGuard immutable{std::vector<NativePortImmutableRange>{
         {0x0C036FFCu,0x29Cu,native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)}}};
-    unsigned variant,count,interrupt_at=0;
+    unsigned variant,count,interrupt_at=0,decline_closed_at=0;
+    std::uint32_t protected_address{},protected_size{};
     std::vector<decltype(architecture(cpu))> entries;
     Fixture(std::span<const std::uint8_t> image,unsigned owner,unsigned n,unsigned v,unsigned mode):variant(v),count(n){
         std::copy(image.begin(),image.end(),ram->writable_bytes().begin());
@@ -51,6 +53,9 @@ struct Fixture {
         put(cpu.gbr+52,materials);put(cpu.gbr+44,0x80000u);put(cpu.gbr+60,output);put(cpu.gbr+88,palette);
         put(0x8C88F58Cu,output);put(0x8C754E08u,v==1?1u:0u);
         put(0x8C8FFE1Cu,v&1u);put(0x8C8FFE20u,0xFF00FFFFu);put(0x8C8FFE24u,0x12340000u);
+        put(0x8C88FBF4u,model+0x7000u);put(0x8C88FC14u,model+0x8000u);put(0x8C88F56Cu,v&1u?0x4000u:0u);
+        for(unsigned i=0;i<9u;++i)put(model+0x7090u+i*4u,0x43210000u+i);
+        for(unsigned i=0;i<5u;++i)put(model+0x8000u+i*4u,0x12340000u+i);
         for(unsigned i=0;i<(n+2)*3;++i){put(points+i*4,std::bit_cast<std::uint32_t>(float(int(i%13)-6)*.125f));put(normals+i*4,std::bit_cast<std::uint32_t>(float(int(i%5)-2)*.25f));}
         for(unsigned i=0;i<1024;++i)put(palette+i*4,0xFF112200u+i);
         cpu.memory.set_guest_write_observer([this](const GuestWriteEvent& e)noexcept{immutable.observe_write(e);},GuestWriteObserverContract::StableForPrevalidatedLinearWrites);
@@ -61,9 +66,25 @@ struct Fixture {
     ~Fixture(){sonic::scalar_writes::unbind(&cpu.memory,&immutable);}
     void put(std::uint32_t a,std::uint32_t v){std::memcpy(ram->writable_bytes().data()+(a&0xFFFFFFu),&v,4);}
     std::uint32_t get(std::uint32_t a){std::uint32_t v;std::memcpy(&v,ram->bytes().data()+(a&0xFFFFFFu),4);return v;}
+    family::SharedOperation operation(){
+        const sonic::scalar_writes::View view(cpu.memory,&immutable,false,false,true);
+        return {&cpu,&immutable,cpu.memory.direct_linear_memory_guard(false),view.closed_region_snapshot(),this,
+            [](void* p,std::uint32_t a,std::uint32_t n)noexcept{
+                const auto& f=*static_cast<Fixture*>(p);const auto b=f.protected_address&0x1FFFFFFFu;
+                return !f.protected_size || !(a<std::uint64_t(b)+f.protected_size && b<std::uint64_t(a)+n);
+            },false,true};
+    }
+    static family::ClosedCall closed(void* opaque,CpuState& c,std::uint32_t entry){
+        auto& f=*static_cast<Fixture*>(opaque);
+        if(f.decline_closed_at==entry)return family::ClosedCall::Declined;
+        return child(opaque,c,entry)?family::ClosedCall::Complete:family::ClosedCall::Interrupted;
+    }
     static bool child(void* opaque,CpuState& c,std::uint32_t entry){
         auto& f=*static_cast<Fixture*>(opaque);f.entries.push_back(architecture(c));
         if(f.interrupt_at==entry){c.r[0]=0xBADCA11u;return false;}
+        if(entry==sonic::render_context::capture_entry || entry==sonic::render_context::commit_entry){
+            require(sonic::render_context::try_execute(c,&f.immutable),"context fixture declined");return true;
+        }
         if(entry==0x8C037350u){require(sonic::palette_lighting::try_execute(c,&f.immutable),"palette fixture declined");return true;}
         if(entry==0x8C03718Cu){c.r[0]=0x1234;c.r[1]=0x5678;c.fr[0]=0x41200000;c.t=f.variant==2;}
         else if(entry==0x8C037294u){
@@ -101,7 +122,7 @@ struct Fixture {
     }
 };
 int main(int argc,char** argv){try{
-    require(argc==2,"usage: test_model_pipeline RAM");
+    require(argc==2 || (argc==3 && std::string(argv[2])=="--shared-only"),"usage: test_model_pipeline RAM [--shared-only]");
 #ifdef _WIN32
     _putenv_s("SARECOMP_INTERNAL_DIAGNOSTICS","0");
 #else
@@ -109,6 +130,7 @@ int main(int argc,char** argv){try{
 #endif
     std::ifstream file(argv[1],std::ios::binary);std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
+    if(argc==2){
     for(unsigned owner:{0x8C037098u,0x8C037108u})for(unsigned n:{2u,3u,16u,17u})for(unsigned v=0;v<8;++v)for(unsigned mode:{0u,1u}){
         Fixture a(image,owner,n,v,mode),b(image,owner,n,v,mode);
         if(v>=4){a.cpu.r[4]&=0x1FFFFFFFu;b.cpu.r[4]&=0x1FFFFFFFu;}
@@ -149,6 +171,67 @@ int main(int argc,char** argv){try{
         require(family::execute(f.cpu,&f.immutable,{&f,Fixture::child})==family::Outcome::Interrupted,"interrupted child restarted");
         require(f.cpu.pc==target && f.cpu.r[0]==0xBADCA11u && !family::active,"failed frontier was changed");++cases;
     }
+    }
+    // Complete fused submissions, retaining every CPU/RAM effect of the
+    // original wrappers and existing native child implementations.
+    for(unsigned owner:{0x8C03700Cu,0x8C037098u,0x8C037108u})for(unsigned mode:{0u,1u,fpscr_fr_mask})for(unsigned v=0;v<5;++v){
+        Fixture a(image,owner,v&1?3u:16u,v,mode),b(image,owner,v&1?3u:16u,v,mode);
+        auto operation=a.operation();
+        require(family::execute(a.cpu,&a.immutable,{&a,Fixture::child,Fixture::closed},&operation)==family::Outcome::Complete,"shared owner declined");
+        unsigned steps=0;
+        while(b.cpu.pc!=returned && ++steps<2000){
+            if(b.cpu.pc==0x8C03718Cu || b.cpu.pc==0x8C037294u || b.cpu.pc==0x8C037350u || b.cpu.pc==0x8C0376D0u ||
+               b.cpu.pc==sonic::render_context::capture_entry || b.cpu.pc==sonic::render_context::commit_entry)Fixture::child(&b,b.cpu,b.cpu.pc);
+            else (void)execute_dynamic_sh4_block(b.cpu,services,1u);
+            require(!b.cpu.trap_pending,"shared original trapped");
+        }
+        require(operation.intact && operation.sources_proven,"closed operation revoked");
+        require(architecture(a.cpu)==architecture(b.cpu) && a.entries==b.entries,"shared CPU or callback entry differs");
+        require(std::ranges::equal(a.ram->bytes(),b.ram->bytes()) && !family::active,"shared RAM differs or capture leaked");++cases;
+    }
+    for(unsigned target:{0x8C03718Cu,0x8C037294u,0x8C037350u,0x8C0376D0u,
+                         sonic::render_context::capture_entry,sonic::render_context::commit_entry})for(bool stop:{false,true}){
+        const auto owner=target==sonic::render_context::capture_entry || target==sonic::render_context::commit_entry?0x8C03700Cu:0x8C037098u;
+        Fixture a(image,owner,3u,0u,0u),b(image,owner,3u,0u,0u);
+        a.decline_closed_at=stop?0u:target;a.interrupt_at=b.interrupt_at=stop?target:0u;
+        auto operation=a.operation();
+        const auto actual=family::execute(a.cpu,&a.immutable,{&a,Fixture::child,Fixture::closed},&operation);
+        const auto expected=family::execute(b.cpu,&b.immutable,{&b,Fixture::child});
+        require(actual==expected && actual==(stop?family::Outcome::Interrupted:family::Outcome::Complete),"shared fallback frontier");
+        require(!operation.intact && !operation.sources_proven,"foreign/failed child retained parent proof");
+        require(architecture(a.cpu)==architecture(b.cpu) && std::ranges::equal(a.ram->bytes(),b.ram->bytes()),"shared fallback state differs");
+        require(!family::active,"fallback capture leaked");++cases;
+    }
+    for(unsigned kind=0;kind<10;++kind){
+        Fixture f(image,0x8C037108u,3u,0u,0u);auto operation=f.operation();
+        if(kind<7){
+            const std::array<std::pair<std::uint32_t,std::uint32_t>,7> writes{{
+                {0x8C8FFE5Cu,48},{output,64},{0x8C03D760u,12},{f.cpu.gbr+44,4},
+                {f.cpu.gbr+52,4},{f.cpu.gbr+60,8},{0x8C89004Cu,4}}};
+            f.protected_address=writes[kind].first;f.protected_size=writes[kind].second;
+        }
+        if(kind==7)operation.revoke();
+        if(kind==8)operation.cpu=nullptr;
+        if(kind==9)operation.write={};
+        const auto cpu=architecture(f.cpu);const std::vector<std::uint8_t> ram(f.ram->bytes().begin(),f.ram->bytes().end());
+        require(family::execute(f.cpu,&f.immutable,{&f,Fixture::child,Fixture::closed},&operation)==family::Outcome::Declined,"unadmitted shared writes");
+        require(cpu==architecture(f.cpu) && std::ranges::equal(ram,f.ram->bytes()),"shared rejection mutated guest");++cases;
+    }
+    for(unsigned kind=0;kind<6;++kind){
+        Fixture f(image,0x8C03700Cu,3u,0u,0u);auto operation=f.operation();
+        if(kind==0){f.protected_address=model+0x7090u;f.protected_size=16;}
+        if(kind==1){f.protected_address=model+0x8000u;f.protected_size=20;}
+        if(kind==2)f.put(0x8C88FBF4u,0xFFFFFFFCu);
+        if(kind==3)f.put(0x8C88FC14u,0x8CFFFFF0u);
+        if(kind==4)f.put(0x8C88FC14u,points);
+        if(kind==5)f.put(0x8C03700Cu,0u);
+        const auto before=architecture(f.cpu);const std::vector<std::uint8_t> bytes(f.ram->bytes().begin(),f.ram->bytes().end());
+        require(family::execute(f.cpu,&f.immutable,{&f,Fixture::child,Fixture::closed},&operation)==family::Outcome::Declined,"unsafe context submission");
+        require(before==architecture(f.cpu) && std::ranges::equal(bytes,f.ram->bytes()),"context rejection mutated guest");++cases;
+    }
+    for(const auto address:{0x0C036FFCu,0x0C03700Cu,0x0C037098u,0x0C037294u,0x0C037350u,0x0C0376D0u,0x0C605CECu,0x0C605D4Au})
+        require(family::source_overlap(address,1u) && family::source_overlap(address-1u,2u),"model source fence gap");
+    require(!family::source_overlap(0x0CE00000u,4u),"model source fence overbroad");
     require(family::statistics().direct_outputs>0u,"direct output was never exercised");
     std::cout<<"SONIC_MODEL_PIPELINE_OK cases="<<cases<<" normal_reuses="<<family::statistics().normal_reuses
         <<" direct_outputs="<<family::statistics().direct_outputs<<'\n';return 0;

@@ -1,5 +1,6 @@
 #include "sonic_model_pipeline.hpp"
 #include "sonic_native_model_memory.hpp"
+#include "sonic_render_context.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -35,26 +36,50 @@ bool enabled() noexcept {
     static const bool on=sonic::native_cpu::model_group_enabled("SARECOMP_NATIVE_MODEL_PIPELINE");
     return on && !sonic::diagnostics::runtime_checks_enabled();
 }
-Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Calls calls) {
+bool submission_enabled() noexcept {
+    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_MODEL_SUBMISSION");
+        return v && std::strcmp(v,"1")==0 && native_cpu::model_group_enabled("SARECOMP_NATIVE_MODEL_SUBMISSION");}();
+    return on && enabled();
+}
+bool source_overlap(std::uint32_t physical,std::uint32_t size) noexcept {
+    if(!size)return false;
+    if(physical<0x0C038000u && std::uint64_t(physical)+size>0x0C036FFCu)
+        for(const auto& s:identities)
+            if(overlap({physical,size},{s.address,std::uint32_t(s.bytes.size())}))return true;
+    if(physical<0x0C606000u && std::uint64_t(physical)+size>0x0C605CECu)
+        for(const auto& s:render_context::source_spans())
+            if(overlap({physical,size},{s.address,std::uint32_t(s.bytes.size())}))return true;
+    return false;
+}
+Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Calls calls,SharedOperation* shared) {
     ++counts.declined;
     const auto entry=cpu.pc;
     const bool material_owner=entry==0x8C037108u;
+    const bool context_owner=entry==0x8C03700Cu;
+    const bool composed=shared || context_owner;
     auto& memory=cpu.memory;const auto fpscr=cpu.read_fpscr();
-    if((entry!=0x8C037098u && !material_owner) || active || !calls.invoke || !immutable ||
+    if((entry!=0x8C037098u && !material_owner && !context_owner) || active || !calls.invoke || !immutable ||
        immutable->write_detected() || !cpu.privileged_mode_inline() || cpu.trap_pending || cpu.sleeping ||
        (cpu.sr&sr_fd_mask) || (fpscr&(fpscr_pr_mask|fpscr_sz_mask|fpscr_exception_enable_mask)) ||
        !(fpscr&fpscr_dn_mask) || (fpscr&fpscr_rounding_mode_mask)>1u ||
        memory.watchpoint_count() || memory.has_trace_handler() || memory.has_guest_memory_access_sink() ||
        memory.has_mmio_trace_handler() || !memory.guest_write_observer_allows_prevalidated_linear_writes())return Outcome::Declined;
-    const auto guard=memory.direct_linear_memory_guard(false);
+    if(shared && (!shared->intact || shared->cpu!=&cpu || shared->immutable!=immutable ||
+                  !shared->allows_write || !calls.closed))return Outcome::Declined;
+    const auto guard=shared?shared->read:memory.direct_linear_memory_guard(false);
     const bool p0=!(cpu.mmucr&1u) && (!cpu.address_space || cpu.address_space->mode()==AddressTranslationMode::NoMmu);
     if(!range(guard,p0,{cpu.r[4],40u}) || !range(guard,p0,{cpu.gbr,96u}))return Outcome::Declined;
-    for(const auto& identity:identities)
-        if(std::memcmp(guard.read_bytes+(identity.address&0xFFFFFFu),identity.bytes.data(),identity.bytes.size()))return Outcome::Declined;
+    if(!shared || !shared->sources_proven){
+        for(const auto& identity:std::span{identities}.first(composed?identities.size():5u))
+            if(std::memcmp(guard.read_bytes+(identity.address&0xFFFFFFu),identity.bytes.data(),identity.bytes.size()))return Outcome::Declined;
+        if(composed)for(const auto& s:render_context::source_spans())
+            if(std::memcmp(guard.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return Outcome::Declined;
+        if(shared)shared->sources_proven=true;
+    }
     // Only the authenticated product observer permits a callback-free captured
     // view. A revoked or merely 'stable' observer uses the retained owner.
-    const sonic::scalar_writes::View output_view(memory,immutable,false,false,true);
-    const auto writable=output_view.closed_region_snapshot();
+    const auto writable=shared?shared->write:
+        sonic::scalar_writes::View(memory,immutable,false,false,true).closed_region_snapshot();
     if(!writable || !writable.write_bytes || writable.write_bytes!=guard.read_bytes ||
        writable.generation!=guard.generation || writable.physical_base!=guard.physical_base ||
        writable.physical_span!=guard.physical_span || writable.backing_mask!=guard.backing_mask)
@@ -64,17 +89,26 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     const auto even=(count+1u)&~1u,point_bytes=(even+1u)*12u,normal_bytes=(count+!(count&1u))*12u;
     const auto output=read(guard,0x8C88F58Cu);
     if((output&31u) || !range(guard,p0,{points,point_bytes}) || !range(guard,p0,{normals,normal_bytes}))return Outcome::Declined;
-    const std::array writes{Range{frame,48},Range{output,even*16u},Range{0x8C03D760u,count*4u},
-        Range{cpu.gbr+44u,4},Range{cpu.gbr+52u,4},Range{cpu.gbr+60u,8},Range{0x8C89004Cu,4}};
+    std::array writes{Range{frame,48},Range{output,even*16u},Range{0x8C03D760u,count*4u},
+        Range{cpu.gbr+44u,4},Range{cpu.gbr+52u,4},Range{cpu.gbr+60u,8},
+        context_owner?Range{0x8C890044u,36}:Range{0x8C89004Cu,4},Range{},Range{}};
     const std::array captured{Range{model,40},Range{points,point_bytes},Range{normals,normal_bytes},
-        Range{0x8C8FFE00u,20},Range{0x8C88F58Cu,4}};
-    for(std::size_t i=0;i<writes.size();++i){
+        Range{0x8C8FFE00u,20},Range{0x8C88F58Cu,4},Range{0x8C88FBF4u,4},
+        Range{0x8C88FC14u,4},Range{0x8C88F56Cu,4}};
+    if(context_owner){
+        const auto renderer=read(guard,0x8C88FBF4u),cursor=read(guard,0x8C88FC14u);
+        if(renderer>0xFFFFFFFFu-0x90u)return Outcome::Declined;
+        writes[7]={renderer+0x90u,16u};writes[8]={cursor,20u};
+    }
+    for(std::size_t i=0;i<(context_owner?writes.size():7u);++i){
         const auto w=writes[i];
         if(!range(guard,p0,w) || immutable->tracks_address(w.address&0x1FFFFFFFu,w.size) ||
            !memory.is_writable_linear_range(w.address&0x1FFFFFFFu,w.size,false))return Outcome::Declined;
-        for(const auto r:captured)if(overlap(w,r))return Outcome::Declined;
+        if(shared && !shared->allows_write(shared->context,w.address&0x1FFFFFFFu,w.size))return Outcome::Declined;
+        for(const auto r:std::span{captured}.first(context_owner?captured.size():5u))if(overlap(w,r))return Outcome::Declined;
         for(std::size_t j=0;j<i;++j)if(overlap(w,writes[j]))return Outcome::Declined;
-        for(const auto& identity:identities)if(overlap(w,{identity.address,std::uint32_t(identity.bytes.size())}))return Outcome::Declined;
+        for(const auto& identity:std::span{identities}.first(composed?identities.size():5u))if(overlap(w,{identity.address,std::uint32_t(identity.bytes.size())}))return Outcome::Declined;
+        if(composed)for(const auto& s:render_context::source_spans())if(overlap(w,{s.address,std::uint32_t(s.bytes.size())}))return Outcome::Declined;
     }
     // The first material and mask prelude is part of 037108, before lighting.
     std::uint32_t mesh=0,materials=0,material=0;
@@ -88,13 +122,20 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     }
     --counts.declined;++counts.calls;
     const auto invoke=[&](std::uint32_t address,std::uint32_t continuation){
-        cpu.pc=address;cpu.pr=continuation;return calls.invoke(calls.context,cpu,address) && cpu.pc==continuation;
+        cpu.pc=address;cpu.pr=continuation;
+        if(shared && shared->intact){
+            const auto result=calls.closed(calls.context,cpu,address);
+            if(result==ClosedCall::Complete)return cpu.pc==continuation;
+            shared->revoke();active=nullptr;
+            if(result==ClosedCall::Interrupted)return false;
+        }
+        return calls.invoke(calls.context,cpu,address) && cpu.pc==continuation;
     };
     if(!material_owner){
         cpu.r[0]=read(guard,0x8C754E08u);cpu.t=cpu.r[0]==0u;
         if(!cpu.t){cpu.pc=cpu.pr;++counts.culled;return Outcome::Complete;}
         cpu.r[7]=cpu.pr;
-        if(!invoke(0x8C03718Cu,0x8C0370AEu))return Outcome::Interrupted;
+        if(!invoke(0x8C03718Cu,context_owner?0x8C037022u:0x8C0370AEu))return Outcome::Interrupted;
         cpu.pr=cpu.r[7];
         if(cpu.t){cpu.pc=cpu.pr;++counts.culled;return Outcome::Complete;}
     }
@@ -112,6 +153,11 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     std::memcpy(capture.normals.data(),guard.read_bytes+(normals&0xFFFFFFu),normal_bytes);
     Scope scope(capture);counts.points+=count;
     const auto store=[&](std::uint32_t a,std::uint32_t v,CodeWriteSource source=CodeWriteSource::Cpu){
+        if(shared && shared->intact){
+            std::memcpy(writable.write_bytes+(a&0xFFFFFFu),&v,4u);
+            auto& perf=const_cast<MemoryPerformanceCounters&>(memory.performance_counters());
+            ++perf.unobserved_accesses;++perf.indexed_region_hits;return;
+        }
         if(!memory.try_write_direct_linear_u32(a&0x1FFFFFFFu,v,source))
             throw std::runtime_error("native model pipeline: admitted store failed");
     };
@@ -120,7 +166,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
     for(int i=15;i>=12;--i)store(cpu.r[0]-=4u,cpu.fr[i],CodeWriteSource::Fpu);
     for(int i=14;i>=8;--i)store(cpu.r[0]-=4u,cpu.r[i]);
     cpu.r[13]=0;
-    if(!invoke(0x8C037294u,material_owner?0x8C037126u:0x8C0370D4u))return Outcome::Interrupted;
+    if(!invoke(0x8C037294u,context_owner?0x8C037048u:material_owner?0x8C037126u:0x8C0370D4u))return Outcome::Interrupted;
     cpu.r[0]=read(guard,model+8);
     cpu.t=std::bit_cast<std::int32_t>(cpu.r[13])>=std::bit_cast<std::int32_t>(cpu.r[0]);
     if(!cpu.t){
@@ -133,14 +179,27 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* immutable,Cal
                 cpu.r[6]=read(guard,cpu.r[1]);cpu.r[1]+=4u;cpu.r[0]|=cpu.r[6];}
             store(cpu.gbr+44,cpu.r[0]);
         }
-        if(!invoke(0x8C037350u,material_owner?0x8C03715Au:0x8C0370DEu) ||
-           !invoke(0x8C0376D0u,material_owner?0x8C03715Eu:0x8C0370E2u))return Outcome::Interrupted;
+        if(!invoke(0x8C037350u,context_owner?0x8C037052u:material_owner?0x8C03715Au:0x8C0370DEu))return Outcome::Interrupted;
+        if(context_owner){
+            cpu.r[14]=cpu.r[4];cpu.r[0]=render_context::capture_entry;
+            if(!invoke(render_context::capture_entry,0x8C03705Au))return Outcome::Interrupted;
+            cpu.r[4]=cpu.r[14];
+        }
+        if(!invoke(0x8C0376D0u,context_owner?0x8C037060u:material_owner?0x8C03715Eu:0x8C0370E2u))return Outcome::Interrupted;
+        if(context_owner){
+            // Complete 036FFC state publication between drawing and the
+            // original renderer-context commit; both call-visible PRs matter.
+            cpu.pr=0x8C037064u;cpu.r[1]=0x8C890044u;
+            cpu.r[0]=read(guard,cpu.r[1]+8u)|0xC0u;store(cpu.r[1]+8u,cpu.r[0]);
+            cpu.r[0]=render_context::commit_entry;
+            if(!invoke(render_context::commit_entry,0x8C03706Au))return Outcome::Interrupted;
+        }
     }
     cpu.r[0]=frame;
     for(unsigned i=8;i<15;++i){cpu.r[i]=read(guard,cpu.r[0]);cpu.r[0]+=4;}
     for(unsigned i=12;i<16;++i){cpu.fr[i]=read(guard,cpu.r[0]);cpu.r[0]+=4;}
     cpu.pr=read(guard,cpu.r[0]);cpu.r[0]+=4;
-    if(!material_owner){cpu.r[1]=0x8C890044u;cpu.r[0]=read(guard,cpu.r[1]+8u)|0xC0u;store(cpu.r[1]+8u,cpu.r[0]);}
+    if(!material_owner && !context_owner){cpu.r[1]=0x8C890044u;cpu.r[0]=read(guard,cpu.r[1]+8u)|0xC0u;store(cpu.r[1]+8u,cpu.r[0]);}
     cpu.pc=cpu.pr;return Outcome::Complete;
 }
 std::span<std::uint8_t> projection_output(CpuState& cpu,std::uint32_t model,

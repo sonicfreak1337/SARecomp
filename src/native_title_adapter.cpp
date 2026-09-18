@@ -18161,6 +18161,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " render_hierarchy_declined=" << sonic::render_hierarchy::counts.declined
               << " render_hierarchy_internal=" << sonic::render_hierarchy::counts.internal_calls
               << " render_hierarchy_callbacks=" << sonic::render_hierarchy::counts.callbacks
+              << " render_model_calls=" << sonic::render_hierarchy::counts.model_calls
+              << " render_model_revocations=" << sonic::render_hierarchy::counts.model_revocations
               << " render_hierarchy_resumes=" << sonic::render_hierarchy::counts.resumes
               << " rigid_hierarchy_calls=" << sonic::render_hierarchy::counts.rigid_calls
               << " morph_hierarchy_calls=" << sonic::render_hierarchy::counts.morph_calls
@@ -38634,6 +38636,8 @@ sonic::collision_world::Outcome sonic::collision_world::try_dispatch(katana::run
 }
 namespace {
 struct SonicRenderHierarchyBridge {katana::runtime::NativePortAotServices& services;};
+sonic::model_pipeline::Outcome sonic_render_hierarchy_model(void*,katana::runtime::CpuState&,
+                                                          sonic::model_pipeline::SharedOperation&);
 bool sonic_render_hierarchy_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t target){
     auto& bridge=*static_cast<SonicRenderHierarchyBridge*>(opaque);
     return sonic_object_activation_call(&bridge.services.context(),cpu,target);
@@ -38659,7 +38663,8 @@ sonic::render_hierarchy::Outcome sonic::render_hierarchy::try_dispatch(katana::r
                                                                      katana::runtime::NativePortAotServices& services){
     if(services.context().cpu!=&cpu || !sonic_native_leaf_math_active())return Outcome::Declined;
     SonicRenderHierarchyBridge bridge{services};
-    return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_render_hierarchy_call,sonic_render_hierarchy_resume});
+    return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_render_hierarchy_call,
+        sonic_render_hierarchy_resume,sonic_render_hierarchy_model});
 }
 namespace {
 struct SonicMovementContactBridge {katana::runtime::NativePortAotServices& services;};
@@ -38690,8 +38695,10 @@ sonic::movement_contact::Outcome sonic::movement_contact::try_dispatch(katana::r
     SonicMovementContactBridge bridge{services};
     return execute(cpu,services.immutable_write_guard(),{&bridge,sonic_movement_contact_call,sonic_movement_contact_resume});
 }
-static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
+static sonic::model_pipeline::ClosedCall sonic_model_pipeline_closed_call(
+    void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
     using namespace katana::runtime;
+    using Result=sonic::model_pipeline::ClosedCall;
     auto& context=*static_cast<NativePortContext*>(opaque);
     const auto continuation=cpu.pr;
     NativePortHookResult result{NativePortHookAction::Abort,0u,0u};
@@ -38699,17 +38706,35 @@ static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cp
     else if(entry==0x8C037294u)result=sonic_native_ninja_model_transform(context);
     else if(entry==0x8C037350u)result=sonic_native_palette_lighting(context);
     else if(entry==0x8C0376D0u)result=sonic_native_ninja_model_draw(context);
-    if(result.action==NativePortHookAction::ContinueOriginal){
-        // Never expose a borrowed guard/data scope to retained guest execution.
-        sonic::model_pipeline::active=nullptr;
-        if(!context.aot.invoke_callback)return false;
-        struct Depth {Depth(){++sonic_native_host_service_depth;}~Depth(){--sonic_native_host_service_depth;}} depth;
-        result=context.aot.invoke_callback(context,entry);
-        return result.action==NativePortHookAction::Return && cpu.pc==continuation &&
-            context.stop_reason==NativePortStopReason::None;
+    else if(entry==sonic::render_context::capture_entry || entry==sonic::render_context::commit_entry){
+        auto* services=katana_port_generated::runtime_dispatch_detail::active_services;
+        if(!services || !sonic::render_context::try_dispatch(cpu,services->immutable_write_guard()))return Result::Declined;
+        result={NativePortHookAction::Return,0u,0u};
     }
-    if(result.action!=NativePortHookAction::Return || context.stop_reason!=NativePortStopReason::None)return false;
-    cpu.pc=continuation;return true;
+    if(result.action==NativePortHookAction::ContinueOriginal)return Result::Declined;
+    if(result.action!=NativePortHookAction::Return || cpu.trap_pending || context.stop_reason!=NativePortStopReason::None)return Result::Interrupted;
+    cpu.pc=continuation;return Result::Complete;
+}
+static bool sonic_model_pipeline_call(void* opaque,katana::runtime::CpuState& cpu,std::uint32_t entry){
+    using Result=sonic::model_pipeline::ClosedCall;
+    const auto result=sonic_model_pipeline_closed_call(opaque,cpu,entry);
+    if(result==Result::Complete)return true;
+    if(result==Result::Interrupted)return false;
+    // This is the only retained boundary; revoke borrowed capture before it.
+    sonic::model_pipeline::active=nullptr;
+    return sonic_object_activation_call(opaque,cpu,entry);
+}
+namespace {
+sonic::model_pipeline::Outcome sonic_render_hierarchy_model(void* opaque,katana::runtime::CpuState& cpu,
+                                                           sonic::model_pipeline::SharedOperation& operation){
+    using namespace sonic::model_pipeline;
+    auto& services=static_cast<SonicRenderHierarchyBridge*>(opaque)->services;
+    auto& context=services.context();
+    if(!enabled() || context.cpu!=&cpu || !sonic_native_leaf_math_active() ||
+       context.stop_reason!=katana::runtime::NativePortStopReason::None)return Outcome::Declined;
+    return execute(cpu,services.immutable_write_guard(),
+        {&context,sonic_model_pipeline_call,sonic_model_pipeline_closed_call},&operation);
+}
 }
 extern "C" katana::runtime::NativePortHookResult
 sonic_native_model_pipeline(katana::runtime::NativePortContext& context) noexcept {

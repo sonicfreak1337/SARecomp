@@ -1,0 +1,49 @@
+{
+  "scenario": "gamma-emerald-coast",
+  "exe_sha256": [
+    "058c090ed4347dbc32d479bcdd7d9422e94f24d1ff041af747bb040247cef76f",
+    "058c090ed4347dbc32d479bcdd7d9422e94f24d1ff041af747bb040247cef76f"
+  ],
+  "fields": [
+    "main_state",
+    "scene",
+    "game_ticks",
+    "player_state_readable",
+    "player_x_bits",
+    "player_y_bits",
+    "player_z_bits",
+    "hud_timer_ticks",
+    "active_video_hz",
+    "release_slots",
+    "logical_delta",
+    "native_gameplay_math",
+    "native_leaf_math",
+    "animation_hierarchy_native_calls",
+    "animation_hierarchy_original_calls",
+    "palette_native_calls"
+  ],
+  "endpoints": {
+    "5": {},
+    "125": {}
+  },
+  "completed": [
+    true,
+    true
+  ],
+  "off": {
+    "execution_thread_cpu_ms_per_title_boundary": 19.921875,
+    "aligned_process_cpu_ms_per_title_boundary": 26.822916666666668,
+    "execution_cycles_per_title_boundary": 86417969.0
+  },
+  "on": {
+    "execution_thread_cpu_ms_per_title_boundary": 18.75,
+    "aligned_process_cpu_ms_per_title_boundary": 24.609375,
+    "execution_cycles_per_title_boundary": 81199891.66666667
+  },
+  "percent": {
+    "execution_thread_cpu_ms_per_title_boundary": -5.882352941176472,
+    "aligned_process_cpu_ms_per_title_boundary": -8.252427184466027,
+    "execution_cycles_per_title_boundary": -6.038185569176391
+  },
+  "matched_work": true
+}

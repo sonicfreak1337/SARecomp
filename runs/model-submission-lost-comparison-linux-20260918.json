@@ -1,0 +1,135 @@
+{
+  "schema": "sarecomp-native-model-contact-comparison-v1",
+  "scenario": "knuckles-lost-world",
+  "exe_sha256": [
+    "f5305bd8a54f2415b36d4ab07baf2c7c6e7fc1b169917de8e2e401e241e88305",
+    "f5305bd8a54f2415b36d4ab07baf2c7c6e7fc1b169917de8e2e401e241e88305"
+  ],
+  "fields": [
+    "main_state",
+    "scene",
+    "game_ticks",
+    "player_state_readable",
+    "player_x_bits",
+    "player_y_bits",
+    "player_z_bits",
+    "hud_timer_ticks",
+    "active_video_hz",
+    "release_slots",
+    "logical_delta",
+    "native_gameplay_math",
+    "native_leaf_math",
+    "animation_hierarchy_native_calls",
+    "animation_hierarchy_original_calls",
+    "palette_native_calls"
+  ],
+  "off": {
+    "new_frames": 20,
+    "elapsed_ms": 24346,
+    "new_frames_per_second": 0.8214901831923108,
+    "execution_cpu_ms_per_frame": 1099.705645,
+    "process_cpu_ms_per_frame": 3662.25835,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 323.4428367647059,
+    "process_cpu_ms_per_game_update": 1077.1348088235295
+  },
+  "on": {
+    "new_frames": 20,
+    "elapsed_ms": 23203,
+    "new_frames_per_second": 0.8619575054949791,
+    "execution_cpu_ms_per_frame": 1080.03596,
+    "process_cpu_ms_per_frame": 3608.812635,
+    "game_updates": 68,
+    "game_updates_per_frame": 3.4,
+    "execution_cpu_ms_per_game_update": 317.65763529411765,
+    "process_cpu_ms_per_game_update": 1061.415480882353
+  },
+  "endpoints": {
+    "5": {
+      "game_ticks": [
+        "189",
+        "190"
+      ],
+      "animation_hierarchy_native_calls": [
+        "246",
+        "249"
+      ],
+      "palette_native_calls": [
+        "4138",
+        "4174"
+      ]
+    },
+    "25": {
+      "game_ticks": [
+        "257",
+        "258"
+      ],
+      "animation_hierarchy_native_calls": [
+        "354",
+        "357"
+      ],
+      "palette_native_calls": [
+        "6028",
+        "6064"
+      ]
+    }
+  },
+  "configuration_differences": {},
+  "group_configuration": {
+    "off": {
+      "native_movement_contact": "off",
+      "native_model_submission": "off"
+    },
+    "on": {
+      "native_movement_contact": "on",
+      "native_model_submission": "on"
+    }
+  },
+  "percent": {
+    "execution_cpu_ms_per_game_update": -1.7886318115608035,
+    "process_cpu_ms_per_game_update": -1.4593649571445488,
+    "new_frames_per_second": 4.926087143903812
+  },
+  "window_counters": {
+    "off": {
+      "contact_family_calls": 0,
+      "contact_family_internal": 0,
+      "contact_family_foreign": 0,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1012,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 30388,
+      "render_hierarchy_callbacks": 3100,
+      "render_model_calls": 0,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 952,
+      "morph_hierarchy_calls": 0,
+      "inverse_trig_native_calls": 6900,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    },
+    "on": {
+      "contact_family_calls": 68,
+      "contact_family_internal": 16154,
+      "contact_family_foreign": 408,
+      "contact_family_resumes": 0,
+      "render_hierarchy_calls": 1012,
+      "render_hierarchy_declined": 0,
+      "render_hierarchy_internal": 30182,
+      "render_hierarchy_callbacks": 0,
+      "render_model_calls": 3100,
+      "render_model_revocations": 0,
+      "render_hierarchy_resumes": 0,
+      "rigid_hierarchy_calls": 952,
+      "morph_hierarchy_calls": 0,
+      "inverse_trig_native_calls": 5410,
+      "inverse_trig_declined": 0,
+      "inverse_memory_calls": 0,
+      "inverse_memory_stores": 0
+    }
+  },
+  "matched_work": false
+}

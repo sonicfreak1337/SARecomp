@@ -601,6 +601,23 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   see the report for exact hashes. Three replaced Linux VM experiment programs
   were removed to free 5.25 GB; their reports/assets/installations remain.
 
+- The whole model-submission composition remains private-OFF after bounded
+  qualification; see `docs/native-model-submission-20260918.md`. It connects
+  the complete hierarchy to 03700C/037098/037108 and native renderer-context
+  capture/commit, sharing admitted RAM/source proofs only until a real guest
+  call. Preserve the reciprocal source-write fences under narrow immutable
+  guards. Windows passes 218 model CPU/RAM and 19 hierarchy cases; Linux
+  passes the new 73 model and 19 hierarchy cases. Windows Gamma is pixel exact
+  with the 61-owner contact group also ON. Separate no-capture Windows timing
+  reduces execution CPU 5.88% and process CPU 8.25%. Linux Gamma reduces
+  execution CPU/update 6.51%, but image throughput is neutral (+0.05%). Those
+  are combined-group results, not additional gains over contact alone.
+  Lost World completes, but its starting game tick differs by one; reject its
+  timing percentages. Do not rebase its counters or repeat unchanged Gamma
+  pairs/component suites. No new patch or default promotion is warranted yet.
+  Current outputs are `out/model-submission-windows-20260918/game.exe`,
+  `build-linux/game` and its staged Linux copy. Delivered binaries stay intact.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

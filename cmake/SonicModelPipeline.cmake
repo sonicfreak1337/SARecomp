@@ -1,7 +1,8 @@
 add_executable(sonic-model-pipeline-tests EXCLUDE_FROM_ALL
     "${SONIC_ROOT}/tools/test_model_pipeline.cpp" "${SONIC_ROOT}/src/sonic_model_pipeline.cpp"
-    "${SONIC_ROOT}/src/sonic_palette_lighting.cpp" "${animation_reference}")
-target_include_directories(sonic-model-pipeline-tests PRIVATE "${SONIC_ROOT}/src")
+    "${SONIC_ROOT}/src/sonic_palette_lighting.cpp" "${SONIC_ROOT}/src/sonic_render_context.cpp"
+    "${render_context_identity}" "${animation_reference}")
+target_include_directories(sonic-model-pipeline-tests PRIVATE "${SONIC_ROOT}/src" "${CMAKE_BINARY_DIR}/generated/render-context")
 target_link_libraries(sonic-model-pipeline-tests PRIVATE sonic_palette_batch)
 if(TARGET sonic_linux_title)
     target_sources(sonic-model-pipeline-tests PRIVATE

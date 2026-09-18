@@ -44,11 +44,13 @@ class Access {
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
     std::uint64_t proven_sources{};
+    const bool share_models=model_pipeline::submission_enabled();
+    model_pipeline::SharedOperation models{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
     ~Access(){flush();}
     bool refresh() {
-        read={};write={};proven_sources=0;
+        read={};write={};proven_sources=0;models.revoke();
         auto& m=c.memory;
         if(!mode_ok(c) || immutable.write_detected() || m.watchpoint_count() || m.has_trace_handler() ||
            m.has_guest_memory_access_sink() || m.has_mmio_trace_handler() ||
@@ -61,8 +63,13 @@ public:
         if(candidate && candidate.write_bytes && candidate.write_bytes==read.read_bytes &&
            candidate.generation==read.generation && candidate.physical_base==read.physical_base &&
            candidate.physical_span==read.physical_span && candidate.backing_mask==read.backing_mask)write=candidate;
+        if(share_models)models={&c,&immutable,read,write,this,
+            [](void* p,std::uint32_t a,std::uint32_t n)noexcept{
+                return !static_cast<Access*>(p)->source_overlap(a,n);
+            },false,true};
         return !stack_size || admit_stack(stack,stack_size);
     }
+    model_pipeline::SharedOperation* model_operation()noexcept{return share_models?&models:nullptr;}
     bool range(std::uint32_t a,std::uint32_t size,unsigned alignment=1)const noexcept {
         const auto physical=a&0x1FFFFFFFu;
         return read && !(a&(alignment-1u)) && ((a&0xC0000000u)==0x80000000u || (p0 && a==physical)) &&
@@ -94,6 +101,9 @@ public:
     // unusual module range set does not mark those bytes immutable. Real
     // callbacks invalidate every proof unconditionally in refresh().
     bool source_overlap(std::uint32_t physical,std::uint32_t size)const noexcept {
+        // Model proofs are part of this same root operation. Even a narrow
+        // installed immutable set must not let a hierarchy store alter them.
+        if(share_models && model_pipeline::source_overlap(physical,size))return true;
         bool candidate=false;
         for(auto p=(physical-0x0C000000u)>>12u;p<=((physical-0x0C000000u)+size-1u)>>12u;++p)
             candidate|=source_pages[p];
@@ -175,10 +185,22 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
             ++counts.internal_calls;
             if(!run(cpu,a,calls,flow,target))throw ResumeOriginal{tail};
         }else{
-            a.flush();++counts.callbacks;
-            if(!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation)throw Interrupted{};
-            if(!a.refresh())throw ResumeOriginal{tail};
-            if(!local_sources_enabled() && !a.authenticate_all())throw ResumeOriginal{tail};
+            a.flush();
+            auto* models=a.model_operation();
+            auto model=model_pipeline::Outcome::Declined;
+            if(models && calls.model && (target==0x8C03700Cu || target==0x8C037098u || target==0x8C037108u))
+                model=calls.model(calls.context,cpu,*models);
+            if(model==model_pipeline::Outcome::Interrupted)throw Interrupted{};
+            if(model==model_pipeline::Outcome::Complete)++counts.model_calls;
+            const bool closed=model==model_pipeline::Outcome::Complete && models->intact;
+            if(!closed){
+                ++counts.callbacks;
+                if(models){if(model==model_pipeline::Outcome::Complete)++counts.model_revocations;models->revoke();}
+                if(model==model_pipeline::Outcome::Declined &&
+                   (!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation))throw Interrupted{};
+                if(!a.refresh())throw ResumeOriginal{tail};
+                if(!local_sources_enabled() && !a.authenticate_all())throw ResumeOriginal{tail};
+            }
         }
         if(cpu.pc!=continuation)throw Interrupted{};
         // A nested child may have crossed a callback and revoked all source

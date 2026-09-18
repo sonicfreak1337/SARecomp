@@ -22,8 +22,10 @@ add_custom_command(OUTPUT ${render_hierarchy_outputs}
 target_sources(${animation_title} PRIVATE "${SONIC_ROOT}/src/sonic_render_hierarchy.cpp" ${render_hierarchy_outputs})
 target_include_directories(${animation_title} PRIVATE "${render_hierarchy_dir}")
 add_executable(sonic-render-hierarchy-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_render_hierarchy.cpp"
-    "${SONIC_ROOT}/src/sonic_render_hierarchy.cpp" ${render_hierarchy_outputs} "${animation_reference}")
-target_include_directories(sonic-render-hierarchy-tests PRIVATE "${SONIC_ROOT}/src" "${render_hierarchy_dir}")
+    "${SONIC_ROOT}/src/sonic_render_hierarchy.cpp" "${SONIC_ROOT}/src/sonic_model_pipeline.cpp"
+    "${SONIC_ROOT}/src/sonic_render_context.cpp" "${render_context_identity}"
+    ${render_hierarchy_outputs} "${animation_reference}")
+target_include_directories(sonic-render-hierarchy-tests PRIVATE "${SONIC_ROOT}/src" "${render_hierarchy_dir}" "${CMAKE_BINARY_DIR}/generated/render-context")
 target_compile_definitions(sonic-render-hierarchy-tests PRIVATE SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE=1)
 target_link_libraries(sonic-render-hierarchy-tests PRIVATE sonic_palette_batch)
 if(TARGET sonic_linux_title)

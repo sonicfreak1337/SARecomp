@@ -312,8 +312,49 @@ void setup_morph(Fixture& f,unsigned variant){
     if(variant==47)f.put(0x8C88FF6Cu,0x8CFFFFF4u);
 }
 int main(int argc,char** argv)try{
-    require(argc==2 || (argc==3 && (std::string(argv[2])=="--rigid-only" || std::string(argv[2])=="--morph-only")),"render-hierarchy-tests <original-ram> [--rigid-only|--morph-only]");std::ifstream file(argv[1],std::ios::binary);
+    require(argc==2 || (argc==3 && (std::string(argv[2])=="--rigid-only" || std::string(argv[2])=="--morph-only" || std::string(argv[2])=="--submission-only")),"render-hierarchy-tests <original-ram> [--rigid-only|--morph-only|--submission-only]");std::ifstream file(argv[1],std::ios::binary);
     const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
+    if(argc==3 && std::string(argv[2])=="--submission-only"){
+#ifdef _WIN32
+        _putenv_s("SARECOMP_NATIVE_MODEL_SUBMISSION","1");_putenv_s("SARECOMP_INTERNAL_DIAGNOSTICS","0");
+#else
+        setenv("SARECOMP_NATIVE_MODEL_SUBMISSION","1",1);setenv("SARECOMP_INTERNAL_DIAGNOSTICS","0",1);
+#endif
+        for(unsigned mode:{0u,1u,fpscr_fr_mask})for(unsigned kind=0;kind<6;++kind){
+            Fixture a(image,mode),b(image,mode);
+            for(auto* f:{&a,&b}){if(kind==2)setup_rigid(*f,0);else if(kind==3)setup_blended(*f,1);else setup(*f,1);}
+            a.oracle=&b;
+            struct Probe {Fixture* f;unsigned kind,attempts{};} probe{&a,kind};
+            const auto invoke=+[](void* p,CpuState& c,std::uint32_t pc){return Fixture::invoke(static_cast<Probe*>(p)->f,c,pc);};
+            const auto resume=+[](void* p,CpuState& c,std::uint32_t owner,std::uint32_t end){return Fixture::resume(static_cast<Probe*>(p)->f,c,owner,end);};
+            const auto model=+[](void* p,CpuState& c,sonic::model_pipeline::SharedOperation& operation){
+                using Result=sonic::model_pipeline::Outcome;auto& probe=*static_cast<Probe*>(p);++probe.attempts;
+                require(operation.intact && operation.cpu==&c && operation.read && operation.write,"missing shared model capability");
+                require(!operation.allows_write(operation.context,0x0C040784u,4u) &&
+                    !operation.allows_write(operation.context,0x0C037098u,4u) &&
+                    operation.allows_write(operation.context,0x0CE40000u,4u),"shared model source fence");
+                if(probe.kind==4)return Result::Declined;
+                operation.sources_proven=true;
+                if(probe.kind==5)operation.revoke();
+                return Fixture::invoke(probe.f,c,c.pc)?Result::Complete:Result::Interrupted;
+            };
+            const auto result=family::execute(a.cpu,&a.immutable,{&probe,invoke,resume,model});
+            advance(b);compare(a,b,"shared hierarchy final");
+            if(result!=family::Outcome::Complete || a.cpu.pc!=returned || !probe.attempts || a.trace!=b.trace)
+                std::cerr<<"shared case="<<kind<<" mode="<<mode<<" attempts="<<probe.attempts<<" outcome="<<int(result)<<" pc="<<std::hex<<a.cpu.pc<<std::dec<<'\n';
+            require(result==family::Outcome::Complete && a.cpu.pc==returned && probe.attempts && a.trace==b.trace,"shared hierarchy completion");++cases;
+        }
+        {
+            Fixture f(image,0,false);f.cpu.pc=0x8C639BB0u;f.cpu.r[4]=0;f.put(0x8C88F538u,0x8C037098u);
+            const auto before=f.get(0x8C037098u);
+            const auto resume=+[](void*,CpuState& c,std::uint32_t owner,std::uint32_t){
+                require(owner==0x8C639BB0u && c.pc==0x8C639BD2u,"model-source restart frontier");return false;};
+            require(family::execute(f.cpu,&f.immutable,{&f,Fixture::invoke,resume})==family::Outcome::Interrupted &&
+                f.get(0x8C037098u)==before,"hierarchy overwrote borrowed model source");++cases;
+        }
+        require(family::counts.model_calls && family::counts.model_revocations,"shared/foreign paths not exercised");
+        std::cout<<"SONIC_RENDER_SUBMISSION_PASS cases="<<cases<<'\n';return 0;
+    }
     if(argc==2){
     for(unsigned mode:{0u,1u,fpscr_fr_mask})for(unsigned variant=0;variant<30;++variant){
         Fixture a(image,mode),b(image,mode);setup(a,variant);setup(b,variant);a.oracle=&b;

@@ -24,15 +24,32 @@ struct Statistics { std::uint64_t calls{},declined{},culled{},points{},normal_re
 inline thread_local Statistics counts;
 inline const Statistics& statistics() noexcept{return counts;}
 bool enabled() noexcept;
+bool submission_enabled() noexcept;
+// Borrowed only from a live native hierarchy operation. A real guest call
+// revokes this object before it runs; it is never a frame/asset identity cache.
+struct SharedOperation {
+    katana::runtime::CpuState* cpu{};
+    const katana::runtime::NativePortImmutableWriteGuard* immutable{};
+    katana::runtime::DirectLinearMemoryGuard read{},write{};
+    void* context{};
+    bool (*allows_write)(void*,std::uint32_t,std::uint32_t) noexcept{};
+    bool sources_proven{},intact{};
+    void revoke() noexcept {sources_proven=false;intact=false;}
+};
+bool source_overlap(std::uint32_t physical,std::uint32_t size) noexcept;
+enum class ClosedCall { Declined, Complete, Interrupted };
 struct Calls {
     void* context{};
     bool (*invoke)(void*,katana::runtime::CpuState&,std::uint32_t){};
+    // Complete promises no guest callback, mapping/observer change or writes
+    // outside the complete model footprint admitted by execute().
+    ClosedCall (*closed)(void*,katana::runtime::CpuState&,std::uint32_t){};
 };
 enum class Outcome { Declined, Complete, Interrupted };
-// Runs the authenticated PAL 037098/037108 owners. Declined is mutation-free;
+// Runs the authenticated PAL 03700C/037098/037108 owners. Declined is mutation-free;
 // an interrupted child preserves its frontier and must never restart Original.
 Outcome execute(katana::runtime::CpuState&,
-    const katana::runtime::NativePortImmutableWriteGuard*, Calls);
+    const katana::runtime::NativePortImmutableWriteGuard*, Calls,SharedOperation* = nullptr);
 // Only the synchronous native transform uses this span. Keep each record's
 // fourth word intact; publish_projection completes GBR+60 and write accounting.
 std::span<std::uint8_t> projection_output(katana::runtime::CpuState&,
