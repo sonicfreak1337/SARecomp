@@ -18150,6 +18150,7 @@ void emit_sonic_native_gameplay_probe_sample(
               << " movement_callbacks=" << sonic::movement::counts.callbacks
               << " movement_reentries=" << sonic::movement::counts.slow_accesses
               << " contact_family_calls=" << sonic::movement_contact::counts.calls
+              << " object_contact_calls=" << sonic::movement_contact::counts.object_calls
               << " contact_family_internal=" << sonic::movement_contact::counts.internal_calls
               << " contact_family_foreign=" << sonic::movement_contact::counts.callbacks
               << " contact_family_resumes=" << sonic::movement_contact::counts.resumes
@@ -38690,12 +38691,18 @@ bool sonic_movement_contact_resume(void* opaque,katana::runtime::CpuState& cpu,s
        !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
     struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
     bool handled=resume_original(cpu,owner);
+    const auto retained_exit=katana_port_generated::runtime_dispatch_detail::active_exit_kind;
+    const auto retained_source=katana_port_generated::runtime_dispatch_detail::active_exit_source;
     // Retained dynamic tails publish the target for the outer dispatcher.
     // Finish that boundary here, with the same restored PR and callback path.
     if(handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None &&
        cpu.pc!=continuation && cpu.pr==continuation &&
        katana_port_generated::runtime_dispatch_detail::active_exit_kind==katana::runtime::BlockEndKind::DynamicBranch)
         handled=sonic_object_activation_call(&context,cpu,cpu.pc);
+    if(handled && !cpu.trap_pending && cpu.pc==continuation &&
+       (retained_exit==katana::runtime::BlockEndKind::Return ||
+        retained_exit==katana::runtime::BlockEndKind::DynamicBranch))
+        return_site=retained_source.virtual_address;
     return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
 }
 }

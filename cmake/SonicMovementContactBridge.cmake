@@ -1,5 +1,6 @@
 foreach(contact_unit IN ITEMS unit-v8C073018-8C073018-457a60bdbd02a56b.cpp
-        unit-v8C074214-8C075154-1bc56e9d4bd882fb.cpp)
+        unit-v8C074214-8C075154-1bc56e9d4bd882fb.cpp
+        unit-v8C033122-8C0342E0-7edcb8468a2b4534.cpp)
     set(contact_bridge "${CMAKE_BINARY_DIR}/generated/movement-contact-bridge/${contact_unit}")
     if(TARGET sonic_linux_guest)
         set(contact_target sonic_linux_guest)
@@ -48,6 +49,7 @@ foreach(contact_unit IN ITEMS unit-v8C073018-8C073018-457a60bdbd02a56b.cpp
             --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
         DEPENDS "${SONIC_ROOT}/tools/prepare-movement-contact-bridge.py" "${contact_input}"
             "${SONIC_ROOT}/tools/prepare-movement-contact.py" "${SONIC_ROOT}/tools/movement-contact-owners.json"
+            "${SONIC_ROOT}/tools/object-contact-owners.json"
             "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
     list(APPEND contact_bridges "${contact_bridge}")
 endforeach()
@@ -59,6 +61,7 @@ add_custom_command(OUTPUT "${contact_original}"
         --source-root "${SONIC_WORKING}/generated" --output "${contact_original}"
         --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
     DEPENDS "${SONIC_ROOT}/tools/prepare-movement-contact-bridge.py" "${SONIC_ROOT}/tools/prepare-movement-contact.py" "${SONIC_ROOT}/tools/movement-contact-owners.json"
+        "${SONIC_ROOT}/tools/object-contact-owners.json"
         "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
 target_sources(${contact_target} PRIVATE "${contact_original}")
 set_source_files_properties("${contact_original}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src;${SONIC_WORKING}/generated/include")
@@ -77,3 +80,11 @@ foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITION
 endforeach()
 target_include_directories(sonic-movement-contact-aot-tests PRIVATE "${SONIC_WORKING}/generated/include"
     "${CMAKE_BINARY_DIR}/generated/movement-contact-bridge")
+add_executable(sonic-object-contact-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_object_contact.cpp"
+    ${contact_test_sources} "${contact_original}")
+foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITIONS LINK_LIBRARIES LINK_OPTIONS)
+    get_target_property(value sonic-movement-contact-aot-tests ${property})
+    if(value)
+        set_property(TARGET sonic-object-contact-tests PROPERTY ${property} "${value}")
+    endif()
+endforeach()

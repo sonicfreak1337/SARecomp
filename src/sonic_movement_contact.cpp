@@ -3,13 +3,13 @@
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include <bit>
+#include <bitset>
 #include <cstring>
 #include <optional>
 namespace sonic::movement_contact {
 namespace {
 using namespace katana::runtime;
 #include "contact-identities.inc"
-static_assert(owner_sources.size()<64u);
 struct Interrupted {};
 struct ResumeOriginal {bool completed_tail{};std::uint32_t tail_site{};};
 // Unsupported accesses resume before the instruction. Nothing device-visible
@@ -41,12 +41,12 @@ class Access {
     bool p0{};
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
-    std::uint64_t proven_sources{};
+    std::bitset<owner_sources.size()> proven_sources{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
     ~Access(){flush();}
     bool refresh() {
-        read={};write={};proven_sources=0;
+        read={};write={};proven_sources.reset();
         auto& m=c.memory;
         if(!mode_ok(c) || immutable.write_detected() || m.watchpoint_count() || m.has_trace_handler() ||
            m.has_guest_memory_access_sink() || m.has_mmio_trace_handler() ||
@@ -77,12 +77,11 @@ public:
     bool authenticate(std::uint32_t owner) noexcept {
         const auto i=source_owner_index(owner);
         if(i>=owner_sources.size())return false;
-        const auto bit=std::uint64_t{1}<<i;
-        if(proven_sources&bit)return true;
+        if(proven_sources.test(i))return true;
         for(const auto& s:owner_sources[i])
             if(!range(s.address,std::uint32_t(s.bytes.size())) ||
                std::memcmp(read.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return false;
-        proven_sources|=bit;return true;
+        proven_sources.set(i);return true;
     }
     // Native stores may never alter a proved body or literal, even if an
     // unusual module range set does not mark those bytes immutable. Real
@@ -191,6 +190,7 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     const auto load8=[&](RestartPoint at,std::uint32_t address){return a.load<std::uint8_t>(address,at);};
     const auto store=[&](RestartPoint at,std::uint32_t address,std::uint32_t value,CodeWriteSource source){a.store<std::uint32_t>(address,value,at,source);};
     const auto store16=[&](RestartPoint at,std::uint32_t address,std::uint16_t value,CodeWriteSource source){a.store<std::uint16_t>(address,value,at,source);};
+    const auto store8=[&](RestartPoint at,std::uint32_t address,std::uint8_t value,CodeWriteSource source){a.store<std::uint8_t>(address,value,at,source);};
     const auto fload=[&](RestartPoint at,unsigned reg,std::uint32_t address){a.fload(at,reg,address);};
     const auto fstore=[&](RestartPoint at,std::uint32_t address,unsigned reg){a.fstore(at,address,reg);};
     const auto set_t=[&](bool value){cpu.t=value;};
@@ -268,6 +268,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     if(!access.authenticate(cpu.pc))return Outcome::Declined;
     (void)access.admit_stack(cpu.r[15]-4096u,4096u);
     --counts.declined;++counts.calls;Flow flow;
+    if(cpu.pc==object_entry)++counts.object_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

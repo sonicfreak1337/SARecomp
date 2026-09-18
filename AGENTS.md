@@ -683,6 +683,28 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   result. Continue substantial connected native work; the September 18
   delivered patch/installers, baseline and saves remain untouched.
 
+- The complete object-collision pass is now private-OFF under
+  SARECOMP_NATIVE_OBJECT_CONTACT=1; see docs/native-object-contact-20260918.md.
+  Its 53 additional owners connect the live category lists, broad/narrow
+  shape tests, transforms and hit registration (114 movement/contact owners
+  total). Preserve live list ordering and real callbacks. Source proof bits
+  now cover the full inventory; public-entry selection is distinct from
+  retained-continuation membership. Actual return/tail provenance is retained.
+  Windows/Linux each pass 105 CPU/RAM/AOT cases; hidden Windows Gamma is
+  byte-exact. Both games build incrementally. The current SHA binding is
+  runs/object-contact-executables-20260918.json, staged Linux under
+  out/object-contact-linux-20260918; the private Windows filename is reused.
+  The combined movement/contact + model + land + object OFF/ON Linux pairs
+  use Original timing and LP_NUM_THREADS=2. All 16 endpoints and 68 updates
+  match, without resumes/revocations: Gamma execution CPU -15.34%, process
+  CPU -3.28%, images +0.05%; Knuckles Lost World execution CPU -13.37%, process
+  CPU -7.23%, images +11.59%. These are useful combined CPU reductions, not
+  incremental percentages or Deck FPS. Keep the groups internally selectable;
+  do not discard the CPU improvement because Gamma VM image throughput is
+  neutral. No default promotion/new export or unchanged reruns from this
+  bounded comparison. Continue substantial connected native work. The
+  September 18 delivered patch/installers, baseline and saves are unchanged.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

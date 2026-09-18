@@ -2,7 +2,8 @@ set(movement_contact_dir "${CMAKE_BINARY_DIR}/generated/movement-contact")
 set(movement_contact_outputs "${movement_contact_dir}/contact-identities.inc"
     "${movement_contact_dir}/contact-switch.inc" "${movement_contact_dir}/contact-members.inc"
     "${movement_contact_dir}/contact-epochs.inc")
-file(READ "${SONIC_ROOT}/tools/movement-contact-owners.json" movement_contact_inventory)
+foreach(contact_inventory IN ITEMS movement-contact-owners object-contact-owners)
+file(READ "${SONIC_ROOT}/tools/${contact_inventory}.json" movement_contact_inventory)
 string(JSON movement_contact_count LENGTH "${movement_contact_inventory}")
 math(EXPR movement_contact_last "${movement_contact_count}-1")
 foreach(i RANGE 0 ${movement_contact_last})
@@ -12,11 +13,13 @@ foreach(i RANGE 0 ${movement_contact_last})
     string(TOUPPER "${contact_hex}" contact_hex)
     list(APPEND movement_contact_outputs "${movement_contact_dir}/contact-owner_${contact_hex}.inc")
 endforeach()
+endforeach()
 add_custom_command(OUTPUT ${movement_contact_outputs}
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-movement-contact.py"
         --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
         --output "${movement_contact_dir}" --source-root "${SONIC_WORKING}/generated"
     DEPENDS "${SONIC_ROOT}/tools/prepare-movement-contact.py" "${SONIC_ROOT}/tools/movement-contact-owners.json"
+        "${SONIC_ROOT}/tools/object-contact-owners.json"
         "${SONIC_ROOT}/tools/prepare-render-hierarchy.py" "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${SONIC_ROOT}/tools/prepare-collision-world.py"
         "${SONIC_ROOT}/tools/prepare_collision_candidates.py" "${SONIC_ROOT}/tools/prepare_motion_sampling.py"
         "${SONIC_ROOT}/tools/prepare-movement-resolver.py" "${SONIC_ROOT}/tools/prepare_near_collision.py"

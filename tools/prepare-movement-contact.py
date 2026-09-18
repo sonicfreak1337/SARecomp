@@ -17,6 +17,10 @@ def module(name, file):
     out=importlib.util.module_from_spec(spec);spec.loader.exec_module(out);return out
 render=module('contact_instruction_author','prepare-render-hierarchy.py')
 ROWS=json.loads(Path(__file__).with_name('movement-contact-owners.json').read_text())
+OBJECT_ROWS=json.loads(Path(__file__).with_name('object-contact-owners.json').read_text())
+OBJECT_ENTRIES={r['entry'] for r in OBJECT_ROWS}
+if OBJECT_ENTRIES.intersection(r['entry'] for r in ROWS):raise ValueError('Duplicate contact owner')
+ROWS+=OBJECT_ROWS
 OWNERS=tuple((f'owner_{r["entry"]:08X}',r['entry'],r['begin'],r['end']) for r in ROWS)
 EPOCHS={r['entry']:tuple(map(tuple,r['epochs'])) for r in ROWS}
 UNITS={r['unit']:r['unit_sha'] for r in ROWS}
@@ -24,6 +28,13 @@ inspect=render.inspect
 original_emit=render.emit_simple
 
 def emit_simple(pc,op,ram,restart=None):
+    at=restart or f'RestartPoint{{0x{pc:08X}u}}'
+    if op>>8==0x80:return f'CONTACT_SITE(0x{pc:08X}u);store8({at},cpu.r[{(op>>4)&15}]+{op&15}u,std::uint8_t(cpu.r[0]),CodeWriteSource::Cpu);'
+    if op&0xF00F==0x6007:return f'CONTACT_SITE(0x{pc:08X}u);cpu.r[{(op>>8)&15}]=~cpu.r[{(op>>4)&15}];'
+    if op&0xF0FF==0x4021:
+        r=f'cpu.r[{(op>>8)&15}]'
+        return f'CONTACT_SITE(0x{pc:08X}u);cpu.t=({r}&1u)!=0u;{r}=({r}>>1u)|({r}&0x80000000u);'
+    if op&0xF00F==0x000C:return f'CONTACT_SITE(0x{pc:08X}u);cpu.r[{(op>>8)&15}]=signed8(load8({at},cpu.r[0]+cpu.r[{(op>>4)&15}]));'
     if op&0xF0FF==0xF00D:return f'CONTACT_SITE(0x{pc:08X}u);cpu.fr[{(op>>8)&15}]=cpu.fpul;'
     if op&0xF0FF==0xF01D:return f'CONTACT_SITE(0x{pc:08X}u);cpu.fpul=cpu.fr[{(op>>8)&15}];'
     return original_emit(pc,op,ram,restart).replace('HIERARCHY_SITE','CONTACT_SITE')
@@ -107,7 +118,9 @@ def main():
               'for(const auto& s:identities)for(auto p=(s.address&0xFFFFFFu)>>12u;p<=((s.address&0xFFFFFFu)+s.bytes.size()-1u)>>12u;++p)out[p]=true;return out;}();']
     (args.output/'contact-identities.inc').write_text('\n'.join(proof)+'\n')
     (args.output/'contact-switch.inc').write_text('\n'.join(f'case 0x{entry:08X}u: {{\n#include "contact-{name}.inc"\n}}' for name,entry,_,_ in OWNERS)+'\n')
-    (args.output/'contact-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS)+'\nreturn true;\n')
+    members='\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in OBJECT_ENTRIES)+'\nreturn true;\n'
+    members+='\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(OBJECT_ENTRIES))+'\nreturn object_selected();\n'
+    (args.output/'contact-members.inc').write_text(members)
     (args.output/'contact-epochs.inc').write_text('struct OriginalEpoch {std::uint32_t begin,end;bool single;};\nconstexpr OriginalEpoch original_epochs[]{\n'+'\n'.join(f'{{0x{a:08X}u,0x{b:08X}u,true}},' for es in EPOCHS.values() for a,b in es)+'\n};\n')
     (args.output/'contact-inventory.json').write_text(json.dumps(dict(schema='sarecomp-movement-contact-v1',generation=generation,owners=reports,units=UNITS),indent=2)+'\n')
     print(f'SONIC_MOVEMENT_CONTACT_READY owners={len(OWNERS)} instructions={sum(r["instructions"] for r in reports)}')
