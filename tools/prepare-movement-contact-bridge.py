@@ -18,7 +18,7 @@ ROOTS={'unit-v8C073018-8C073018-457a60bdbd02a56b.cpp':0x8C073018,
        'unit-v8C01995E-8C01AAE0-6cf3d8aa9df0e7a3.cpp':0x8C019F4A}
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
-def readonly_resume_routers(text):
+def readonly_resume_routers(text, runtime_only=False):
     # Some SDK polynomial blocks have neither stores nor a pre-existing local
     # router. Give the private continuation author an empty routing point after
     # exit provenance, before any original instruction or arithmetic scope.
@@ -28,8 +28,11 @@ def readonly_resume_routers(text):
         a=blocks[i].end();b=blocks[i+1].start() if i+1<len(blocks) else len(text)
         part=text[a:b]
         if 'Memory::DirectLinearWriteBatch* const katana_direct_ram_writes' in part or 'switch (katana::runtime::unrelocate_code_address_inline(cpu.pc))' in part:continue
-        if marker not in part:continue
-        at=a+part.index(marker)+len(marker)
+        site_marker=marker
+        if site_marker not in part and runtime_only:
+            site_marker=marker.replace('::NotDynamic;', '::RuntimeOnly;')
+        if site_marker not in part:continue
+        at=a+part.index(site_marker)+len(site_marker)
         text=text[:at]+'                switch (katana::runtime::unrelocate_code_address_inline(cpu.pc)) {\n                default: break;\n                }\n'+text[at:]
     return text
 

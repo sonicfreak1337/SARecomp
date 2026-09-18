@@ -265,12 +265,18 @@ with log_path.open('w') as log:
                 # Verify that the sampled thread belongs to this owned game.
                 if tid and Path(f'/proc/{game.pid}/task/{tid}').is_dir():
                     perf_log = (run/'perf-command.log').open('w')
-                    perf_command=['sudo', '-n', 'perf', 'record', '-e', 'cpu-clock:u',
+                    # Exact executable identity is bound below; do not copy the
+                    # multi-GB private ELF into perf's separate build-ID cache.
+                    perf_command=['sudo', '-n', 'perf', 'record', '--no-buildid',
+                                  '--no-buildid-cache', '-e', 'cpu-clock:u',
                                   '-F', '99' if a.callgraph else '199', '-t', str(tid),
                                   '-o', str(run/'perf.data')]
                     if a.callgraph:
                         perf_command+=['--call-graph','fp']
-                    perf = subprocess.Popen(perf_command+['--','sleep','30'],
+                    perf_command+=['--','sleep','30']
+                    (run/'perf-invocation.json').write_text(
+                        json.dumps(perf_command, indent=2)+'\n')
+                    perf = subprocess.Popen(perf_command,
                                             stdout=perf_log, stderr=perf_log)
             if time.monotonic() - start > 1230:
                 forced = True
@@ -304,6 +310,10 @@ if perf and perf.returncode == 0:
                         '--field-separator=|', '--sort', 'symbol,dso', '-i', str(run/'perf.data')],
                        stdout=report, stderr=subprocess.STDOUT, check=True)
     if a.callgraph:
+        with (run/'perf-stacks.txt').open('w') as report:
+            subprocess.run(['sudo','-n','perf','script','--no-demangle',
+                            '-i',str(run/'perf.data')],stdout=report,
+                           stderr=subprocess.PIPE,check=True)
         with (run/'perf-families.txt').open('w') as report:
             subprocess.run(['sudo','-n','perf','report','--stdio','--children',
                             '--call-graph','none','--show-nr-samples','--no-demangle',

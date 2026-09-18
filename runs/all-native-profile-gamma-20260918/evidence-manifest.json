@@ -1,0 +1,50 @@
+{
+  "archive_bytes": 424736,
+  "archive_sha256": "d5147d574a408432b5a0dd3fd57b22981f6362b43edd403fec4753052ef4b3e1",
+  "files": {
+    "summary.json": {
+      "bytes": 417259,
+      "sha256": "45397950dd3f4820fa29a8a118b36d4c0997bd4cc8018673e6efd19f49f161df"
+    },
+    "perf.data": {
+      "bytes": 351562,
+      "sha256": "fb85c69f8f8d6f96c57247636622cd64e1ffa2e93cdbcb85ca5e3d8691aee42c"
+    },
+    "perf-command.log": {
+      "bytes": 173,
+      "sha256": "65969962bf8599be04fd9423eff481111979e6ab620063051d4e5965bab5182b"
+    },
+    "perf-invocation.json": {
+      "bytes": 291,
+      "sha256": "35fa459069c812d257d7fbbacd2b49ac980439de111c6123fc34bdff04196971"
+    },
+    "perf-symbols.txt": {
+      "bytes": 418416,
+      "sha256": "60ba215314a0ff474c6da2b6e8530f90de89e96c5081baa6eefb01098244c9b0"
+    },
+    "perf-stacks.txt": {
+      "bytes": 5532444,
+      "sha256": "d2df2d175f69f42b5403740403485354178e164b121362e25fabf7963a89008c"
+    },
+    "perf-report.txt": {
+      "bytes": 88802,
+      "sha256": "6cc725dc11261ad71abbcf8b29ced08e700b0560299be19d4192578298b6f0cb"
+    },
+    "perf-families.txt": {
+      "bytes": 249855,
+      "sha256": "d69b636b180d7f54353b094d0495d018f058065df72441b686b1cbbc854f83ba"
+    },
+    "resolved.json": {
+      "bytes": 174504,
+      "sha256": "aa91c72c0ad54afed28dbf4d086355430868fc59e48f7ba10cc22ee56d7b2480"
+    },
+    "stacks-resolved.json": {
+      "bytes": 3028902,
+      "sha256": "e301b4230b23a4a55f178a805a178ac8fdf9b03b499b141c4c2b9324862fe175"
+    },
+    "game.log": {
+      "bytes": 301866,
+      "sha256": "461635568fe73c6d1b71dfe977dddc0022f1c959c71e0cb6c26e9cc2061a8fb5"
+    }
+  }
+}

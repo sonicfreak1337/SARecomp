@@ -36,7 +36,7 @@ def verify_original_epochs(text,entry):
         if not pcs or pcs!=list(range(pcs[0],pcs[-1]+2,2)):raise ValueError('Original FPU scope is not consecutive')
         found.append((pcs[0],pcs[-1]+2))
         guard=masked[masked.rfind('if (',0,begin):begin]
-        if ('fpscr_pr_mask' in guard)!=(pcs[0]!=0x8C03FF72):raise ValueError('Original FPU precision guard changed')
+        if ('fpscr_pr_mask' in guard)!=author.single_epoch(pcs[0]):raise ValueError('Original FPU precision guard changed')
     if tuple(found)!=author.EPOCHS.get(entry,()):raise ValueError(f'Original FPU epoch inventory differs: {entry:08X} {found}')
 
 def local_resumes(text,ram,owner):
@@ -51,7 +51,10 @@ def local_resumes(text,ram,owner):
             if memory(author.emit_simple(pc+2,word,ram)):restart.add(pc)
         elif not (op>>8 in (0x89,0x8B)) and memory(author.emit_simple(pc,op,ram)):
             restart.add(pc)
-    restart.update(int(c['pc'],16)+4 for c in calls if not c.get('tail'))
+    restart.update(int(c['pc'],16)+4 for c in calls if not c.get('tail') and not c.get('transfer'))
+    # A state transfer has no local call continuation. Unknown targets and
+    # delay-slot faults restart the branch itself, before target capture.
+    restart.update(int(c['pc'],16) for c in calls if c.get('transfer'))
     for pc,op in instructions.items():
         if (op>>12==0xA and pc+4+2*author.shared.signed(op&4095,12)<=pc) or (op>>8 in (0x89,0x8B,0x8D,0x8F) and pc+4+2*author.shared.signed(op&255,8)<=pc):restart.add(pc)
     # These routes remain local to this exact function invocation. The global

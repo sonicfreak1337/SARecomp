@@ -728,6 +728,23 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   September 18 patch/installers, baseline and saves remain untouched. Only an
   older verified duplicate VM game was removed; its local copy is preserved.
 
+- Fresh all-five-group profiling and actor-state author preparation are recorded
+  in docs/native-actor-state-preparation-20260918.md. The Linux Gamma recording
+  is clean (perf exit 0, 1,226 samples, 1 unresolved game leaf, exact raw-leaf
+  cross-check). Use this distribution, not the older pre-land/object profile.
+  Actor roots 0CBD40/0FDC20 have 318 inclusive samples, but 209 already contain
+  native descendants; their 25.94% is not a predicted gain. A complete 32-owner
+  0FDC20 state closure now authors with its actual 13-state table, twelve reviewed
+  BRAF/BRA transfer sites, exact FPU scopes and original local resumes. Inventory:
+  runs/native-state-transfers-20260918/actor-scope.json. Branch mechanics pass 50
+  cases on each platform. This is preparation, NOT a gameplay-integrated actor
+  feature or measured speedup. Next integrate the larger connected actor/state
+  work with the existing model/contact operations, including the 0CBD40 chain.
+  Preserve PR/frame across state transfers and do not replay a completed delay
+  slot on child fallback. No unchanged profile/retest or new export for this
+  intermediate result. All 231 existing generated group files and both private
+  continuation C++ files are byte-identical; released artifacts remain unchanged.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

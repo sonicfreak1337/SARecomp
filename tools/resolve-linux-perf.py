@@ -1,4 +1,4 @@
-"""Resolve file-offset perf rows against the exact unstripped Linux ELF.
+"""Resolve file-offset or exact-symbol perf rows against the bound Linux ELF.
 
 Sampling a stripped distribution does not require uploading a second huge ELF.
 Only bounded ELF function symbols count as exact; never attribute nearest symbols.
@@ -63,21 +63,43 @@ def main():
             raise ValueError('executable segment bytes mismatch')
     starts=sorted({address for address,_ in functions});by_start={x:[] for x in starts}
     for (address,size),names in functions.items():by_start[address].append((size,sorted(names)))
+    named={}
+    for key,names in functions.items():
+        for name in names:named.setdefault(name,set()).add(key)
     resolved=[];owners=Counter();helpers=Counter();unresolved=0;total=0
     for row in (a.run/'perf-symbols.txt').read_text().splitlines():
         fields=[f.strip() for f in row.split('|')]
         if len(fields)<4 or fields[3]!='game':continue
         count=int(fields[1]);total+=count
         m=re.fullmatch(r'\[.\] 0x([0-9a-fA-F]+)',fields[2])
-        if not m:raise ValueError('expected unsymbolized perf file offset')
-        offset=int(m[1],16)
-        segments=[s for s in loads if s[2]<=offset<s[2]+s[5]]
-        if len(segments)!=1:raise ValueError('sample outside executable segment')
-        address=offset+segments[0][3]-segments[0][2]
+        if m:
+            offset=int(m[1],16)
+            segments=[s for s in loads if s[2]<=offset<s[2]+s[5]]
+            if len(segments)!=1:raise ValueError('sample outside executable segment')
+            address=offset+segments[0][3]-segments[0][2]
+        else:
+            # perf can read the retained symbol table directly without a
+            # build ID. Accept only an exact, unique STT_FUNC identity;
+            # this row is a symbol aggregate, not an exact sampled PC.
+            symbol=fields[2].removeprefix('[.] ')
+            candidates=named.get(symbol,set()) if fields[2].startswith('[.] ') else set()
+            if not candidates:
+                # Synthesized PLT names need not have an ELF function symbol.
+                # Keep their sample count explicitly unresolved.
+                unresolved+=count
+                resolved.append({'file_offset':None,'address':None,
+                    'address_kind':'unresolved_symbol','reported_symbol':symbol,
+                    'samples':count,'symbols':[],'exact':False})
+                continue
+            if len(candidates)!=1:raise ValueError('ambiguous perf symbol '+symbol)
+            address,_=next(iter(candidates));offset=None
+            if not any(s[3]<=address<s[3]+s[6] for s in loads):raise ValueError('symbol outside executable segment')
         i=bisect_right(starts,address)-1
         matches=[(size,names) for size,names in by_start[starts[i]] if address<starts[i]+size] if i>=0 else []
         names=sorted({n for _,ns in matches for n in ns})
-        row={'file_offset':hex(offset),'address':hex(address),'samples':count,'symbols':names,'exact':bool(matches)}
+        row={'file_offset':hex(offset) if offset is not None else None,
+             'address':hex(address),'address_kind':'sample' if m else 'symbol_start',
+             'samples':count,'symbols':names,'exact':bool(matches)}
         resolved.append(row)
         if not names:unresolved+=count;continue
         guest=set(re.findall(r'fn_([0-9A-F]{8})_runtime_entry',' '.join(names)))

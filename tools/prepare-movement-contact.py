@@ -29,6 +29,7 @@ OWNERS=tuple((f'owner_{r["entry"]:08X}',r['entry'],r['begin'],r['end']) for r in
 EPOCHS={r['entry']:tuple(map(tuple,r['epochs'])) for r in ROWS}
 UNITS={r['unit']:r['unit_sha'] for r in ROWS}
 inspect=render.inspect
+single_epoch=render.single_epoch
 original_emit=render.emit_simple
 
 def emit_simple(pc,op,ram,restart=None):

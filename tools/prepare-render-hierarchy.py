@@ -82,6 +82,29 @@ OWNERS=(
 OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in LAND_ROWS)
 EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in LAND_ROWS})
 
+# A computed state branch transfers the current frame to another original
+# entry; it is not a function call and must not acquire a new PR continuation.
+# Authors may supply exact original entry sets after authenticating their
+# retained source. An absent record still rejects BRAF as before.
+TRANSFERS={}
+# Precision-polymorphic original arithmetic epochs are rare and must be
+# explicitly bound by each author, then checked against retained source.
+POLYMORPHIC_EPOCHS={0x8C03FF72}
+
+def single_epoch(pc):return pc not in POLYMORPHIC_EPOCHS
+
+def transfer_targets(entry,pc,op):
+    targets=TRANSFERS.get(entry,{}).get(pc)
+    if targets is None:return None
+    if not targets or len(targets)!=len(set(targets)) or any(
+            not isinstance(t,int) or t&1 or not shared.BASE<=t<shared.BASE+0x1000000
+            for t in targets):raise ValueError(f'Invalid transfer entries {pc:08X}')
+    if op>>12==0xA:
+        if tuple(targets)!=(pc+4+2*shared.signed(op&4095,12),):
+            raise ValueError(f'Static transfer target changed {pc:08X}')
+    elif op&0xF0FF!=0x0023:raise ValueError(f'Unexpected transfer instruction {pc:08X}')
+    return tuple(targets)
+
 def inspect(ram,entry,begin,end):
     pending=[entry];ins={};delays=set();calls=[]
     word=lambda pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0]
@@ -91,7 +114,12 @@ def inspect(ram,entry,begin,end):
         if pc<begin or pc+2>end or pc&1:raise ValueError(f'Owner {entry:08X} leaves reviewed span: {pc:08X}')
         op=word(pc);ins[pc]=op;high,upper=op>>12,op>>8
         successors=[pc+2];delayed=False
-        if op==0xB:successors=[];delayed=True
+        transfers=transfer_targets(entry,pc,op)
+        if transfers is not None:
+            successors=[];delayed=True
+            calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',transfer=True,
+                              targets=[f'{t:08X}' for t in transfers]))
+        elif op==0xB:successors=[];delayed=True
         elif op&0xF0FF==0x402B:
             successors=[];delayed=True;calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',target=None,tail=True))
         elif high==0xA:successors=[pc+4+2*shared.signed(op&4095,12)];delayed=True
@@ -106,6 +134,7 @@ def inspect(ram,entry,begin,end):
             if slot==0xB or slot>>12 in (0xA,0xB) or slot>>8 in (0x89,0x8B,0x8D,0x8F) or slot&0xF0FF in (0x400B,0x402B,0x0003,0x0023):raise ValueError('Nested delay transfer')
             delays.add(pc+2)
         pending+=successors
+    if set(TRANSFERS.get(entry,{}))-ins.keys():raise ValueError('Unreachable transfer declaration')
     return ins,delays,sorted(calls,key=lambda c:c['pc'])
 
 def emit_simple(pc,op,ram,restart=None):
@@ -115,6 +144,7 @@ def emit_simple(pc,op,ram,restart=None):
         # Odd encoded registers select pairs in the opposite bank in SZ mode.
         body=f'fload({restart or f"RestartPoint{{0x{pc:08X}u}}"},{n}u,{s});{s}+=(cpu.fpscr&fpscr_sz_mask)?8u:4u;'
     elif op&0xF00F==0x2000:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},{r},std::uint8_t({s}),CodeWriteSource::Cpu);'
+    elif op&0xF00F==0x0004:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.r[0]+{r},std::uint8_t({s}),CodeWriteSource::Cpu);'
     elif op>>8==0xC2:body=f'store({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.gbr+{(op&255)*4}u,cpu.r[0],CodeWriteSource::Cpu);'
     elif op&0xF0FF==0x401E:body=f'cpu.gbr={r};'
     elif op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
@@ -150,7 +180,7 @@ def emit_body(ram,entry,instructions):
                     'const auto original_mode=cpu.read_fpscr();',
                     'if((original_mode&(fpscr_exception_enable_mask|fpscr_dn_mask))==fpscr_dn_mask && '
                     '(original_mode&fpscr_rounding_mode_mask)<=1u'+
-                    ('' if pc==0x8C03FF72 else ' && !(original_mode&fpscr_pr_mask)')+')original_epoch.emplace(cpu);']
+                    (' && !(original_mode&fpscr_pr_mask)' if single_epoch(pc) else '')+')original_epoch.emplace(cpu);']
             for p in range(pc,end,2):
                 if p not in instructions:raise ValueError('Missing epoch instruction')
                 o=instructions[p]
@@ -164,7 +194,16 @@ def emit_body(ram,entry,instructions):
             lines.append(f'backedge(0x{pc:08X}u);')
         at=f'RestartPoint{{0x{pc:08X}u}}'
         delay=lambda at:emit_simple(pc+2,word(pc+2),ram,at)
-        if op==0xB:lines+=['const auto target=cpu.pr;',delay(at),f'return_site=0x{pc:08X}u;cpu.pc=target;return;']
+        transfers=transfer_targets(entry,pc,op)
+        if transfers is not None:
+            target=(f'0x{transfers[0]:08X}u' if high==0xA else
+                    f'cpu.r[{(op>>8)&15}]+0x{pc+4:08X}u')
+            lines.append(f'const std::uint32_t target={target};')
+            # Unknown table contents resume BEFORE the original branch/delay.
+            condition=' && '.join(f'target!=0x{t:08X}u' for t in transfers)
+            lines.append(f'if({condition})a.restart(0x{pc:08X}u);')
+            lines += [delay(at),f'transfer(target,0x{pc:08X}u);return;']
+        elif op==0xB:lines+=['const auto target=cpu.pr;',delay(at),f'return_site=0x{pc:08X}u;cpu.pc=target;return;']
         elif op&0xF0FF==0x402B:
             lines+=[f'const auto target=cpu.r[{(op>>8)&15}];',delay(at),f'call(target,true,0x{pc:08X}u);return_site=0x{pc:08X}u;return;']
         elif high==0xA:lines+=[delay(at),f'goto {label(pc+4+2*shared.signed(op&4095,12))};']
@@ -187,7 +226,7 @@ def main():
     if len(ram)!=0x1000000 or hashlib.sha256(ram).hexdigest()!=shared.RAM_SHA:raise ValueError('PAL RAM identity')
     args.output.mkdir(parents=True,exist_ok=True);spans=[];reports=[];dependencies={}
     epoch_rows=['struct OriginalEpoch {std::uint32_t begin,end;bool single;};','constexpr OriginalEpoch original_epochs[]{']
-    epoch_rows += [f'{{0x{a:08X}u,0x{b:08X}u,{str(a!=0x8C03FF72).lower()}}},' for scopes in EPOCHS.values() for a,b in scopes]
+    epoch_rows += [f'{{0x{a:08X}u,0x{b:08X}u,{str(single_epoch(a)).lower()}}},' for scopes in EPOCHS.values() for a,b in scopes]
     epoch_rows.append('};')
     (args.output/'hierarchy-epochs.inc').write_text('\n'.join(epoch_rows)+'\n',encoding='ascii',newline='\n')
     for name,entry,begin,end in OWNERS:
