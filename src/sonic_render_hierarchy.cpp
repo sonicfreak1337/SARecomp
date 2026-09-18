@@ -44,7 +44,7 @@ class Access {
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
     std::bitset<owner_sources.size()> proven_sources{};
-    const bool share_models=model_pipeline::submission_enabled() || land_enabled() || actor_selected();
+    const bool share_models=model_pipeline::submission_enabled() || land_enabled() || actor_selected() || player_selected();
     model_pipeline::SharedOperation models{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
@@ -217,7 +217,7 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     // particular, PR may still name the last call inside the old state.
     // The delay slot already completed; a child fallback starts at target.
     const auto transfer=[&](std::uint32_t target,std::uint32_t){
-        cpu.pc=target;flow.next_owner=target;
+        cpu.pc=target;flow.next_owner=transfer_owner(target);
     };
     switch(owner){
 #include "hierarchy-switch.inc"
@@ -230,14 +230,16 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     for(;;)try{
         // Invalid/very deep data retains the exact original owner and its
         // scheduler/fault behavior; never truncate or repair a tree/key list.
-        if(flow.depth>=128u || (owner==0x8C03FEB8u && !cpu.r[5]))a.restart(owner);
-        if(local_sources_enabled() && !a.authenticate(owner))a.restart(owner);
+        // A reviewed transfer may enter a local epilogue of this owner.
+        // A failed proof resumes that exact PC, never the owner's prologue.
+        if(flow.depth>=128u || (owner==0x8C03FEB8u && !cpu.r[5]))a.restart(cpu.pc);
+        if(local_sources_enabled() && !a.authenticate(owner))a.restart(cpu.pc);
         flow.next_owner=0;
         body(cpu,a,calls,flow,owner);
         const auto next=std::exchange(flow.next_owner,0u);
         if(!next)return true;
         owner=next;++counts.state_transfers;
-        if(++flow.backedges>=100000u || !contains(owner))a.restart(owner);
+        if(++flow.backedges>=100000u || !contains(owner))a.restart(cpu.pc);
     }catch(const ResumeOriginal& state){
         a.flush();
         // A tail child can finish this owner before invalidating our borrowed
@@ -301,6 +303,8 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     if(cpu.pc==morph_entry)++counts.morph_calls;
     if(cpu.pc==land_entry)++counts.land_calls;
     if(cpu.pc==actor_entry)++counts.actor_calls;
+    if(cpu.pc==0x8C0CBD40u || cpu.pc==0x8C0CCFE8u)++counts.player_calls;
+    if(cpu.pc==0x8C0CFA0Eu)++counts.player_display_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

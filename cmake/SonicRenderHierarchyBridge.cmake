@@ -2,7 +2,10 @@ foreach(hierarchy_unit IN ITEMS unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
         unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp
         unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp
         unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp
-        unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp)
+        unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp
+        unit-v8C0CBD40-8C0CCFDC-8bb83195ded15666.cpp
+        unit-v8C0CCFE8-8C0CCFE8-8623c664d8e08af9.cpp
+        unit-v8C0CED2E-8C0D0BB8-9d87359849e1c862.cpp)
     set(hierarchy_bridge "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge/${hierarchy_unit}")
     if(TARGET sonic_linux_guest)
         set(hierarchy_target sonic_linux_guest)
@@ -52,6 +55,7 @@ foreach(hierarchy_unit IN ITEMS unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
         DEPENDS "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${hierarchy_input}"
             "${SONIC_ROOT}/tools/land-render-owners.json"
             "${SONIC_ROOT}/tools/actor-operation-owners.json"
+            "${SONIC_ROOT}/tools/player-operation-owners.json"
             "${SONIC_ROOT}/tools/prepare-render-hierarchy.py"
             "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
     list(APPEND hierarchy_bridges "${hierarchy_bridge}")
@@ -67,6 +71,7 @@ add_custom_command(OUTPUT "${hierarchy_original}"
     DEPENDS "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${SONIC_ROOT}/tools/prepare-render-hierarchy.py"
         "${SONIC_ROOT}/tools/land-render-owners.json"
         "${SONIC_ROOT}/tools/actor-operation-owners.json"
+        "${SONIC_ROOT}/tools/player-operation-owners.json"
         "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
 target_sources(${hierarchy_target} PRIVATE "${hierarchy_original}")
 set_source_files_properties("${hierarchy_original}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src;${SONIC_WORKING}/generated/include")
@@ -99,5 +104,14 @@ foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITION
     get_target_property(value sonic-render-hierarchy-aot-tests ${property})
     if(value)
         set_property(TARGET sonic-actor-operation-tests PROPERTY ${property} "${value}")
+    endif()
+endforeach()
+
+add_executable(sonic-player-operation-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_player_operation.cpp"
+    ${hierarchy_test_sources} "${hierarchy_original}")
+foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITIONS LINK_LIBRARIES LINK_OPTIONS)
+    get_target_property(value sonic-render-hierarchy-aot-tests ${property})
+    if(value)
+        set_property(TARGET sonic-player-operation-tests PROPERTY ${property} "${value}")
     endif()
 endforeach()

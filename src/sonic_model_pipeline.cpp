@@ -38,8 +38,7 @@ bool enabled() noexcept {
     return on && !sonic::diagnostics::runtime_checks_enabled();
 }
 bool submission_enabled() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_MODEL_SUBMISSION");
-        return v && std::strcmp(v,"1")==0 && native_cpu::model_group_enabled("SARECOMP_NATIVE_MODEL_SUBMISSION");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_MODEL_SUBMISSION") && native_cpu::model_group_enabled("SARECOMP_NATIVE_MODEL_SUBMISSION");
     return on && enabled();
 }
 bool source_overlap(std::uint32_t physical,std::uint32_t size) noexcept {

@@ -1,0 +1,30 @@
+{
+  "allocated_sections_identical": true,
+  "files": [
+    {
+      "path": "build-linux/game",
+      "bytes": 1783856088,
+      "sha256": "a5f51a5d02033efd0a57a95125b01fbf6d83b74bca7f64c0843a148c9ab1e56b"
+    },
+    {
+      "path": "out/player-operation-linux-20260918/game",
+      "bytes": 1720072968,
+      "sha256": "de07199d47fc88114a05d701aee48c0d9c29384bba3d62d1ecd4a0c46ed0f1cd"
+    },
+    {
+      "path": "out/model-submission-windows-20260918/game.exe",
+      "bytes": 1955778560,
+      "sha256": "8f12e6f0b563af21962cbd77f22c080d685acf6be3905bfa6a311514da76619c"
+    },
+    {
+      "path": "build-linux/sonic-player-operation-tests",
+      "bytes": 33875552,
+      "sha256": "08949cb02a614d6536553156bd97875889cc236df17a600ea1fefec1b89ae7e2"
+    },
+    {
+      "path": "build-performance/sonic-player-operation-tests.exe",
+      "bytes": 25204224,
+      "sha256": "28927934711bd7f7b392967844dc2d5c16344ffdfdff44fe6a6c81ed7f40c15c"
+    }
+  ]
+}

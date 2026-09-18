@@ -18,7 +18,7 @@ std::map<std::uint32_t,std::uint32_t> original_owners;
 bool original_entry(std::uint32_t pc) noexcept{return original_entries.contains(pc);}
 void load_original_entries(const std::filesystem::path& root){
     const std::regex row(R"(\{0x([A-F0-9]{8})u, &fn_([A-F0-9]{8})_runtime_entry, true, (?:true|false)\})");
-    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202783.cpp","native-port-dispatch-shard-202951.cpp"}){
+    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202777.cpp","native-port-dispatch-shard-202778.cpp","native-port-dispatch-shard-202783.cpp","native-port-dispatch-shard-202951.cpp"}){
         std::ifstream f(root/name);const std::string text{std::istreambuf_iterator<char>(f),{}};
         require(!text.empty(),"original entry shard missing");
         for(auto i=std::sregex_iterator(text.begin(),text.end(),row);i!=std::sregex_iterator();++i)

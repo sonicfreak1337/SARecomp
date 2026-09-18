@@ -79,12 +79,13 @@ parser.add_argument('--native-collision-closure', choices=('off','on'), default=
 parser.add_argument('--native-model-pipeline', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-object-activation', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-movement', choices=('off','on'), default='off')
-parser.add_argument('--native-movement-contact', choices=('off','on'), default='off')
-parser.add_argument('--native-object-contact', choices=('off','on'), default='off')
-parser.add_argument('--native-camera-operation', choices=('off','on'), default='off')
-parser.add_argument('--native-model-submission', choices=('off','on'), default='off')
-parser.add_argument('--native-land-render', choices=('off','on'), default='off')
-parser.add_argument('--native-actor-operation', choices=('off','on'), default='off')
+parser.add_argument('--native-movement-contact', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-object-contact', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-camera-operation', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-model-submission', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-land-render', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-actor-operation', choices=('off','on','installed'), default='off')
+parser.add_argument('--native-player-operation', choices=('off','on','installed'), default='off')
 parser.add_argument('--native-collision-world', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-world-sdk', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-render-hierarchy', choices=('off','on','installed'), default='installed')
@@ -200,6 +201,7 @@ env['SARECOMP_NATIVE_CAMERA_OPERATION']='1' if args.native_camera_operation=='on
 env['SARECOMP_NATIVE_MODEL_SUBMISSION']='1' if args.native_model_submission=='on' else '0'
 env['SARECOMP_NATIVE_LAND_RENDER']='1' if args.native_land_render=='on' else '0'
 env['SARECOMP_NATIVE_ACTOR_OPERATION']='1' if args.native_actor_operation=='on' else '0'
+env['SARECOMP_NATIVE_PLAYER_OPERATION']='1' if args.native_player_operation=='on' else '0'
 env['SARECOMP_NATIVE_COLLISION_WORLD']='1' if args.native_collision_world=='on' else '0'
 env['SARECOMP_NATIVE_WORLD_SDK']='1' if args.native_world_sdk=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_HIERARCHY']='1' if args.native_render_hierarchy=='on' else '0'
@@ -228,6 +230,13 @@ for name, selection in (
     ('SARECOMP_NATIVE_ANIMATION_HIERARCHY', args.native_animation),
     ('SARECOMP_NATIVE_POSE_BLEND', args.native_pose),
     ('SARECOMP_NATIVE_OBJECT_ACTIVATION', args.native_object_activation),
+    ('SARECOMP_NATIVE_MOVEMENT_CONTACT', args.native_movement_contact),
+    ('SARECOMP_NATIVE_MODEL_SUBMISSION', args.native_model_submission),
+    ('SARECOMP_NATIVE_LAND_RENDER', args.native_land_render),
+    ('SARECOMP_NATIVE_OBJECT_CONTACT', args.native_object_contact),
+    ('SARECOMP_NATIVE_CAMERA_OPERATION', args.native_camera_operation),
+    ('SARECOMP_NATIVE_ACTOR_OPERATION', args.native_actor_operation),
+    ('SARECOMP_NATIVE_PLAYER_OPERATION', args.native_player_operation),
     ('SARECOMP_NATIVE_COLLISION_WORLD', args.native_collision_world),
     ('SARECOMP_NATIVE_WORLD_SDK', args.native_world_sdk),
     ('SARECOMP_NATIVE_RENDER_HIERARCHY', args.native_render_hierarchy),

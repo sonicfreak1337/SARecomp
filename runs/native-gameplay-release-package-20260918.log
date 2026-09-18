@@ -1,0 +1,17 @@
+{
+  "file": "C:\\Users\\ultim\\Desktop\\Sonic Adventure Recompiled\\out\\native-gameplay-update-20260918\\validation.run",
+  "bytes": 309893784,
+  "sha256": "f02096aa3cfff012b14be5135922f087c86e3cfe1bf5315b7d009807d3dddf85",
+  "base_sha256": "55889c92ee5c5ab6a34f1d8733a8698bab6da3b20eaa416fa48b593c0b335f71",
+  "target_sha256": "41766cc1a9dd44962ffbeedd5d25b97877c13451999f66adae493ae19be0b394",
+  "target_bytes": 1720072232,
+  "archive_sha256": "9930a5f0a5263d95d2f66e1da2ff2abc23f91b7c78381f64ae736e060fdf43bf",
+  "patch_id": "native-gameplay-20260918",
+  "supported_sha256": [
+    "55889c92ee5c5ab6a34f1d8733a8698bab6da3b20eaa416fa48b593c0b335f71",
+    "b5599d23ab3bcf2a0f54207409ff31109b20c84b42782b4f2036fc8c5d447ecc",
+    "f7023f123e6fcc4d76361cf05eba131db8344197e38528eab5e6165e1b187f8b"
+  ],
+  "reference_backups": [],
+  "encoding": "full"
+}

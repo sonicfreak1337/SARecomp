@@ -13,6 +13,7 @@ world=importlib.util.module_from_spec(spec);spec.loader.exec_module(world)
 ENTRY=0x8C040784
 LAND_ROWS=json.loads(Path(__file__).with_name('land-render-owners.json').read_text())
 ACTOR_ROWS=json.loads(Path(__file__).with_name('actor-operation-owners.json').read_text())
+PLAYER_ROWS=json.loads(Path(__file__).with_name('player-operation-owners.json').read_text())
 # Exact lexical HostFpuExecutionEpoch scopes of the authenticated retained AOT.
 # Endpoints are exclusive. Adjacent scopes must stay separate: restoring host
 # flags/rounding at their boundary is observable by the following FPU helper.
@@ -84,17 +85,25 @@ OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in LAND_ROWS)
 EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in LAND_ROWS})
 OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in ACTOR_ROWS)
 EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in ACTOR_ROWS})
+OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in PLAYER_ROWS)
+EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in PLAYER_ROWS})
 
 # A computed state branch transfers the current frame to another original
 # entry; it is not a function call and must not acquire a new PR continuation.
 # Authors may supply exact original entry sets after authenticating their
 # retained source. An absent record still rejects BRAF as before.
 TRANSFERS={r['entry']:{int(pc,16):tuple(int(t,16) for t in targets)
-                      for pc,targets in r['transfers'].items()} for r in ACTOR_ROWS}
+                      for pc,targets in r['transfers'].items()} for r in ACTOR_ROWS+PLAYER_ROWS}
+# Reviewed computed successors inside the SAME retained owner. These never
+# enter run(), acquire a return frame, or become global executable entries.
+LOCAL_TRANSFERS={r['entry']:{int(pc,16):tuple(int(t,16) for t in targets)
+                           for pc,targets in r['local_transfers'].items()} for r in PLAYER_ROWS}
+FALLTHROUGH_TRANSFERS={r['entry']:{int(pc,16):int(t,16) for pc,t in r['fallthroughs'].items()} for r in PLAYER_ROWS}
+LOCAL_ENTRY_OWNERS={int(pc,16):r['entry'] for r in PLAYER_ROWS for pc in r['local_entries']}
 # Precision-polymorphic original arithmetic epochs are rare and must be
 # explicitly bound by each author, then checked against retained source.
 POLYMORPHIC_EPOCHS={0x8C03FF72}
-POLYMORPHIC_EPOCHS.update(pc for r in ACTOR_ROWS for pc in r['polymorphic_epochs'])
+POLYMORPHIC_EPOCHS.update(pc for r in ACTOR_ROWS+PLAYER_ROWS for pc in r['polymorphic_epochs'])
 
 def single_epoch(pc):return pc not in POLYMORPHIC_EPOCHS
 
@@ -107,11 +116,24 @@ def transfer_targets(entry,pc,op):
     if op>>12==0xA:
         if tuple(targets)!=(pc+4+2*shared.signed(op&4095,12),):
             raise ValueError(f'Static transfer target changed {pc:08X}')
+    elif op>>8 in (0x89,0x8B,0x8D,0x8F):
+        if tuple(targets)!=(pc+4+2*shared.signed(op&255,8),):
+            raise ValueError(f'Conditional transfer target changed {pc:08X}')
     elif op&0xF0FF!=0x0023:raise ValueError(f'Unexpected transfer instruction {pc:08X}')
     return tuple(targets)
 
+def local_transfer_targets(entry,pc,op):
+    targets=LOCAL_TRANSFERS.get(entry,{}).get(pc)
+    if targets is None:return None
+    if pc in TRANSFERS.get(entry,{}):raise ValueError('Ambiguous transfer kind')
+    if not targets or len(targets)!=len(set(targets)) or any(
+            not isinstance(t,int) or t&1 or not shared.BASE<=t<shared.BASE+0x1000000
+            for t in targets):raise ValueError(f'Invalid local targets {pc:08X}')
+    if op&0xF0FF not in (0x0023,0x402B):raise ValueError(f'Unexpected local transfer {pc:08X}')
+    return tuple(targets)
+
 def inspect(ram,entry,begin,end):
-    pending=[entry];ins={};delays=set();calls=[]
+    pending=[entry]+[pc for pc,owner in LOCAL_ENTRY_OWNERS.items() if owner==entry];ins={};delays=set();calls=[]
     word=lambda pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0]
     while pending:
         pc=pending.pop()
@@ -120,8 +142,16 @@ def inspect(ram,entry,begin,end):
         op=word(pc);ins[pc]=op;high,upper=op>>12,op>>8
         successors=[pc+2];delayed=False
         transfers=transfer_targets(entry,pc,op)
-        if transfers is not None:
-            successors=[];delayed=True
+        local=local_transfer_targets(entry,pc,op)
+        if local is not None:
+            if any(t<begin or t+2>end for t in local):raise ValueError('Local transfer leaves owner')
+            successors=list(local);delayed=True
+            calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',transfer=True,local=True,
+                              targets=[f'{t:08X}' for t in local]))
+        elif transfers is not None:
+            conditional=upper in (0x89,0x8B,0x8D,0x8F)
+            delayed=not conditional or upper in (0x8D,0x8F)
+            successors=[pc+(4 if delayed else 2)] if conditional else []
             calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',transfer=True,
                               targets=[f'{t:08X}' for t in transfers]))
         elif op==0xB:successors=[];delayed=True
@@ -134,12 +164,19 @@ def inspect(ram,entry,begin,end):
             successors=[pc+4];delayed=True
             calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',target=f'{pc+4+2*shared.signed(op&4095,12):08X}' if high==0xB else None))
         elif op&0xF0FF in (0x0003,0x0023):raise ValueError(f'Unreviewed transfer {pc:08X}')
+        if pc in FALLTHROUGH_TRANSFERS.get(entry,{}):
+            target=FALLTHROUGH_TRANSFERS[entry][pc]
+            if delayed or successors!=[pc+2] or target!=pc+2:raise ValueError('Invalid owner fallthrough')
+            successors=[]
+            calls.append(dict(pc=f'{pc:08X}',opcode=f'{op:04X}',transfer=True,fallthrough=True,targets=[f'{target:08X}']))
         if delayed:
             slot=word(pc+2)
             if slot==0xB or slot>>12 in (0xA,0xB) or slot>>8 in (0x89,0x8B,0x8D,0x8F) or slot&0xF0FF in (0x400B,0x402B,0x0003,0x0023):raise ValueError('Nested delay transfer')
             delays.add(pc+2)
         pending+=successors
     if set(TRANSFERS.get(entry,{}))-ins.keys():raise ValueError('Unreachable transfer declaration')
+    if set(LOCAL_TRANSFERS.get(entry,{}))-ins.keys():raise ValueError('Unreachable local transfer declaration')
+    if set(FALLTHROUGH_TRANSFERS.get(entry,{}))-ins.keys():raise ValueError('Unreachable owner fallthrough')
     return ins,delays,sorted(calls,key=lambda c:c['pc'])
 
 def emit_simple(pc,op,ram,restart=None):
@@ -156,6 +193,10 @@ def emit_simple(pc,op,ram,restart=None):
     elif op&0xF00F==0x000C:body=f'{r}=signed8(load8({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.r[0]+{s}));'
     elif op&0xF0FF==0xF00D:body=f'cpu.fr[{n}]=cpu.fpul;'
     elif op&0xF0FF==0xF01D:body=f'cpu.fpul=cpu.fr[{n}];'
+    elif op&0xF00F==0x6005:
+        body=f'{r}=signed16(load16({restart or f"RestartPoint{{0x{pc:08X}u}}"},{s}));'
+        if n!=m:body+=f'{s}+=2u;'
+    elif op&0xF0FF==0x4028:body=f'{r}<<=16u;'
     elif op>>8==0xC2:body=f'store({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.gbr+{(op&255)*4}u,cpu.r[0],CodeWriteSource::Cpu);'
     elif op&0xF0FF==0x401E:body=f'cpu.gbr={r};'
     elif op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
@@ -173,8 +214,11 @@ def emit_body(ram,entry,instructions):
     word=lambda pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0]
     # Several actual state owners share an original epilogue. C++ labels have
     # function scope even inside different switch cases.
-    label=lambda pc:(f'L{entry:08X}_{pc:08X}' if entry in {r['entry'] for r in ACTOR_ROWS} else f'L{pc:08X}')
+    label=lambda pc:(f'L{entry:08X}_{pc:08X}' if entry in {r['entry'] for r in ACTOR_ROWS+PLAYER_ROWS} else f'L{pc:08X}')
     lines=[f'goto {label(entry)};']
+    aliases=[pc for pc,owner in LOCAL_ENTRY_OWNERS.items() if owner==entry]
+    if aliases:
+        lines=['switch(cpu.pc){']+[f'case 0x{pc:08X}u:goto {label(pc)};' for pc in aliases]+[f'default:goto {label(entry)};','}']
     epochs=dict(EPOCHS.get(entry,()))
     interiors={p for a,b in epochs.items() for p in range(a+2,b,2)}
     # Original epochs are straight-line register-only sequences, with no
@@ -183,6 +227,7 @@ def emit_body(ram,entry,instructions):
         destinations=[]
         if op>>12 in (0xA,0xB):destinations.append(pc+4+2*shared.signed(op&4095,12))
         if op>>8 in (0x89,0x8B,0x8D,0x8F):destinations.append(pc+4+2*shared.signed(op&255,8))
+        destinations+=list(local_transfer_targets(entry,pc,op) or ())
         if any(p in interiors for p in destinations):raise ValueError('Branch enters arithmetic epoch')
     for pc,op in sorted(instructions.items()):
         if pc in interiors:continue
@@ -208,7 +253,22 @@ def emit_body(ram,entry,instructions):
         at=f'RestartPoint{{0x{pc:08X}u}}'
         delay=lambda at:emit_simple(pc+2,word(pc+2),ram,at)
         transfers=transfer_targets(entry,pc,op)
-        if transfers is not None:
+        local=local_transfer_targets(entry,pc,op)
+        if local is not None:
+            target=f'cpu.r[{(op>>8)&15}]'+(f'+0x{pc+4:08X}u' if op&0xF0FF==0x0023 else '')
+            lines.append(f'const std::uint32_t target={target};')
+            condition=' && '.join(f'target!=0x{t:08X}u' for t in local)
+            lines.append(f'if({condition})a.restart(0x{pc:08X}u);')
+            if any(t<=pc for t in local):lines.append(f'if(target<=0x{pc:08X}u)backedge(0x{pc:08X}u);')
+            lines += [delay(at),'switch(target){']
+            lines += [f'case 0x{t:08X}u:goto {label(t)};' for t in local]
+            lines += ['default:throw Interrupted{};','}']
+        elif transfers is not None and upper in (0x89,0x8B,0x8D,0x8F):
+            delayed=upper in (0x8D,0x8F);condition='cpu.t' if upper in (0x89,0x8D) else '!cpu.t'
+            lines.append(f'const bool taken={condition};')
+            if delayed:lines.append(delay(at))
+            lines.append(f'if(taken){{transfer(0x{transfers[0]:08X}u,0x{pc:08X}u);return;}}goto {label(pc+(4 if delayed else 2))};')
+        elif transfers is not None:
             target=(f'0x{transfers[0]:08X}u' if high==0xA else
                     f'cpu.r[{(op>>8)&15}]+0x{pc+4:08X}u')
             lines.append(f'const std::uint32_t target={target};')
@@ -228,6 +288,8 @@ def emit_body(ram,entry,instructions):
         elif high==0xB or op&0xF0FF==0x400B:
             target=f'0x{pc+4+2*shared.signed(op&4095,12):08X}u' if high==0xB else f'cpu.r[{(op>>8)&15}]'
             lines+=[f'const auto target={target};[[maybe_unused]] const auto old_pr=cpu.pr;cpu.pr=0x{pc+4:08X}u;',delay(f'RestartPoint{{0x{pc:08X}u,old_pr}}'),'call(target);',f'goto {label(pc+4)};']
+        elif pc in FALLTHROUGH_TRANSFERS.get(entry,{}):
+            lines+=[emit_simple(pc,op,ram),f'transfer(0x{pc+2:08X}u,0x{pc:08X}u);return;']
         else:lines+=[emit_simple(pc,op,ram),f'goto {label(pc+2)};']
         lines.append('}')
     return '\n'.join(lines)+'\n'
@@ -285,13 +347,17 @@ def main():
     proof.append('};\nunsigned source_owner_index(std::uint32_t owner) noexcept { switch(owner){')
     proof += [f'case 0x{entry:08X}u:return {i}u;' for i,(_,entry,_,_) in enumerate(OWNERS)]
     proof.append(f'default:return {len(OWNERS)}u;\n}}}}')
+    proof.append('std::uint32_t transfer_owner(std::uint32_t pc) noexcept {switch(pc){')
+    proof += [f'case 0x{pc:08X}u:return 0x{owner:08X}u;' for pc,owner in LOCAL_ENTRY_OWNERS.items()]
+    proof.append('default:return pc;}}')
     proof.append('constexpr auto source_pages=[] { std::array<bool,4096> out{};')
     proof.append('for(const auto& s:identities)for(auto p=(s.address&0xFFFFFFu)>>12u;p<=((s.address&0xFFFFFFu)+s.bytes.size()-1u)>>12u;++p)out[p]=true;return out;}();')
     (args.output/'hierarchy-identities.inc').write_text('\n'.join(proof)+'\n',encoding='ascii',newline='\n')
     (args.output/'hierarchy-switch.inc').write_text('\n'.join(f'case 0x{entry:08X}u: {{\n#include "hierarchy-{name}.inc"\n}}' for name,entry,_,_ in OWNERS)+'\n')
     land={r['entry'] for r in LAND_ROWS}
     actors={r['entry'] for r in ACTOR_ROWS}
-    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in land|actors)+'\nreturn true;\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(land))+'\nreturn land_enabled();\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(actors))+'\nreturn actor_selected();\n')
+    players={r['entry'] for r in PLAYER_ROWS}
+    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in land|actors|players)+'\nreturn true;\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(land))+'\nreturn land_enabled();\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(actors))+'\nreturn actor_selected();\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(players))+'\nreturn player_selected();\n')
     (args.output/'hierarchy-inventory.json').write_text(json.dumps(dict(schema='sarecomp-render-hierarchy-v1',ram_sha256=shared.RAM_SHA,owners=reports,source_spans=[dict(address=f'{a:08X}',size=n,sha256=hashlib.sha256(ram[a-shared.BASE:a-shared.BASE+n]).hexdigest()) for a,n in merged]),indent=2)+'\n')
     print(f'SONIC_RENDER_HIERARCHY_READY owners={len(reports)} instructions={sum(x["instructions"] for x in reports)}')
 if __name__=='__main__':main()

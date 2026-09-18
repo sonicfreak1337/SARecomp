@@ -1,0 +1,879 @@
+{
+  "passed": true,
+  "purpose": "installed functional and normal-start policy checks; not a performance comparison",
+  "patch_sha256": "f02096aa3cfff012b14be5135922f087c86e3cfe1bf5315b7d009807d3dddf85",
+  "programs": [
+    {
+      "file": "build-linux/game",
+      "bytes": 1783854848,
+      "sha256": "50d49576b7471a919f52d93cf3db57e0f8ede25cc72807111f4f51a809d8cde4"
+    },
+    {
+      "file": "out/native-gameplay-update-20260918/game",
+      "bytes": 1720072232,
+      "sha256": "41766cc1a9dd44962ffbeedd5d25b97877c13451999f66adae493ae19be0b394"
+    },
+    {
+      "file": "out/model-submission-windows-20260918/game.exe",
+      "bytes": 1955778048,
+      "sha256": "5ccac4f16d172aee66f25c92c5d9813fcdb983b94f7750b239c7444b683523fc"
+    }
+  ],
+  "runs": [
+    {
+      "platform": "windows",
+      "mode": "original",
+      "evidence": "runs/native-gameplay-release-windows-original-20260918/result.json",
+      "exe_sha256": "5ccac4f16d172aee66f25c92c5d9813fcdb983b94f7750b239c7444b683523fc",
+      "cadence": [
+        "50",
+        "2",
+        "2"
+      ],
+      "normal_start_groups": true,
+      "counts": {
+        "contact_family_calls": 144,
+        "object_contact_calls": 48,
+        "camera_operation_calls": 48,
+        "land_render_calls": 48,
+        "actor_operation_calls": 240,
+        "player_operation_calls": 48,
+        "render_model_calls": 8091,
+        "contact_family_resumes": 0,
+        "world_resumes": 0,
+        "render_hierarchy_resumes": 0,
+        "render_model_revocations": 0,
+        "model_pipeline_root_operations": 0
+      }
+    },
+    {
+      "platform": "windows",
+      "mode": "recompiled",
+      "evidence": "runs/native-gameplay-release-windows-recompiled-20260918/result.json",
+      "exe_sha256": "5ccac4f16d172aee66f25c92c5d9813fcdb983b94f7750b239c7444b683523fc",
+      "cadence": [
+        "60",
+        "1",
+        "1"
+      ],
+      "normal_start_groups": true,
+      "counts": {
+        "contact_family_calls": 60,
+        "object_contact_calls": 20,
+        "camera_operation_calls": 20,
+        "land_render_calls": 20,
+        "actor_operation_calls": 100,
+        "player_operation_calls": 20,
+        "render_model_calls": 5494,
+        "contact_family_resumes": 0,
+        "world_resumes": 0,
+        "render_hierarchy_resumes": 0,
+        "render_model_revocations": 0,
+        "model_pipeline_root_operations": 0
+      }
+    },
+    {
+      "platform": "linux",
+      "mode": "original",
+      "evidence": "runs/native-gameplay-installed-original-20260918/summary.json",
+      "exe_sha256": "41766cc1a9dd44962ffbeedd5d25b97877c13451999f66adae493ae19be0b394",
+      "cadence": [
+        "50",
+        "2",
+        "2"
+      ],
+      "normal_start_groups": true,
+      "counts": {
+        "contact_family_calls": 204,
+        "object_contact_calls": 68,
+        "camera_operation_calls": 68,
+        "land_render_calls": 68,
+        "actor_operation_calls": 340,
+        "player_operation_calls": 68,
+        "render_model_calls": 10643,
+        "contact_family_resumes": 0,
+        "world_resumes": 0,
+        "render_hierarchy_resumes": 0,
+        "render_model_revocations": 0,
+        "model_pipeline_root_operations": 0
+      }
+    },
+    {
+      "platform": "linux",
+      "mode": "recompiled",
+      "evidence": "runs/native-gameplay-installed-recompiled-20260918/summary.json",
+      "exe_sha256": "41766cc1a9dd44962ffbeedd5d25b97877c13451999f66adae493ae19be0b394",
+      "cadence": [
+        "60",
+        "1",
+        "1"
+      ],
+      "normal_start_groups": true,
+      "counts": {
+        "contact_family_calls": 60,
+        "object_contact_calls": 20,
+        "camera_operation_calls": 20,
+        "land_render_calls": 20,
+        "actor_operation_calls": 100,
+        "player_operation_calls": 20,
+        "render_model_calls": 5460,
+        "contact_family_resumes": 0,
+        "world_resumes": 0,
+        "render_hierarchy_resumes": 0,
+        "render_model_revocations": 0,
+        "model_pipeline_root_operations": 0
+      }
+    }
+  ],
+  "adapter_source_identity": "386ddb26a21491a49a5716f6cc520b815cae2126534c4b53260254fca6dd4a40",
+  "source_files": [
+    {
+      "path": "src/native_title_adapter.cpp",
+      "sha256": "57f27f20aa4ac1c20ce4af5cd82c9535b630a703d43cce2acda2768246489de2"
+    },
+    {
+      "path": "src/sonic_corner_indices.hpp",
+      "sha256": "cc8a918f9d4289fdc173d6ef6eacda665e5878185fdf18c238b040fda71609fe"
+    },
+    {
+      "path": "src/sonic_private_scenario_launcher.hpp",
+      "sha256": "8664a6c2e0c8f23f91cc6874371033e393fe1d5e627f7e2681c9066e3a9e45bb"
+    },
+    {
+      "path": "src/sonic_private_scenario_launcher.cpp",
+      "sha256": "99a310b8314ebf4d3478b57683efa32eb1d5c29106d4c87986ecdf14fa41f505"
+    },
+    {
+      "path": "src/sonic_private_stage_scenarios.inc",
+      "sha256": "c159ed670bcad01f8bd754e789fe49eb2e773b3b70b46eed713baf111b9a31da"
+    },
+    {
+      "path": "src/sonic-native-event-adx-catalog.inc",
+      "sha256": "a12fa3f44d981d40c553014c50650fef80ce72c3a2702915d6b3b4093ab39eeb"
+    },
+    {
+      "path": "src/sonic_native_input_policy.hpp",
+      "sha256": "01ad3e33f24907fbb73dcd222aa021bb0c5536b3a32d809283394c07e6264b1f"
+    },
+    {
+      "path": "src/sonic_frame_completion_contract.hpp",
+      "sha256": "a5e45ea8a25735e0d848bd3608a011e2718a782af76d220a87e1b1c4dc19e8d1"
+    },
+    {
+      "path": "src/sonic_qsound_reverb_medium.hpp",
+      "sha256": "7ba0781958dc4dca26267ef3c93cf674b81e5c8fb3d419f37b4a53e9be443460"
+    },
+    {
+      "path": "src/sonic_palette_lighting.hpp",
+      "sha256": "c6e931bfc1998853ab2a84f61364bb4e231679613e7debc360f91eb02b508b0c"
+    },
+    {
+      "path": "src/sonic_palette_lighting.cpp",
+      "sha256": "1195bd3eb1c80fe60567fdef06538800c9eeda3830ed481dbf9e5a07da88aa66"
+    },
+    {
+      "path": "src/sonic_vertex_normals.hpp",
+      "sha256": "d0696dd7588fa13511812b5bc3f38de58c02530c244cf86060efb6e787d57dbd"
+    },
+    {
+      "path": "src/sonic_vertex_normals.cpp",
+      "sha256": "946e66498efc2029d11b588173bdd364758aac0c43867ad6d42573ce1ea1b6c6"
+    },
+    {
+      "path": "src/sonic_palette_batch.hpp",
+      "sha256": "597f38af2f524a2b7a571d7c5dd1d4227a26b75707a3fb3a7364ee4c7b5656e1"
+    },
+    {
+      "path": "src/sonic_palette_batch.cpp",
+      "sha256": "fe66e8360c30446921caeb2dd72b08ec624a60545c14b58a417b8a4d924dcc92"
+    },
+    {
+      "path": "src/sonic_palette_batch_simd.cpp",
+      "sha256": "dcf2cb742f736306c63c0fe16c784cbb75d9f82ab0378727ac3952086c93c05f"
+    },
+    {
+      "path": "src/sonic_projection_batch.hpp",
+      "sha256": "0d3487165e92dfc94be9adbdaeb4a108330490b59b1e58f92b812bf1f78d9f76"
+    },
+    {
+      "path": "src/sonic_projection_batch.cpp",
+      "sha256": "8df91f470dab1bcf323c44f83689bdf14125502084f92136fa5fc2cd1617deb2"
+    },
+    {
+      "path": "src/sonic_projection_batch_simd.cpp",
+      "sha256": "5c3b92be8db5b60737798acbcf5d3d760ffa47373ade5db8ad7ff98944118799"
+    },
+    {
+      "path": "src/sonic_matrix_stack.hpp",
+      "sha256": "aa87fc18b4b67455c3eeac24adddf0ae159b56d8a423cb69dbbf73ef03879373"
+    },
+    {
+      "path": "src/sonic_matrix_stack.cpp",
+      "sha256": "39f54dcb0840a9133e5ce2c73b618c2b291e73b4d64222ef883159d150995474"
+    },
+    {
+      "path": "src/sonic_matrix_vectors.hpp",
+      "sha256": "ff41eced9527168f0c3746e1401a6d436649a164861ca8d57b32aacb3c30e274"
+    },
+    {
+      "path": "src/sonic_matrix_vectors.cpp",
+      "sha256": "cb0bfcf97819f69d8347f771a793cc5f21c44f14ede61b646d602f20772928ec"
+    },
+    {
+      "path": "src/sonic_big_hud.hpp",
+      "sha256": "64e1f588b0dd733380dce7c8f54e371a97193f533e689ba99076d16efb56e66a"
+    },
+    {
+      "path": "src/sonic_matrix_inverse.hpp",
+      "sha256": "d05cc5bef42652ac93d42ce0c3e55436ee4cefaa0303144c7e62a20d464c7d43"
+    },
+    {
+      "path": "src/sonic_matrix_inverse.cpp",
+      "sha256": "b0efd825dac12020ba9533ae809bd476c45ef5e6523ec9a468092536f6491e1a"
+    },
+    {
+      "path": "tools/prepare-fpu-body.py",
+      "sha256": "8919fac45bd53c91d84e923950d8fe1da676616c2410750932c1132ca38eee02"
+    },
+    {
+      "path": "tools/prepare_static_chain.py",
+      "sha256": "f27e55b3accfdf3e6e0299ce36ca6904422176edc529bcb25ce3a50546d60481"
+    },
+    {
+      "path": "tools/generate_minicart_aot.cpp",
+      "sha256": "bfbf562a756c01bd45dadda3a5404854eedb919bd8469e8945b85af263ada8fe"
+    },
+    {
+      "path": "tools/prepare_minicart_aot.py",
+      "sha256": "27b9fda1f00473d6a7da45471d1462b357c3a8f067b698d2bc68f842bf32b633"
+    },
+    {
+      "path": "tools/minicart_universe.py",
+      "sha256": "9fb65a11382516d8a33056a708597b9b6a6629ac747d4abcaa13ef08baef9541"
+    },
+    {
+      "path": "src/sonic_collision_math.hpp",
+      "sha256": "ce7b07e8168b613ab61aec0ccf3dfcb2a6cdb6f5856ca53c16ebc62cff19ef4e"
+    },
+    {
+      "path": "src/sonic_collision_math.cpp",
+      "sha256": "14feb310c4c7bb280b3c6ebf91e86496e3dd81b66af35c488acc1469b062c983"
+    },
+    {
+      "path": "src/sonic_triangle_contacts.hpp",
+      "sha256": "2969b064eb8ca789f59dd5cf59c67de2a2e10c5a0ec10df25a2556be2bff3823"
+    },
+    {
+      "path": "src/sonic_triangle_contacts.cpp",
+      "sha256": "9c730edddd83dff13ecfa68ffcdbd6fceb9fa3b61026bf90026e9e35ed2ada96"
+    },
+    {
+      "path": "src/sonic_native_collision_memory.hpp",
+      "sha256": "5a7098a8d08a652bff218dbf25c2634fc40aa7dc9539c4a1e7a28b647d302a43"
+    },
+    {
+      "path": "src/sonic_collision_candidates.hpp",
+      "sha256": "bcf2952d8efd7842268cadac3c009070b91553cc4799e22b1281eb50e2e913ee"
+    },
+    {
+      "path": "src/sonic_collision_candidates.cpp",
+      "sha256": "84ed244b15d35c89b767476a6dd03ce142667a273089b65882c76048524af95c"
+    },
+    {
+      "path": "tools/prepare_collision_candidates.py",
+      "sha256": "9cb026a05835f08da9abc818125bc2e4cae28a4c0ccddc7ff260f73a3c514aba"
+    },
+    {
+      "path": "src/sonic_motion_sampling.hpp",
+      "sha256": "d2be901da292125c5010ab9c8cd84aa8368acce0f9e6d94c2ff41f205b3e336c"
+    },
+    {
+      "path": "src/sonic_motion_sampling.cpp",
+      "sha256": "0d3c6e6ef6552a2569471be1f5fcb57375b1345432c4623cb6fcdc9b2f7e743c"
+    },
+    {
+      "path": "tools/prepare_motion_sampling.py",
+      "sha256": "50c2e758920a364e76f4781b26cf864816dec9943e48df6598dee640317485a6"
+    },
+    {
+      "path": "src/sonic_animation_hierarchy.hpp",
+      "sha256": "1cc3984277bf8815cf6832ff3de9bb9c5bed5c7d94ef696f9ce7f953251831d6"
+    },
+    {
+      "path": "src/sonic_animation_hierarchy.cpp",
+      "sha256": "465b07651c7e60542925802c1b582326763fef305d737188d149eec639a28d15"
+    },
+    {
+      "path": "tools/prepare-animation-hierarchy.py",
+      "sha256": "f3b8ce57aedeb987c6deff8dddbe5ca311a77d8361db9d04442fa09492a6e36c"
+    },
+    {
+      "path": "src/sonic_model_pipeline.hpp",
+      "sha256": "ed53a05c0aa1d47dead836afead1faa39904f36b1c50faa2ac8c46982a97c3e7"
+    },
+    {
+      "path": "src/sonic_model_pipeline.cpp",
+      "sha256": "fac498f9fd9ee287b70940ae42c3d6f779d8a1463033f741dd56a7ba0b836a0c"
+    },
+    {
+      "path": "src/sonic_model_pipeline_identity.inc",
+      "sha256": "a8400d76fc6304df588ec4fb4a9a867ded7586ee10d18b72938b3f7596922984"
+    },
+    {
+      "path": "src/sonic_object_activation.hpp",
+      "sha256": "9cf0423def283dd587cb9f3457cd52e36eb6fed75711b38ec079999b8b45c951"
+    },
+    {
+      "path": "src/sonic_object_activation.cpp",
+      "sha256": "84ff1b0444f4e70104898a263b95bea2f4da3e4d4e546c72f4d2207b35cf621b"
+    },
+    {
+      "path": "src/sonic_object_activation_identity.inc",
+      "sha256": "e136352cb11a8d08740b186d6f7657fd199e12888a874f2ac50eb010aa1dd59c"
+    },
+    {
+      "path": "tools/prepare-object-activation-bridge.py",
+      "sha256": "91532c71f5324e7151e5df22bf446d689c77242c285e3c87f31c3208fa88a16a"
+    },
+    {
+      "path": "src/sonic_movement_resolver.hpp",
+      "sha256": "4ea2b80871fb6bde516067307fa20765903c1f24e61294d8381925cf18b77463"
+    },
+    {
+      "path": "src/sonic_movement_resolver.cpp",
+      "sha256": "a626337cd2d1b3978e06d361cfeff50dd7f5e7b755beb16e75cb8144923c756a"
+    },
+    {
+      "path": "src/sonic_movement_contact.hpp",
+      "sha256": "e2daadaf3403a24359bd24dfb2c6abed861fdf55a83d96f0115cd142a35657bb"
+    },
+    {
+      "path": "src/sonic_movement_contact.cpp",
+      "sha256": "229565948b8bf76cd5221b3de52ec9f3c75ce720e27218eff7a0e6d181452fc9"
+    },
+    {
+      "path": "tools/prepare-movement-contact.py",
+      "sha256": "c71cc29887fb87571f3f44a488ad4a33609e65befa160c626962908fab0e71f6"
+    },
+    {
+      "path": "tools/prepare-movement-contact-bridge.py",
+      "sha256": "995b314657e212015b5133de98331b65aa30050c8bf0b9d638478200cb2195c0"
+    },
+    {
+      "path": "tools/movement-contact-owners.json",
+      "sha256": "0d580634e168b8575a3aeb7356518a282f874becf0c7b950735198049022d18b"
+    },
+    {
+      "path": "tools/object-contact-owners.json",
+      "sha256": "fdc5a43169d85f3042446bd9dac7017435ff00c2d609d5fb36c5f0b217b30a16"
+    },
+    {
+      "path": "tools/camera-operation-owners.json",
+      "sha256": "7d2172aa930a84cf05dd90f32fe7463bd5c69df23c7e8a2ea4ad43b50b93fa17"
+    },
+    {
+      "path": "tools/prepare-movement-resolver.py",
+      "sha256": "9e3ab41a8a874ca368286445cdcb9b0209bd783b95dfc6240dc49172f9099b77"
+    },
+    {
+      "path": "tools/prepare-movement-bridge.py",
+      "sha256": "2e6041777ff34fca703619f11ae1e6d3ce3e07d82974f7b4a09c2e6648d1d8c4"
+    },
+    {
+      "path": "src/sonic_collision_world.hpp",
+      "sha256": "59b5e6fb9ffa73d3f87da10ad38efa0d8ab4cfee86a6ded3e06f3f6f3573e648"
+    },
+    {
+      "path": "src/sonic_collision_world.cpp",
+      "sha256": "9269cced8476633fc51497327adab119c83f4366a842bb0e36ae3bf05216c841"
+    },
+    {
+      "path": "tools/prepare-collision-world.py",
+      "sha256": "08855228a285179092911f8587e3537cb26daf1415205953db021a8328763aaf"
+    },
+    {
+      "path": "tools/prepare-collision-world-bridge.py",
+      "sha256": "e3500475d337081cfaaebc723a3d8a1d0e5b8861132d180f325cd16c701e70c1"
+    },
+    {
+      "path": "tools/prepare-collision-world-sdk-bridge.py",
+      "sha256": "3cb32250cbe20c1876bb8cbcffac4c2f9f0a1d518ce28b92d621167642cf9f61"
+    },
+    {
+      "path": "src/sonic_render_hierarchy.hpp",
+      "sha256": "6efb17c271a05b0d7079da6d162124e425df3af95908ce714b7670b1ad45844b"
+    },
+    {
+      "path": "src/sonic_render_hierarchy.cpp",
+      "sha256": "83ccf7a42b35772e8a270c015468fe4f34a5b40578697ca7e7eead20ef14888f"
+    },
+    {
+      "path": "tools/prepare-render-hierarchy.py",
+      "sha256": "309560cd37a830ecfab332e61fa94e2a4a55af1988d3ed8fa1e71c9f82055503"
+    },
+    {
+      "path": "tools/prepare-render-hierarchy-bridge.py",
+      "sha256": "41fb07f5cb2cd3968461163e451032a52ae9a9a142a7dd44e479ee77386bbf94"
+    },
+    {
+      "path": "tools/land-render-owners.json",
+      "sha256": "cfbc340ac131c07473096a4eb0c6183f15a683b090fbd8baa3b381291d497f8f"
+    },
+    {
+      "path": "tools/actor-operation-owners.json",
+      "sha256": "4ff9f0ceda4b6c7f98c4f420cdc724be43296a5a0683a2d2c13a693689f96f10"
+    },
+    {
+      "path": "tools/player-operation-owners.json",
+      "sha256": "3750b5d65e2b98e997a885a2b5e5ea47c073d2646bd160a60fb02cfae3917e96"
+    },
+    {
+      "path": "src/sonic_model_math.hpp",
+      "sha256": "bfa9a786847a8e35dfb7107f05707f3b2acdee76cebb87e9e8a296c968f136af"
+    },
+    {
+      "path": "src/sonic_native_model_memory.hpp",
+      "sha256": "3a2eba7397b7e0984a7578a8432270a446fa90a4405422a1b5635679c1dac8be"
+    },
+    {
+      "path": "src/sonic_pose_blend.hpp",
+      "sha256": "1f26b65d3e3435ba388b239a2a557445f82d4f188f5fa0a1f4754c254d353497"
+    },
+    {
+      "path": "src/sonic_pose_blend.cpp",
+      "sha256": "e0e45ec5d33465952400add2020ca3a0c42f0fb09dfcca810111d235441fa166"
+    },
+    {
+      "path": "src/sonic_render_context.hpp",
+      "sha256": "fe1eeaf19b7ad45a6c19bfbbcf978f5ebc88895f45323effac66ed1ff415bcad"
+    },
+    {
+      "path": "src/sonic_render_context.cpp",
+      "sha256": "5035953c67083179e4e06f89dd03a0283fb72a69e361376c89327b440319f75d"
+    },
+    {
+      "path": "tools/prepare-render-context.py",
+      "sha256": "b65f983f269eb1f35f87e6f35929d246386b6d19faef6dce41b414647e3def4b"
+    },
+    {
+      "path": "src/sonic_scalar_write_view.hpp",
+      "sha256": "4c8054051c0eba39acc3989751acafbc7d1bec3065a89e09917fcb75518531ee"
+    },
+    {
+      "path": "src/sonic_native_cpu_policy.hpp",
+      "sha256": "a20cdb06bcacf9f0918eca5b5e6486f6196220f516df6228a96c454ad6764f56"
+    },
+    {
+      "path": "tools/prepare-scalar-writes.py",
+      "sha256": "9f57d8992c1baa966bfa890d045d91495de27cbabfe35f5cb3ba930fc18450d5"
+    },
+    {
+      "path": "src/sonic_mesh_plan.hpp",
+      "sha256": "49c644414f2c965df6dc0685e38361dc051e370a74fe03b216c7e0445615b187"
+    },
+    {
+      "path": "src/sonic_mesh_plan.cpp",
+      "sha256": "ff6a4c3086ede8c9319b59d2e6fd03916b27dff82a8f420e707add4173e7f258"
+    },
+    {
+      "path": "src/sonic_model_packet.hpp",
+      "sha256": "ec286d25d267c6e612a500710476e4ee8cb6b10f58b3fb6ee470f09e4ae6781f"
+    },
+    {
+      "path": "src/sonic_model_vertex_stream.hpp",
+      "sha256": "6014ecc8223cd9470ade6a0d8d513197fa6cb51eca854a77d51e3117c493e372"
+    },
+    {
+      "path": "src/sonic_atan_math.hpp",
+      "sha256": "def24dd2f474ae8a7da34c80d539f828e8fda7a4e7cf4bea9a23bd08ff2dde3d"
+    },
+    {
+      "path": "src/sonic_atan_math.cpp",
+      "sha256": "2e60ff58c2bb20046ff204c29b3c715eccce0790b4558df9f35822fb1b31fabb"
+    },
+    {
+      "path": "tools/prepare-inverse-trig.py",
+      "sha256": "45bef39bb25494ea23cf056db21188ca10646542ffee7c68d8aae8e739f361b5"
+    },
+    {
+      "path": "tools/prepare-inverse-trig-bridge.py",
+      "sha256": "e6b3187b72289ff9817a47582b451afca2390a42156c7bd3e33d87a26a85e81f"
+    },
+    {
+      "path": "src/sonic_amy_hammer_effect.hpp",
+      "sha256": "77e2ce92f53739befda4c4992e5dc2c6c2d0219b34b613de5fb9e80bc187e2e9"
+    },
+    {
+      "path": "src/sonic_amy_hammer_effect.cpp",
+      "sha256": "2f8c377c5684d6ebbf9e14c49b0edcd1c40f98b6f5817db26943f252138c7f96"
+    },
+    {
+      "path": "src/sonic_descriptor_index.hpp",
+      "sha256": "2ae4bae59abb9e0ad3410de5fa66d494074655750c1843072eda3cf167cf6c54"
+    },
+    {
+      "path": "src/sonic_transition_task_graph.hpp",
+      "sha256": "b8bba45d5a56d28e494e35d696242468858a5d55312d2975510abee0608e4b34"
+    },
+    {
+      "path": "src/sonic_contour.hpp",
+      "sha256": "56c663595eac67c36629cbe5f08becf708b05033841d31d910122ac4dcd69c43"
+    },
+    {
+      "path": "src/sonic_qsound_reverb_medium_program.inc",
+      "sha256": "900e2d10ee75cdc65c6dcae950d840bb4392bb1534c2770b306a1f3c1cfcad1c"
+    },
+    {
+      "path": "src/sonic_native_sdk_texture_release_plan.hpp",
+      "sha256": "faea456d1d17888620359ccd912b2315c99212cadc338fc2b5a081bec83196a9"
+    },
+    {
+      "path": "src/sonic_texture_sentinel.hpp",
+      "sha256": "8c30d52478cae000c7ea2f550f536101865d1ded62c72667ab9b8860434013bf"
+    },
+    {
+      "path": "src/sonic_native_texture_catalog.hpp",
+      "sha256": "16aeffedbe3eca82dbd2dc09995c3fb950abc0ed21e559a0d64651b73af3a0dc"
+    },
+    {
+      "path": "src/sonic_native_texture_catalog.cpp",
+      "sha256": "564f7db985387605da30df7d3a2156ea2eecb10b944520cc66a31349dcc28d80"
+    },
+    {
+      "path": "src/sonic_native_save_contract.hpp",
+      "sha256": "0dbad14c7dfa8bbdb01a0d0edf71da17172b3c98b3220b2e0ba6a201773bd2f6"
+    },
+    {
+      "path": "src/sonic_presentation.hpp",
+      "sha256": "1b6ba39b8e681cd8d990966887c62dad47952e8ea1ed834bd6d5ff8afff94e68"
+    },
+    {
+      "path": "src/sonic_presentation.cpp",
+      "sha256": "6d6113fea0e13ddccce5e2685ee130b64c3c1af6b7d022f226ef8042d239d515"
+    },
+    {
+      "path": "src/sonic_user_paths.hpp",
+      "sha256": "c1bd5e0aebed6742e510268de705a4c0e0a1aab98c8ad303e9060af57e21e1ec"
+    },
+    {
+      "path": "src/sonic_render_culling.hpp",
+      "sha256": "46744f27144324b46680a72d166bbe32a7798f09bad8d1701ae5b64b89b0a153"
+    },
+    {
+      "path": "src/sonic_render_culling.cpp",
+      "sha256": "7c0069a10042490aac48dcec429d5fbe238478d52356451c0857ad0905a592f3"
+    },
+    {
+      "path": "src/sonic_sdk_color.hpp",
+      "sha256": "be22a8d47495e66b2816f9fd56ea125591d1b2cb91d5840087aab878c788cd7c"
+    },
+    {
+      "path": "src/sonic_model_uv.hpp",
+      "sha256": "403d12b34269178fa79c3134c618c941eef517b05f4885dddf2464efd6a96524"
+    },
+    {
+      "path": "src/sonic_fpu_scratch.hpp",
+      "sha256": "c2ebd46b91ab7e4e1eda768e49ef03d468a3f74ee3effac7e5d38acc02556571"
+    },
+    {
+      "path": "src/renderer/sonic_motion.hpp",
+      "sha256": "c9c644bffdb4b600fe170adbd0dd31f949605bef3757771828bb557cb357b063"
+    },
+    {
+      "path": "src/renderer/sonic_motion_view.hpp",
+      "sha256": "550d5a3ad18f94cb9aff6ffcdf2c73bd9f9a78f9a4f0c92c69895460dbc98e8f"
+    },
+    {
+      "path": "src/sonic_language.hpp",
+      "sha256": "ca887bcabbb189b29193e3d18b11b31635d80c999f78fc5c8ed829126c903fae"
+    },
+    {
+      "path": "src/sonic_language.cpp",
+      "sha256": "4fcf0b3706cea590777cdca2159ed7e1eb865af6b3b0b6b5e9244720d3395fdb"
+    },
+    {
+      "path": "src/renderer/renderer_selection.hpp",
+      "sha256": "e0187b15933471c01a8e67336dc3980b1a9b3adf5977c668892e3b8537100d7f"
+    },
+    {
+      "path": "src/sonic_motion_owner.hpp",
+      "sha256": "43963993f990ca2285a78f6891441c664b675c059f8f103a194e0dd44aab1a56"
+    },
+    {
+      "path": "src/sonic_dispatch_memo.hpp",
+      "sha256": "caf74b1d7235a1091a2341fb6d04849a45e782a053edce2b285493e8a20f8c54"
+    },
+    {
+      "path": "src/sonic_execution_clock.hpp",
+      "sha256": "b5d849174026c22fa1b5ee01d55777a99d2ddb4cef5e5fe66db66bc3093921d2"
+    },
+    {
+      "path": "src/sonic_render_completion.hpp",
+      "sha256": "1965904f1a513c69ad23d547cb869d891ca619fa1b5ac5696956498ee44d46a9"
+    },
+    {
+      "path": "tools/prepare-motion-dispatch.py",
+      "sha256": "c68aa9b1c6fa7f23eb2a8d7007e929afffd5b6e80c17ccecabb1b930cc44e56c"
+    },
+    {
+      "path": "src/sonic_camera_style.hpp",
+      "sha256": "b560f119ae825c7dced495725713ba00f98c818cef66759c2c56d36389a16912"
+    },
+    {
+      "path": "src/sonic_camera_orbit.hpp",
+      "sha256": "617f06bb369a8219f91ab0d7d3211e5c3e492d17d746265e2c2a206c05335f53"
+    },
+    {
+      "path": "src/sonic_camera_policy.hpp",
+      "sha256": "25aa2ed9ddddb09dc4e095b23fc0a32c4c0d5dd6b47d098444cd335fd3514150"
+    },
+    {
+      "path": "src/sonic_camera.hpp",
+      "sha256": "00ee558f7cc2ac6011ac2f2c2e1dfd594933f37f2b5f7dce5660dd6cefd68b89"
+    },
+    {
+      "path": "src/sonic_camera.cpp",
+      "sha256": "d98049324cb3245c9a24aeab22963e9ade19385770d43c42588186030e08f196"
+    },
+    {
+      "path": "src/sonic_camera_collision.hpp",
+      "sha256": "aeeb425ea1024bd14c697d5d8c70da798b7b2cc125632b59aae587a55ea66f2e"
+    },
+    {
+      "path": "src/sonic_camera_world.hpp",
+      "sha256": "a1ec93e938c281b87c5a01788dd6ea4f9d17981830633082bf5a453c82d20191"
+    },
+    {
+      "path": "src/sonic_camera_input.hpp",
+      "sha256": "e09cc4748123edaeff3a4d04d85a20bbb7c3972a9c6d2193c822b6f3e78f4711"
+    },
+    {
+      "path": "src/sonic_startup.hpp",
+      "sha256": "bbf4f7d82acb6ed7a3a5f8eec2f52186e79048157d5b5689d53d75f57aafa151"
+    },
+    {
+      "path": "src/sonic_startup.cpp",
+      "sha256": "73992a14f777299af3a0480d691955f0b22a065af410a3f4eba45c84a46556ec"
+    },
+    {
+      "path": "src/sonic_quit_prompt.hpp",
+      "sha256": "84605ba80efc846daa7243c53d87492efa1ffc85dc3da9db3d79b76f27504da3"
+    },
+    {
+      "path": "src/sonic_quit_prompt.cpp",
+      "sha256": "67a74aea975a54dbefb0e4c07a534746738a1c1aebe2043cf41c550777323421"
+    },
+    {
+      "path": "src/sonic_quit_prompt_image.cpp",
+      "sha256": "63a208b47df35d75b253f86ba3109ff0e88e02b76679108471a0d3a1bd29e267"
+    },
+    {
+      "path": "src/sonic_legacy_video.hpp",
+      "sha256": "4582fc9a4ed3c10c3d43f69d578a82a663391798f4f5e662298fc0de6f4e3442"
+    },
+    {
+      "path": "src/sonic_legacy_video.cpp",
+      "sha256": "78bc7973ed1484e53e2f1d6afaf53d7720063f4f0f05ab8c3c50fd98c414e5f4"
+    },
+    {
+      "path": "src/sonic_settings_fields.inc",
+      "sha256": "a8bdfd2374bf07f4d9df95cd0e78877b945e0b0b99be2fbcc38c963a5756a0eb"
+    },
+    {
+      "path": "src/sonic_input_bindings.hpp",
+      "sha256": "a77e28414611b7c03ec09b882022a8a1664bbad689814613c736c071dbc5ddcc"
+    },
+    {
+      "path": "src/sonic_input.hpp",
+      "sha256": "c61accf0028cd812fdc860ad475760a9220bf91e6038e8201b869983b2109aed"
+    },
+    {
+      "path": "src/sonic_input.cpp",
+      "sha256": "5511344a697629398256b23ad8305bd0157f3e89a3f8f975325dbea22bf59f70"
+    },
+    {
+      "path": "src/sonic_rumble.hpp",
+      "sha256": "e62212ea9f9cb2e96ea02987c083dab4a226eb07e6cebe5968ddeb5fd48602a1"
+    },
+    {
+      "path": "src/sonic_sony_input.hpp",
+      "sha256": "0c9807ad9420a7bf0b9c30f6d3163ff6aecc78d2d1ee73ca6fee465686ab1123"
+    },
+    {
+      "path": "src/sonic_sony_sdl_api.hpp",
+      "sha256": "c8043cb425817534bf66e8ff98c71ade437216047ad0ea3b3a6a1e61458ffa96"
+    },
+    {
+      "path": "src/sonic_sony_input.cpp",
+      "sha256": "11af1f0872d65efb9c61d6f36e630d8325553a27197b99e933ff1ffb0a1a1a3c"
+    },
+    {
+      "path": "src/sonic_joystick_query.hpp",
+      "sha256": "6a4a0d44688bc0a98eadd2ee44073b6f1ffc7620137a6ce621be14b4ffd2076a"
+    },
+    {
+      "path": "src/sonic_input_probe.hpp",
+      "sha256": "21313a783c1cf41d4d68ddfc867ebf195550107f2fb5a0ec195a9e3980443bd1"
+    },
+    {
+      "path": "src/sonic_tutorial_prompt.hpp",
+      "sha256": "cf6e892edd5a3605940d4647a13029cb54c13dbec86c8ae13d5afdee225e63d5"
+    },
+    {
+      "path": "src/sonic_tutorial_prompt.cpp",
+      "sha256": "5dbda42bb0db13fb77d6f4f2ac56bf7377941d8fc18ecdf79de1c44c9dcf1355"
+    },
+    {
+      "path": "src/sonic_tutorial_prompt_adapter.inc",
+      "sha256": "ab1607aa47a0a1cc4647b21e551b4ea85b5de3057b508cff0c752da6dd79f12a"
+    },
+    {
+      "path": "src/sonic_tutorial_art.hpp",
+      "sha256": "fbaae2508b0b28dd2f6d73761cf52eabacdb62b28ca4aa3436608891323c94b5"
+    },
+    {
+      "path": "src/sonic_tutorial_art.cpp",
+      "sha256": "d21f4e91031591590e4b044d632e3459e3030edb5ed889c6906da0469d0deae2"
+    },
+    {
+      "path": "src/sonic_tutorial_control_spans.inc",
+      "sha256": "8c837564475e826f5559e3fd01d4461a87346dce7aff12ad0fd172da1f317158"
+    },
+    {
+      "path": "src/sonic_tutorial_page_adapter.inc",
+      "sha256": "00f253039a628842831ad059245fc23fb335101755d2b9653220b54e07b10a5f"
+    },
+    {
+      "path": "src/sonic_configuration_lock.hpp",
+      "sha256": "e012c110ddca50038c53ae696ec645a0763c210067e3dfdf0ecd92e439a41834"
+    },
+    {
+      "path": "src/sonic_audio_settings.hpp",
+      "sha256": "6ee86464b5c0fb7f48f6905096bc7d6d7e0b360513e4b641eac3285ca2065eff"
+    },
+    {
+      "path": "src/sonic_movie_audio.hpp",
+      "sha256": "87cced560f15ae586ea91573e73b94ef822bca79f7f02e7fb1b0089a3659cada"
+    },
+    {
+      "path": "src/sonic_subtitles.hpp",
+      "sha256": "62d78505a9a47899583ab4236621f9807909ce3cc6f1f26ebe8e738fa2630303"
+    },
+    {
+      "path": "src/sonic_audio_device.hpp",
+      "sha256": "b68a71f787f3c57b032f5742e4adcdf8e3bbe641b2eaad14895892e4044d8c68"
+    },
+    {
+      "path": "src/sonic_audio_recovery.inc",
+      "sha256": "88a1e4cc67a0d96448ca18b6f87b04121add2d6af0f686536feb5be2a2807e53"
+    },
+    {
+      "path": "src/sonic_recovery_status.hpp",
+      "sha256": "60602a048552fdf5e4ff65055cfece0ad97ff4fe33e6a65f4bd2807a7b20b81a"
+    },
+    {
+      "path": "src/sonic_host_resume.hpp",
+      "sha256": "433e13a3e754710c9b2b0a390d075fcd289b2afc2fa0c753a9347af8a18d3fd7"
+    },
+    {
+      "path": "tools/prepare-audio-output.py",
+      "sha256": "6f55d119b73bbe2c8d1ccc0415c0e0c0d3ca0accd396427d6ac80f392aa03534"
+    },
+    {
+      "path": "tools/prepare-audio-buses.py",
+      "sha256": "cc1dafe89464bebcc259782baf3db7864b77f761e4850ebff09619102f667d61"
+    },
+    {
+      "path": "src/sonic_audio_status.hpp",
+      "sha256": "f27797b716a5a5d92f9c8b968f1b46b3b82abac155b073c918fc0d86bb69aeb6"
+    },
+    {
+      "path": "src/sonic_audio_status.cpp",
+      "sha256": "863ab7b3ed5a64e13fecb911ee53a1b36bb5a453bab39df02090c5c4a68d53a0"
+    },
+    {
+      "path": "src/sonic_sound_commands.hpp",
+      "sha256": "988d67256579fe7e3aad85308e8eb8c5562bc01348403c512ca6b2b4d06fdc76"
+    },
+    {
+      "path": "src/sonic_menu.hpp",
+      "sha256": "0018bdea517b1c46167c2e900fb454507932fdc912773fe8e059afa95a1e3c69"
+    },
+    {
+      "path": "src/sonic_menu.cpp",
+      "sha256": "1bab0b0d8e49162502eb5a3998539546d17c6f0965dd0f4a92a505205a26af8c"
+    },
+    {
+      "path": "src/sonic_menu_image.cpp",
+      "sha256": "87f491eec674a166c0448172ca36e916f6676b7c2ec66483dbcffc524017fb04"
+    },
+    {
+      "path": "src/sonic_menu_text.hpp",
+      "sha256": "17d1d8e0f2ec1cbd824a6e27803fc3d8d53600afb7a702b3ffd772e2b717ae3d"
+    },
+    {
+      "path": "src/sonic_menu_text.cpp",
+      "sha256": "3ad7e97e1202a5aa2f90f8575afd3fe15ebdc058f04ec94d30d7728d1304aae8"
+    },
+    {
+      "path": "src/sonic_menu_runtime.hpp",
+      "sha256": "9d0e44c046f4c895c49a457e390c4a2733c3ed71e1f5eaef0db722c144117f37"
+    },
+    {
+      "path": "src/sonic_menu_runtime.cpp",
+      "sha256": "7c09ac96d82eb6ae12ecc4396bd2dac9c79659584009069131c9d6856ab15147"
+    },
+    {
+      "path": "src/sonic_menu_test_input.hpp",
+      "sha256": "e1b10f0840c1d4870b9107b14041a1224492503b337b54d62bbdfcb335a9c70d"
+    },
+    {
+      "path": "src/sonic_menu_policy.hpp",
+      "sha256": "6f052d1cd09bbb1ed2332a3500f738eaadc1f3dc40f496bd30797e164d18c827"
+    },
+    {
+      "path": "src/sonic_options_display.cpp",
+      "sha256": "b1006904471f7bb6fc36cdeb620284cb5a7ed73a17e2cfff14dcb26a83c2de2d"
+    },
+    {
+      "path": "src/sonic_profiles.hpp",
+      "sha256": "b4d2cd3efe44a65c8f1a3fbc181a4fb13beed01a249f0bbdb6b3ccb9005c85c1"
+    },
+    {
+      "path": "src/sonic_profiles.cpp",
+      "sha256": "f4c060e0aac9797f536dda6d3e122cbc13dd3a97ba4eb51df0a561ee13b89f20"
+    },
+    {
+      "path": "src/sonic_restart.hpp",
+      "sha256": "bebe10d22b986f1abce2b140099ecd38ce6e8cab00f7e7104bcad64c5ad0de56"
+    },
+    {
+      "path": "src/sonic_restart.cpp",
+      "sha256": "ef09f175b63264e02eb0606baf5cc39793448202a2eef58ed75fec857ca69914"
+    },
+    {
+      "path": "src/sonic_diagnostics.hpp",
+      "sha256": "353babaa9a94786ffd7cf70223a858a8a6e636842f029020d43e1cb6e8c63cc9"
+    },
+    {
+      "path": "src/sonic_internal_diagnostics.hpp",
+      "sha256": "d4081fb254af32d80fe00e097021fecaf237c8bd4bf5f57d83cb39aa2d66842b"
+    },
+    {
+      "path": "src/sonic_crash_consent.hpp",
+      "sha256": "e594c6281c4dae581e31b4866d1ef11578a48fd231382a539ca222d027c94e00"
+    },
+    {
+      "path": "launcher/sonic_errors.hpp",
+      "sha256": "22978d78685855abd9575e86d093783699817bac1b111009fc63e06f4af5aaee"
+    },
+    {
+      "path": "tools/prepare-internal-diagnostics.py",
+      "sha256": "8f998600985de5f44a30fe8a5bca5f8bf0c7cfa6bc12ba0682de540e8d73d9a3"
+    },
+    {
+      "path": "tools/prepare-camera-platform.py",
+      "sha256": "6082874f89046cf634fec50658faf83c2938d3970af97e36f67baad00bc78009"
+    }
+  ]
+}

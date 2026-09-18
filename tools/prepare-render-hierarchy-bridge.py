@@ -14,11 +14,15 @@ UNITS['unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp']='b00ee65998295accfadc0e208
 UNITS['unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp']='c34ed098e7625b5a432263ebf286ae486cb86b534dad0cdb97d4991f2253e45a'
 UNITS.update({r['unit']:r['unit_sha'] for r in author.LAND_ROWS})
 UNITS.update({r['unit']:r['unit_sha'] for r in author.ACTOR_ROWS})
+UNITS.update({r['unit']:r['unit_sha'] for r in author.PLAYER_ROWS})
 ROOT_UNITS={'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp':0x8C040784,
             'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E,
             'unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp':0x8C036BC0,
             'unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp':0x8C0519C0,
-            'unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp':0x8C0FDC20}
+            'unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp':0x8C0FDC20,
+            'unit-v8C0CBD40-8C0CCFDC-8bb83195ded15666.cpp':0x8C0CBD40,
+            'unit-v8C0CCFE8-8C0CCFE8-8623c664d8e08af9.cpp':0x8C0CCFE8,
+            'unit-v8C0CED2E-8C0D0BB8-9d87359849e1c862.cpp':0x8C0CFA0E}
 
 def actor_resume_routers(text):
     blocks=list(re.finditer(r'(?m)^        katana_block_(8C[0-9A-F]{6}):\n        \{\n',text))
@@ -172,6 +176,8 @@ def main():
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::land_enabled()')
             if public_entry==0x8C0FDC20:
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::actor_enabled()')
+            if public_entry in (0x8C0CBD40,0x8C0CCFE8,0x8C0CFA0E):
+                injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::player_enabled()')
             out=out[:boundary]+injection+out[boundary:]
         out='#include "sonic_render_hierarchy.hpp"\n'+out.replace('#include "../include/','#include "')
     else:
@@ -184,7 +190,7 @@ def main():
                 if entry not in owners:continue
                 close='    return exit;\n}';end=text.index(close,match.end())+len(close)
                 body=text[match.start():end]
-                if entry in {r['entry'] for r in author.ACTOR_ROWS}:body=actor_resume_routers(body)
+                if entry in {r['entry'] for r in author.ACTOR_ROWS+author.PLAYER_ROWS}:body=actor_resume_routers(body)
                 body,resumes=local_resumes(body,ram,owners[entry])
                 definitions[entry]=body;proof.append(dict(owner=f'{entry:08X}',unit=name,local_resumes=resumes))
         if set(definitions)!=set(owners):raise ValueError('Incomplete private hierarchy owner set')

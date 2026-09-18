@@ -772,6 +772,45 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   local transfers, not invented calls/global entries. This next owner is not
   implemented. Older inclusive profile shares include native descendants.
 
+- September 18 follow-up: the user explicitly requested a new Deck patch after
+  the current optimization. This supersedes the preceding private-OFF/no-export
+  notes for the seven qualified connected gameplay groups. Movement/contact,
+  model submission, land, object contact, original camera, actor and player
+  operations now default ON together in both Original and Recompiled timing.
+  Internal SARECOMP_NATIVE_GAMEPLAY_GROUP=0, SARECOMP_NATIVE_CPU_PATHS=0 and
+  the individual zero overrides retain the original paths. Diagnostics still
+  default OFF and functional memory/module guards remain active.
+  The new player operation has 121 authenticated owners / 15,034 reachable
+  instructions, 171 original local computed transfers and 23 reviewed cross-owner
+  state transfers. Do not invent global entries for local labels. A failed source
+  proof after transfer resumes the actual PC, never the containing owner's
+  prologue; CED2E to CF9A6 has a reproducing retained-AOT regression case.
+  Windows/Linux each pass 140 CPU/RAM cases; the constructor allocation-failure
+  fixture verifies the precise original fault, not successful construction.
+  The hidden Windows Gamma image and sixteen endpoint fields match exactly;
+  the 33 existing Windows render continuation cases pass. Knuckles Sky Deck
+  and Lost World short checks pass, with zero new-player calls in those windows.
+  The Linux Gamma pair compares only new-player OFF/ON with the preceding six
+  groups ON, Original timing and LP_NUM_THREADS=2. Both endpoints and 68 updates
+  match: execution CPU/update -26.02%, process CPU/update -31.21%, images/s
+  +48.86%. This is an incremental VM composition result, not a net comparison
+  against the morning patch or measured Deck FPS. Do not add older percentages.
+  See docs/native-player-operation-20260918.md and its bound runs evidence.
+  The follow-up is built and installed-patch qualification passes. The verified
+  package is out/patches/SonicAdventureRecompiled-CPU-Update-2026-09-18-v2.run,
+  SHA f02096aa3cfff012b14be5135922f087c86e3cfe1bf5315b7d009807d3dddf85.
+  Runtime SHA is 41766cc1a9dd44962ffbeedd5d25b97877c13451999f66adae493ae19be0b394.
+  The actual non-root VM installation covers the Sep17 test installer, Sep17v2
+  and Sep18 morning update; all three paths, repeated application, matching
+  ON/OFF switches and preservation checks pass. Installed Linux and hidden
+  Windows Gamma checks pass in Original 50/2/2 and Recompiled 60/1/1 cadence,
+  with native admissions under normal startup and no recorded resumes.
+  See runs/native-gameplay-release-verification-20260918.json for source and
+  program bindings, plus the installation/publication reports. Staging remains
+  out/native-gameplay-update-20260918. The morning patch and existing installers
+  are unchanged. This requested optimization/patch batch is finished; do not
+  continue optimization or repeat these checks without a new request or finding.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

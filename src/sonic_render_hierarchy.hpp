@@ -40,16 +40,19 @@ inline bool morph_enabled() noexcept {
 }
 std::span<const SourceSpan> source_spans() noexcept;
 inline bool land_enabled() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_LAND_RENDER");
-        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_LAND_RENDER");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_LAND_RENDER");
     return on && enabled();
 }
 inline bool actor_selected() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_ACTOR_OPERATION");
-        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_ACTOR_OPERATION");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_ACTOR_OPERATION");
     return on;
 }
 inline bool actor_enabled() noexcept {return actor_selected() && enabled();}
+inline bool player_selected() noexcept {
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_PLAYER_OPERATION");
+    return on;
+}
+inline bool player_enabled() noexcept {return player_selected() && enabled();}
 enum class Outcome {Declined,Complete,ResumeOriginal,Interrupted};
 struct Calls {
     void* context{};
@@ -57,7 +60,7 @@ struct Calls {
     bool (*resume)(void*,katana::runtime::CpuState&,std::uint32_t,std::uint32_t){};
     model_pipeline::Outcome (*model)(void*,katana::runtime::CpuState&,model_pipeline::SharedOperation&){};
 };
-struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},rigid_calls{},morph_calls{},model_calls{},model_revocations{},land_calls{},actor_calls{},state_transfers{};};
+struct Statistics {std::uint64_t calls{},declined{},internal_calls{},callbacks{},resumes{},rigid_calls{},morph_calls{},model_calls{},model_revocations{},land_calls{},actor_calls{},state_transfers{},player_calls{},player_display_calls{};};
 inline thread_local Statistics counts;
 bool contains(std::uint32_t) noexcept;
 Outcome execute(katana::runtime::CpuState&,const katana::runtime::NativePortImmutableWriteGuard*,Calls);

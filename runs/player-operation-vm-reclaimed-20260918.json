@@ -1,0 +1,8 @@
+{
+  "removed_vm_file": "/home/sonic/preloaded-v1/actor-operation-20260918/game",
+  "preserved_local_file": "out/actor-operation-linux-20260918/game",
+  "verified_both_sha256": "4e5ce3ba67270fe55430213d851bd4c451356b8ac0d5cc17e48a92b5542569ca",
+  "removed_bytes": 1753944744,
+  "vm_realpath_verified": true,
+  "baseline_saves_deliveries_touched": false
+}

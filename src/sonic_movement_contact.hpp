@@ -11,20 +11,17 @@ inline constexpr std::uint32_t object_entry=0x8C0342E0u,camera_entry=0x8C019F4Au
 inline thread_local unsigned resume_depth{};
 inline thread_local std::uint32_t return_site{};
 inline bool enabled() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_MOVEMENT_CONTACT");
-        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_MOVEMENT_CONTACT");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_MOVEMENT_CONTACT");
     return on && !resume_depth && !diagnostics::runtime_checks_enabled();
 }
 struct SourceSpan {std::uint32_t address;std::span<const std::uint8_t> bytes;};
 inline bool object_selected() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_OBJECT_CONTACT");
-        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_OBJECT_CONTACT");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_OBJECT_CONTACT");
     return on && !diagnostics::runtime_checks_enabled();
 }
 inline bool object_enabled() noexcept {return object_selected() && !resume_depth;}
 inline bool camera_selected() noexcept {
-    static const bool on=[] {const auto* v=std::getenv("SARECOMP_NATIVE_CAMERA_OPERATION");
-        return v && std::strcmp(v,"1")==0 && native_cpu::enabled("SARECOMP_NATIVE_CAMERA_OPERATION");}();
+    static const bool on=native_cpu::gameplay_group_enabled("SARECOMP_NATIVE_CAMERA_OPERATION");
     return on && !diagnostics::runtime_checks_enabled();
 }
 inline bool camera_enabled() noexcept {return camera_selected() && !resume_depth;}
