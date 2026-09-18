@@ -25,6 +25,7 @@ original_emit=render.emit_simple
 
 def emit_simple(pc,op,ram,restart=None):
     if op&0xF0FF==0xF00D:return f'CONTACT_SITE(0x{pc:08X}u);cpu.fr[{(op>>8)&15}]=cpu.fpul;'
+    if op&0xF0FF==0xF01D:return f'CONTACT_SITE(0x{pc:08X}u);cpu.fpul=cpu.fr[{(op>>8)&15}];'
     return original_emit(pc,op,ram,restart).replace('HIERARCHY_SITE','CONTACT_SITE')
 render.emit_simple=emit_simple
 render.EPOCHS=EPOCHS
@@ -79,6 +80,11 @@ def main():
                 pc=int(call['pc'],16)
                 marker=f'L{pc:08X}:';at=body.index(marker);stop=body.index('call(target,true);return;',at)
                 body=body[:stop]+f'call(target,true,0x{pc:08X}u);return_site=0x{pc:08X}u;return;'+body[stop+len('call(target,true);return;'):]
+        if entry==0x8C10CD1C:
+            # This complete record-copy operation includes all short-copy
+            # jump-table tails. Its source span authenticates those bytes too.
+            if begin!=0x8C10CD1C or end!=0x8C10CDDC:raise ValueError('Copy closure boundary')
+            body='if(a.copy_contact_record())return; a.restart(0x8C10CD1Cu);\n'
         (args.output/f'contact-{name}.inc').write_text(body,encoding='ascii',newline='\n')
         reports.append(dict(name=name,entry=f'{entry:08X}',begin=f'{begin:08X}',end=f'{end:08X}',instructions=len(ins),delays=len(delays),calls=calls))
     merged=merge([s for spans in deps.values() for s in spans])

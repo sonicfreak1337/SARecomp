@@ -15,7 +15,7 @@ std::map<std::uint32_t,std::uint32_t> original_owners;
 bool original_entry(std::uint32_t pc) noexcept{return original_entries.contains(pc);}
 void load_original_entries(const std::filesystem::path& root){
     const std::regex row(R"(\{0x([A-F0-9]{8})u, &fn_([A-F0-9]{8})_runtime_entry, true, (?:true|false)\})");
-    for(const auto* name:{"native-port-dispatch-shard-202756.cpp","native-port-dispatch-shard-202757.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202766.cpp","native-port-dispatch-shard-202767.cpp","native-port-dispatch-shard-202951.cpp","native-port-dispatch-shard-202952.cpp"}){
+    for(const auto* name:{"native-port-dispatch-shard-202756.cpp","native-port-dispatch-shard-202757.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202766.cpp","native-port-dispatch-shard-202767.cpp","native-port-dispatch-shard-202785.cpp","native-port-dispatch-shard-202951.cpp","native-port-dispatch-shard-202952.cpp","native-port-dispatch-shard-202953.cpp"}){
         std::ifstream f(root/name);const std::string text{std::istreambuf_iterator<char>(f),{}};
         require(!text.empty(),"original entry shard missing");
         for(auto i=std::sregex_iterator(text.begin(),text.end(),row);i!=std::sregex_iterator();++i)
@@ -37,7 +37,10 @@ struct Host final:NativePortHostServices {
 void external(CpuState& c,std::uint32_t target){
     c.pc=target;
     if(family::contains(target)){require(family::resume_original(c,target),"private child");return;}
-    require(Fixture::invoke(active_fixture,c,target),"AOT foreign child");
+    const bool complete=Fixture::invoke(active_fixture,c,target);
+    // An original copy-table tail may fault outside our native owner. Retain
+    // that guest exception for the enclosing AOT continuation to propagate.
+    require(complete || c.trap_pending,"AOT foreign child");
 }
 bool resume(void*,CpuState& c,std::uint32_t owner,std::uint32_t continuation){
     struct Depth{Depth(){++family::resume_depth;}~Depth(){--family::resume_depth;}} depth;
@@ -73,7 +76,7 @@ int main(int argc,char** argv)try{
     require(argc==3,"movement-contact-aot-tests <RAM> <retained-code>");
     std::ifstream file(argv[1],std::ios::binary);const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000,"RAM size");load_original_entries(argv[2]);unsigned cases=0;
-    for(unsigned kind=0;kind<12;++kind){
+    for(unsigned kind=0;kind<20;++kind){
         Fixture a(image,0),b(image,0);a.oracle=&b;active_fixture=&a;
         const auto scenario=kind<3?30u:kind<6?24u:13u;
         setup(a,scenario);setup(b,scenario);
@@ -87,6 +90,16 @@ int main(int argc,char** argv)try{
             if(kind==9)f->put(object+28,indices+2);
             if(kind==10){f->cpu.pc=0x8C63A820u;f->cpu.r[4]=0x8CFFFFF0u;}
             if(kind==11){f->cpu.pc=0x8C638E0Cu;f->cpu.r[4]=0x8CFFFFF8u;f->cpu.r[5]=Q;}
+            if(kind>=12 && kind<17){
+                setup(*f,43);f->cpu.r[1]=B;f->cpu.r[2]=A;
+                if(kind==12){f->cpu.r[0]=88;f->cpu.r[2]=0x8CFFFFA8u;}
+                if(kind==13)f->cpu.r[1]=B+2;
+                if(kind==14)f->cpu.r[1]=f->cpu.r[15]-4u;
+                if(kind==15)f->cpu.r[2]=f->cpu.r[15]-4u;
+                if(kind==16){f->cpu.r[0]=88;f->cpu.r[1]=0x8C10CD1Cu;}
+            }
+            if(kind==17){setup(*f,55);f->cpu.r[4]=0x8CFFFFF0u;}
+            if(kind==18 || kind==19){setup(*f,59+kind-18);f->mutation=0;}
         }
         sonic::scalar_writes::unbind(&a.cpu.memory,&a.immutable);a.cpu.memory.set_guest_write_observer({});a.cpu.memory.set_guest_write_batch_observer({});
         NativePortContext context;context.cpu=&a.cpu;context.host=&host;

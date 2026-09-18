@@ -3,9 +3,7 @@
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include <bit>
-#include <bitset>
 #include <cstring>
-#include <memory>
 #include <optional>
 namespace sonic::movement_contact {
 namespace {
@@ -143,6 +141,45 @@ public:
         restart(at);
     }
     void u32(std::uint32_t a,std::uint32_t v,RestartPoint at){store<std::uint32_t>(a,v,at);}
+    bool copy_contact_record() {
+        // Preserve both original copy orders, including the long path's final
+        // extra read and its live overlap behavior. Admission precedes every
+        // effect; unsupported records retain the complete original operation.
+        const auto size=c.r[0],dst=c.r[1],src=c.r[2],sp=c.r[15];
+        if(size>65536u || (size&3u))return false;
+        const auto stack_bytes=size>64u?8u:4u;
+        const auto read_bytes=size+(size>64u?4u:0u);
+        const auto writable=[&](std::uint32_t address,std::uint32_t bytes){
+            const auto physical=address&0x1FFFFFFFu;
+            return write && range(address,bytes,4u) &&
+                !immutable.tracks_address(physical,bytes) && !source_overlap(physical,bytes);
+        };
+        if(!writable(sp-stack_bytes,stack_bytes) ||
+           (size && (!range(src,read_bytes,4u) || !writable(dst,size))))return false;
+        const auto overlaps=[](std::uint32_t a,std::uint32_t n,std::uint32_t b,std::uint32_t m){
+            a&=0x1FFFFFFFu;b&=0x1FFFFFFFu;
+            return n && m && a<std::uint64_t(b)+m && b<std::uint64_t(a)+n;
+        };
+        if(overlaps(sp-stack_bytes,stack_bytes,src,read_bytes) ||
+           overlaps(sp-stack_bytes,stack_bytes,dst,size))return false;
+        const auto read_word=[&](std::uint32_t address){std::uint32_t v;
+            std::memcpy(&v,read.read_bytes+(address&0xFFFFFFu),4u);return v;};
+        const auto write_word=[&](std::uint32_t address,std::uint32_t v){
+            std::memcpy(write.write_bytes+(address&0xFFFFFFu),&v,4u);++stores;};
+        write_word(sp-4u,c.r[3]);
+        if(size<=64u){
+            for(auto offset=size;offset;){offset-=4u;c.r[0]=read_word(src+offset);write_word(dst+offset,c.r[0]);}
+            c.t=true;return_site=0x8C10CD72u;
+        }else{
+            write_word(sp-8u,src);
+            for(std::uint32_t offset=0;offset<size;offset+=4u){
+                c.r[0]=read_word(src+offset);write_word(dst+offset,c.r[0]);
+            }
+            c.r[0]=read_word(src+size);c.r[1]=dst+(size&~7u);
+            c.t=false;return_site=0x8C10CDD8u;
+        }
+        c.pc=c.pr;return true;
+    }
 };
 
 struct Flow {unsigned depth{},backedges{};};
@@ -186,7 +223,7 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     struct Depth {Flow& f;Depth(Flow& v):f(v){++f.depth;}~Depth(){--f.depth;}} depth(flow);
     try{
         // Invalid/very deep data retains the exact original owner and its
-        // scheduler/fault behavior; never truncate or repair a tree/key list.
+        // scheduler/fault behavior; never truncate or repair a contact list.
         if(flow.depth>=128u)a.restart(owner);
         if(!a.authenticate(owner))a.restart(owner);
         body(cpu,a,calls,flow,owner);return true;

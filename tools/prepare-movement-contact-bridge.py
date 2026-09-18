@@ -16,6 +16,21 @@ ROOTS={'unit-v8C073018-8C073018-457a60bdbd02a56b.cpp':0x8C073018,
        'unit-v8C074214-8C075154-1bc56e9d4bd882fb.cpp':0x8C074214}
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
+def readonly_resume_routers(text):
+    # Some SDK polynomial blocks have neither stores nor a pre-existing local
+    # router. Give the private continuation author an empty routing point after
+    # exit provenance, before any original instruction or arithmetic scope.
+    blocks=list(re.finditer(r'(?m)^        katana_block_(8C[0-9A-F]{6}):\n        \{\n',text))
+    marker='                runtime_dispatch_detail::active_exit_site_class = katana::runtime::DynamicDispatchSiteClass::NotDynamic;\n'
+    for i in range(len(blocks)-1,-1,-1):
+        a=blocks[i].end();b=blocks[i+1].start() if i+1<len(blocks) else len(text)
+        part=text[a:b]
+        if 'Memory::DirectLinearWriteBatch* const katana_direct_ram_writes' in part or 'switch (katana::runtime::unrelocate_code_address_inline(cpu.pc))' in part:continue
+        if marker not in part:continue
+        at=a+part.index(marker)+len(marker)
+        text=text[:at]+'                switch (katana::runtime::unrelocate_code_address_inline(cpu.pc)) {\n                default: break;\n                }\n'+text[at:]
+    return text
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for k in ('source-root','output','ram'):p.add_argument('--'+k,type=Path,required=True)
@@ -63,7 +78,7 @@ def main():
                 entry=int(match[1],16)
                 if entry not in owners:continue
                 end=text.index('    return exit;\n}',match.end())+len('    return exit;\n}')
-                body,local=resumes.local_resumes(text[match.start():end],ram,owners[entry])
+                body,local=resumes.local_resumes(readonly_resume_routers(text[match.start():end]),ram,owners[entry])
                 definitions[entry]=body;proof.append(dict(owner=f'{entry:08X}',unit=name,resumes=local))
         if set(definitions)!=set(owners):raise ValueError('Missing private owner')
         joined='\n'.join(definitions.values())

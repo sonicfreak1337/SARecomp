@@ -584,7 +584,18 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   or promotion is established. The active window still crosses 12,022 foreign
   calls; review the complete remaining math/copy closure before another test.
   Do not repeat unchanged pairs or enable the retired isolated movement path.
-  The delivered September 18 patch and saves remain untouched.
+  The delivered September 18 patch and saves remain untouched. A subsequent
+  complete 61-owner revision adds the connected inverse-angle, matrix/vector
+  and whole-record-copy operations. It passes 276 CPU/RAM and twenty actual-AOT
+  cases on each platform, including overlapping copies and code-write stops.
+  Matched Windows Gamma saves 6.69% execution cycles but no thread CPU and
+  costs 10% more process CPU. Matched Linux Gamma saves 7.03% execution CPU,
+  with neutral process CPU and -2.96% images/s. This is not a whole-frame win.
+  The source remains private-OFF; the bounded Knuckles pair is still running.
+  Do not rerun the unchanged Gamma pair or component cases. Current artifacts
+  are `build-linux/game` and `out/movement-contact-closure-windows-20260918`;
+  see the report for exact hashes. Three replaced Linux VM experiment programs
+  were removed to free 5.25 GB; their reports/assets/installations remain.
 
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible

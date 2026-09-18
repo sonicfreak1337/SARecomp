@@ -168,12 +168,38 @@ void setup(Fixture& f,unsigned kind){
         constexpr std::uint32_t owners[]{0x8C075100u,0x8C075154u,0x8C075356u,0x8C0755C6u,0x8C0757A0u,0x8C075980u,0x8C075ECCu};
         f.cpu.pc=owners[kind-34];f.cpu.r[4]=A;f.cpu.r[5]=B;f.cpu.r[6]=C;f.cpu.r[7]=Q;
     }
+    if(kind>=41 && kind<53){
+        constexpr unsigned sizes[]{0,4,20,64,68,72,88,128,20,20,88,128};
+        f.cpu.pc=0x8C10CD1Cu;f.cpu.r[0]=sizes[kind-41];f.cpu.r[1]=B;f.cpu.r[2]=A;
+        for(unsigned i=0;i<256;++i)f.put(A+i*4,0xBE000000u+i*17u);
+        if(kind==49 || kind==51)f.cpu.r[1]=A+4;
+        if(kind==50)f.cpu.r[1]=A-4;
+        if(kind==52)f.cpu.r[1]=A;
+    }
+    if(kind>=53 && kind<59){
+        f.cpu.pc=0x8C638FF0u;f.cpu.r[4]=kind<56?Q:0;
+        for(unsigned i=0;i<16;++i){
+            const float value=kind%3==0?0.0f:i%5==0?float(i/5+1):float(i%4)*.125f;
+            f.putf(Q+i*4,value);f.cpu.xf[i]=std::bit_cast<std::uint32_t>(value);
+        }
+    }
+    if(kind>=59 && kind<65){
+        constexpr std::uint32_t entries[]{0x8C10CF48u,0x8C10CF98u,0x8C10CFE8u,0x8C10D038u,0x8C10CF48u,0x8C10CF98u};
+        f.cpu.pc=entries[kind-59];f.cpu.fr[4]=std::bit_cast<std::uint32_t>(kind&1?.25f:-.75f);
+        f.cpu.fr[5]=std::bit_cast<std::uint32_t>(kind&2?-.125f:.625f);
+    }
+    if(kind>=65 && kind<69){
+        constexpr std::uint32_t entries[]{0x8C638E68u,0x8C639A90u,0x8C6400ACu,0x8C6400ACu};
+        f.cpu.pc=entries[kind-65];f.vector(A,1,2,3);f.vector(A+12,4,5,6);
+        f.vector(B,-1,2,-3);f.vector(B+12,4,-5,6);
+        if(kind==68)f.vector(A+12,0,0,0);
+    }
 }
 int main(int argc,char** argv)try{
     require(argc==2,"movement-contact-tests <original-ram>");
     std::ifstream file(argv[1],std::ios::binary);const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000,"RAM size");unsigned cases=0;
-    for(unsigned mode:{0u,1u,fpscr_fr_mask,fpscr_fr_mask|1u})for(unsigned kind=0;kind<41;++kind){
+    for(unsigned mode:{0u,1u,fpscr_fr_mask,fpscr_fr_mask|1u})for(unsigned kind=0;kind<69;++kind){
         std::cout<<"case="<<kind<<" mode="<<mode<<std::endl;
         Fixture a(image,mode),b(image,mode);setup(a,kind);setup(b,kind);a.oracle=&b;
         const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,Fixture::resume});

@@ -5,7 +5,7 @@ selects the connected family; the global native-CPU OFF override and diagnostic
 mode still retain the original path. This does not enable the retired isolated
 movement or NEAR experiments. The delivered September 18 patch is unchanged.
 
-## Scope
+## Initial 37-owner scope
 
 The two original movement/query roots `8C073018` and `8C074214` now enter one
 37-owner native operation: movement/contact resolution, NEAR polygon search
@@ -75,3 +75,60 @@ Component success alone does not demonstrate a performance benefit.
   `f9719bb17c3378474978e0f379040d065883fa4a62c61cf9bc9b141896bab49f`.
 
 Both are separate from the delivered patch and all personal save namespaces.
+
+## Complete 61-owner closure
+
+The second revision incorporates eleven inverse-angle owners, twelve complete
+matrix/vector SDK owners and the record-copy operation into the same admitted
+movement/contact operation. The inventory now covers 10,908 instruction PCs
+and 761 delay slots. These are connected children of the movement and contact
+roots, not independent global feature toggles. Real gameplay/event callbacks
+still revoke the shared proofs and memory capability.
+
+The record copier replaces its full guest jump table and per-word permissions
+with one bounded admission. It preserves the short path's descending copy,
+the long path's ascending copy and extra final read, overlapping source and
+destination behavior, saved stack words and every final register. Stack/data
+aliases, unaligned data, code writes and incomplete mappings retain the whole
+original operation before any native side effect. Private read-only SDK blocks
+also receive local continuation routing after their original exit provenance;
+the global dispatch table is unchanged.
+
+Both Windows and Linux pass 276 complete CPU/RAM cases in four FPU/bank modes
+and twenty actual-AOT cases. The additional coverage includes overlapping
+copies, the extra-read boundary, code-write interruption, singular/invertible
+matrices, vector intersections and angle quadrants. Original faults remain
+original faults. Evidence:
+
+- `runs/contact-closure-components-win-a-20260918.log`
+- `runs/contact-closure-aot-win-b-20260918.log`
+- `runs/contact-closure-components-linux-launch-20260918.log`
+
+The matched Windows Gamma pair retains all sixteen endpoint fields and 48
+updates. It executes 67,515 internal calls and 843 foreign calls, with no
+unsupported-access resumes. The initial revision crossed 9,218 foreign calls
+in its corresponding 48-update window. Against the same new executable with
+the entire contact group OFF, execution cycles fall 6.69%, quantized execution
+CPU is unchanged at 18.75 ms/boundary, and process CPU rises 10.00%. This is
+not a demonstrated whole-frame improvement. See
+`runs/contact-closure-gamma-comparison-windows-20260918.json`.
+
+The matched Linux Gamma pair also retains all sixteen endpoint fields and 68
+updates. Execution CPU/update falls 7.03%, process CPU changes -0.03% (neutral),
+and new-image throughput falls 2.96%. The window contains 85,707 internal calls,
+1,203 foreign calls and no unsupported-access resumes. These results do not
+demonstrate a whole-frame gain. See
+`runs/contact-closure-gamma-comparison-linux-20260918.json`.
+The requested short Knuckles Sky Deck/Lost World qualification is pending;
+the group remains private-OFF and the delivered patch is unchanged.
+
+Revision-two executable identities:
+
+- Windows: `out/movement-contact-closure-windows-20260918/game.exe`, SHA-256
+  `8598b31f56da517c0bc7397a6aee5736033efcd0923d919fe696236b5fe89a6c`.
+- Linux: `build-linux/game`, SHA-256
+  `f703bdf13f7bfbe0dff43f9f0ac83ce1d70562253c63aec75377344733b9cbb1`.
+
+Three replaced experiment executables were removed from the Linux VM after
+it ran out of space (5,248,901,136 bytes). Reports, installed products, assets
+and saves remain intact; see `runs/contact-closure-vm-binaries-cleanup-20260918.json`.

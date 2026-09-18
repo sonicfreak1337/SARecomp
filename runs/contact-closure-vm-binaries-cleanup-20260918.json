@@ -1,0 +1,17 @@
+{
+  "removed": [
+    {
+      "path": "/home/sonic/preloaded-v1/model-vertex-stream-20260918/game",
+      "bytes": 1747571280
+    },
+    {
+      "path": "/home/sonic/preloaded-v1/movement-contact-20260918/game",
+      "bytes": 1754082312
+    },
+    {
+      "path": "/home/sonic/preloaded-v1/world-oracle-20260917/game",
+      "bytes": 1747247544
+    }
+  ],
+  "freed_bytes": 5248901136
+}
