@@ -99,8 +99,14 @@ confirmation timeout and automatic rollback.
 | Platform | Current requirements |
 | --- | --- |
 | Windows | x64 PC with a Direct3D 11-capable GPU, or a Vulkan 1.3-capable GPU and driver for Vulkan. |
-| Linux | x86-64, glibc 2.31 or newer, X11 or XWayland, and a Vulkan 1.3-capable GPU and driver. |
+| Linux | 64-bit Linux with a Vulkan 1.3-capable GPU and driver. See compatibility notes below. |
 | Steam Deck | SteamOS; use the Steam Deck package and install in Desktop Mode. |
+
+**Linux compatibility:** the Linux installer is intended for **Linux Mint
+(including Cinnamon), Ubuntu and other compatible 64-bit distributions**.
+No particular desktop environment is required. The technical minimum is
+**x86-64, glibc 2.31+ and X11 or XWayland**. Installer checks currently use our
+Linux VM; Mint has not yet been tested separately.
 
 CPU, memory and storage recommendations for a final release are still being
 measured. Setup checks the required installation space. Allow additional room
@@ -108,6 +114,9 @@ for the source disc files, temporary extraction and update backups.
 
 ## Known issues
 
+- **Steam Deck launch mode:** starting the game in Desktop Mode can freeze
+  the Steam Deck. **Install in Desktop Mode, but always launch the game through
+  Steam Gaming Mode.**
 - **Steam Deck performance:** for the best current experience, set
   **Game timing → Original** and **VSync → Off** in Options. Demanding stages,
   bosses and cutscenes can still slow down. Further performance improvements are planned;

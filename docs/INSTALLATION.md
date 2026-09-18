@@ -60,6 +60,11 @@ toggles fullscreen/windowed presentation.
 
 ## Linux
 
+Use the Linux installer for **Linux Mint (including Cinnamon), Ubuntu and
+other compatible 64-bit distributions**. No particular desktop environment
+is required. Compatibility is expected where the requirements below are met;
+Mint has not yet been tested separately. Linux installer checks use our Linux VM.
+
 Requires **x86-64 Linux**, **glibc 2.31+**, **X11/XWayland** and a working
 **Vulkan 1.3** driver. Wine, Proton and a Vulkan SDK are not required to play.
 
@@ -74,6 +79,11 @@ Requires **x86-64 Linux**, **glibc 2.31+**, **X11/XWayland** and a working
 
 Install in **Desktop Mode**, using the **Steam Deck installer** (`.run`).
 No administrator or sudo password is needed.
+
+> [!WARNING]
+> **Always launch the game through Steam Gaming Mode.** Starting the game in
+> Desktop Mode can freeze the Steam Deck. Desktop Mode is for installation;
+> return to Gaming Mode before starting the game.
 
 1. Download and extract the installer package and your game files.
 2. Right-click the `.run`, open **Properties → Permissions**, enable
