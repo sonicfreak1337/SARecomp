@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <utility>
 namespace sonic::render_hierarchy {
 namespace {
 using namespace katana::runtime;
@@ -43,7 +44,7 @@ class Access {
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
     std::bitset<owner_sources.size()> proven_sources{};
-    const bool share_models=model_pipeline::submission_enabled() || land_enabled();
+    const bool share_models=model_pipeline::submission_enabled() || land_enabled() || actor_selected();
     model_pipeline::SharedOperation models{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
@@ -157,7 +158,7 @@ public:
     void u32(std::uint32_t a,std::uint32_t v,RestartPoint at){store<std::uint32_t>(a,v,at);}
 };
 
-struct Flow {unsigned depth{},backedges{};};
+struct Flow {unsigned depth{},backedges{};std::uint32_t next_owner{};};
 #ifdef SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE
 constexpr std::size_t coverage_index(std::uint32_t pc) {
     if(pc>=0x8C639000u)return (0xD000u+pc-0x8C639000u)/2u;
@@ -212,6 +213,12 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
         // proofs. Authenticate this parent's continuation before using it.
         if(!tail && local_sources_enabled() && !a.authenticate(owner))throw ResumeOriginal{};
     };
+    // A state branch keeps this operation's incoming return frame. In
+    // particular, PR may still name the last call inside the old state.
+    // The delay slot already completed; a child fallback starts at target.
+    const auto transfer=[&](std::uint32_t target,std::uint32_t){
+        cpu.pc=target;flow.next_owner=target;
+    };
     switch(owner){
 #include "hierarchy-switch.inc"
     default:throw Interrupted{};
@@ -220,12 +227,17 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
 bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     const auto continuation=cpu.pr;
     struct Depth {Flow& f;Depth(Flow& v):f(v){++f.depth;}~Depth(){--f.depth;}} depth(flow);
-    try{
+    for(;;)try{
         // Invalid/very deep data retains the exact original owner and its
         // scheduler/fault behavior; never truncate or repair a tree/key list.
         if(flow.depth>=128u || (owner==0x8C03FEB8u && !cpu.r[5]))a.restart(owner);
         if(local_sources_enabled() && !a.authenticate(owner))a.restart(owner);
-        body(cpu,a,calls,flow,owner);return true;
+        flow.next_owner=0;
+        body(cpu,a,calls,flow,owner);
+        const auto next=std::exchange(flow.next_owner,0u);
+        if(!next)return true;
+        owner=next;++counts.state_transfers;
+        if(++flow.backedges>=100000u || !contains(owner))a.restart(owner);
     }catch(const ResumeOriginal& state){
         a.flush();
         // A tail child can finish this owner before invalidating our borrowed
@@ -288,6 +300,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     if(cpu.pc==rigid_entry)++counts.rigid_calls;
     if(cpu.pc==morph_entry)++counts.morph_calls;
     if(cpu.pc==land_entry)++counts.land_calls;
+    if(cpu.pc==actor_entry)++counts.actor_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

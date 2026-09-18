@@ -745,6 +745,33 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   intermediate result. All 231 existing generated group files and both private
   continuation C++ files are byte-identical; released artifacts remain unchanged.
 
+- The 32-owner `0FDC20` actor state closure is now integrated behind the private
+  OFF flag `SARECOMP_NATIVE_ACTOR_OPERATION=1`; see
+  docs/native-actor-operation-20260918.md. It shares the existing model/render
+  operation (106 owners total), preserves PR/frame across original BRAF/BRA
+  state transfers and resumes after completed delay slots without replay.
+  Original code identifies this object family with the debug label SARU;
+  do not describe it as every enemy or all character logic. Windows/Linux each
+  pass 84 CPU/RAM/original-AOT cases; 33 Windows render continuation cases pass.
+  All 74 previous render bodies and 152 contact generated files are unchanged.
+  Hidden Windows Gamma has exact image and sixteen-field endpoint matches,
+  240 actor calls / 480 transfers and no recorded access resumes. Linux Gamma completes
+  with 340 calls / 680 transfers, but its pair begins one game tick apart and
+  has differing final palette/position work. Its raw -4.31% execution CPU is
+  NOT a qualified incremental or Deck gain. Do not repeat that unchanged pair
+  to select a match or discard the functional group solely on VM noise.
+  Short Knuckles Lost World and Sky Deck checks complete with all six groups;
+  zero new-actor calls in those sections, so no extra zero-call comparisons.
+  Binaries: runs/actor-operation-executables-20260918.json, Linux staging
+  out/actor-operation-linux-20260918 (4e5ce3ba67270fe55430213d851bd4c451356b8ac0d5cc17e48a92b5542569ca).
+  The Windows private filename is reused. No default promotion or new export.
+  The Sep18 delivered patch SHA remains 173c0754bad9b429ef5e31260d17f34a07bce1dc69b09f119bb1ed24d3c27003.
+  Next continue the larger connected actor/model work. The exact 56-state
+  table of 0CBD40 has 49 targets LOCAL to one 1,944-instruction original owner;
+  see runs/player-local-dispatch-20260918.json. BRAF 0CBF44 and JMP 0CBF38 need
+  local transfers, not invented calls/global entries. This next owner is not
+  implemented. Older inclusive profile shares include native descendants.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

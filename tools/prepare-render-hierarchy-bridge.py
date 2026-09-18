@@ -13,10 +13,24 @@ UNITS={'unit-v8C038802-8C03FF90-0329df60636b0242.cpp': '6e712b4cd2dc88ca28782efc
 UNITS['unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp']='b00ee65998295accfadc0e20866953410c3c42872670f0dae9cc66025c1c943b'
 UNITS['unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp']='c34ed098e7625b5a432263ebf286ae486cb86b534dad0cdb97d4991f2253e45a'
 UNITS.update({r['unit']:r['unit_sha'] for r in author.LAND_ROWS})
+UNITS.update({r['unit']:r['unit_sha'] for r in author.ACTOR_ROWS})
 ROOT_UNITS={'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp':0x8C040784,
             'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E,
             'unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp':0x8C036BC0,
-            'unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp':0x8C0519C0}
+            'unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp':0x8C0519C0,
+            'unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp':0x8C0FDC20}
+
+def actor_resume_routers(text):
+    blocks=list(re.finditer(r'(?m)^        katana_block_(8C[0-9A-F]{6}):\n        \{\n',text))
+    for i in range(len(blocks)-1,-1,-1):
+        start=blocks[i].end();end=blocks[i+1].start() if i+1<len(blocks) else len(text)
+        part=text[start:end]
+        if 'Memory::DirectLinearWriteBatch* const katana_direct_ram_writes' in part or 'switch (katana::runtime::unrelocate_code_address_inline(cpu.pc))' in part:continue
+        marker=re.search(r'                runtime_dispatch_detail::active_exit_site_class = katana::runtime::DynamicDispatchSiteClass::(?:NotDynamic|RuntimeOnly);\n',part)
+        if not marker:continue
+        at=start+marker.end()
+        text=text[:at]+'                switch (katana::runtime::unrelocate_code_address_inline(cpu.pc)) {\n                default: break;\n                }\n'+text[at:]
+    return text
 def verify_original_epochs(text,entry):
     # Match lexical scopes in the authenticated AOT, keeping adjacent epochs
     # distinct. Guest annotations come from the unmasked original text.
@@ -156,6 +170,8 @@ def main():
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::morph_enabled()')
             if public_entry==0x8C0519C0:
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::land_enabled()')
+            if public_entry==0x8C0FDC20:
+                injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::actor_enabled()')
             out=out[:boundary]+injection+out[boundary:]
         out='#include "sonic_render_hierarchy.hpp"\n'+out.replace('#include "../include/','#include "')
     else:
@@ -167,9 +183,14 @@ def main():
                 entry=int(match[1],16)
                 if entry not in owners:continue
                 close='    return exit;\n}';end=text.index(close,match.end())+len(close)
-                body,resumes=local_resumes(text[match.start():end],ram,owners[entry])
+                body=text[match.start():end]
+                if entry in {r['entry'] for r in author.ACTOR_ROWS}:body=actor_resume_routers(body)
+                body,resumes=local_resumes(body,ram,owners[entry])
                 definitions[entry]=body;proof.append(dict(owner=f'{entry:08X}',unit=name,local_resumes=resumes))
         if set(definitions)!=set(owners):raise ValueError('Incomplete private hierarchy owner set')
+        external=set(int(x,16) for x in re.findall(r'fn_(8C[0-9A-F]{6})_runtime_entry','\n'.join(definitions.values())))-set(owners)
+        a.output.parent.mkdir(parents=True,exist_ok=True)
+        (a.output.parent/'hierarchy-test-externals.inc').write_text('\n'.join(f'BlockExit fn_{x:08X}_runtime_entry(CpuState& c,BlockExecutionContext&){{external(c,0x{x:08X}u);return {{}};}}' for x in sorted(external))+'\n')
         # Internal original calls remain original, without any native hook.
         out=prefix+'\n'.join(definitions.values())
         for entry in owners:out=out.replace(f'fn_{entry:08X}_runtime_entry',f'hierarchy_original_{entry:08X}')

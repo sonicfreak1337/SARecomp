@@ -12,6 +12,7 @@ spec=importlib.util.spec_from_file_location('render_world',Path(__file__).with_n
 world=importlib.util.module_from_spec(spec);spec.loader.exec_module(world)
 ENTRY=0x8C040784
 LAND_ROWS=json.loads(Path(__file__).with_name('land-render-owners.json').read_text())
+ACTOR_ROWS=json.loads(Path(__file__).with_name('actor-operation-owners.json').read_text())
 # Exact lexical HostFpuExecutionEpoch scopes of the authenticated retained AOT.
 # Endpoints are exclusive. Adjacent scopes must stay separate: restoring host
 # flags/rounding at their boundary is observable by the following FPU helper.
@@ -81,15 +82,19 @@ OWNERS=(
 
 OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in LAND_ROWS)
 EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in LAND_ROWS})
+OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in ACTOR_ROWS)
+EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in ACTOR_ROWS})
 
 # A computed state branch transfers the current frame to another original
 # entry; it is not a function call and must not acquire a new PR continuation.
 # Authors may supply exact original entry sets after authenticating their
 # retained source. An absent record still rejects BRAF as before.
-TRANSFERS={}
+TRANSFERS={r['entry']:{int(pc,16):tuple(int(t,16) for t in targets)
+                      for pc,targets in r['transfers'].items()} for r in ACTOR_ROWS}
 # Precision-polymorphic original arithmetic epochs are rare and must be
 # explicitly bound by each author, then checked against retained source.
 POLYMORPHIC_EPOCHS={0x8C03FF72}
+POLYMORPHIC_EPOCHS.update(pc for r in ACTOR_ROWS for pc in r['polymorphic_epochs'])
 
 def single_epoch(pc):return pc not in POLYMORPHIC_EPOCHS
 
@@ -145,6 +150,12 @@ def emit_simple(pc,op,ram,restart=None):
         body=f'fload({restart or f"RestartPoint{{0x{pc:08X}u}}"},{n}u,{s});{s}+=(cpu.fpscr&fpscr_sz_mask)?8u:4u;'
     elif op&0xF00F==0x2000:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},{r},std::uint8_t({s}),CodeWriteSource::Cpu);'
     elif op&0xF00F==0x0004:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.r[0]+{r},std::uint8_t({s}),CodeWriteSource::Cpu);'
+    elif op>>8==0x80:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.r[{m}]+{op&15}u,std::uint8_t(cpu.r[0]),CodeWriteSource::Cpu);'
+    elif op&0xF00F==0x6007:body=f'{r}=~{s};'
+    elif op&0xF0FF==0x4021:body=f'cpu.t=({r}&1u)!=0u;{r}=({r}>>1u)|({r}&0x80000000u);'
+    elif op&0xF00F==0x000C:body=f'{r}=signed8(load8({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.r[0]+{s}));'
+    elif op&0xF0FF==0xF00D:body=f'cpu.fr[{n}]=cpu.fpul;'
+    elif op&0xF0FF==0xF01D:body=f'cpu.fpul=cpu.fr[{n}];'
     elif op>>8==0xC2:body=f'store({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.gbr+{(op&255)*4}u,cpu.r[0],CodeWriteSource::Cpu);'
     elif op&0xF0FF==0x401E:body=f'cpu.gbr={r};'
     elif op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
@@ -160,7 +171,9 @@ def emit_simple(pc,op,ram,restart=None):
 
 def emit_body(ram,entry,instructions):
     word=lambda pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0]
-    label=lambda pc:f'L{pc:08X}'
+    # Several actual state owners share an original epilogue. C++ labels have
+    # function scope even inside different switch cases.
+    label=lambda pc:(f'L{entry:08X}_{pc:08X}' if entry in {r['entry'] for r in ACTOR_ROWS} else f'L{pc:08X}')
     lines=[f'goto {label(entry)};']
     epochs=dict(EPOCHS.get(entry,()))
     interiors={p for a,b in epochs.items() for p in range(a+2,b,2)}
@@ -277,7 +290,8 @@ def main():
     (args.output/'hierarchy-identities.inc').write_text('\n'.join(proof)+'\n',encoding='ascii',newline='\n')
     (args.output/'hierarchy-switch.inc').write_text('\n'.join(f'case 0x{entry:08X}u: {{\n#include "hierarchy-{name}.inc"\n}}' for name,entry,_,_ in OWNERS)+'\n')
     land={r['entry'] for r in LAND_ROWS}
-    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in land)+'\nreturn true;\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(land))+'\nreturn land_enabled();\n')
+    actors={r['entry'] for r in ACTOR_ROWS}
+    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in land|actors)+'\nreturn true;\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(land))+'\nreturn land_enabled();\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(actors))+'\nreturn actor_selected();\n')
     (args.output/'hierarchy-inventory.json').write_text(json.dumps(dict(schema='sarecomp-render-hierarchy-v1',ram_sha256=shared.RAM_SHA,owners=reports,source_spans=[dict(address=f'{a:08X}',size=n,sha256=hashlib.sha256(ram[a-shared.BASE:a-shared.BASE+n]).hexdigest()) for a,n in merged]),indent=2)+'\n')
     print(f'SONIC_RENDER_HIERARCHY_READY owners={len(reports)} instructions={sum(x["instructions"] for x in reports)}')
 if __name__=='__main__':main()

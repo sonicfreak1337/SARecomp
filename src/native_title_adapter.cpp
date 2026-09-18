@@ -18172,6 +18172,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " rigid_hierarchy_calls=" << sonic::render_hierarchy::counts.rigid_calls
               << " morph_hierarchy_calls=" << sonic::render_hierarchy::counts.morph_calls
               << " land_render_calls=" << sonic::render_hierarchy::counts.land_calls
+              << " actor_operation_calls=" << sonic::render_hierarchy::counts.actor_calls
+              << " actor_state_transfers=" << sonic::render_hierarchy::counts.state_transfers
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize

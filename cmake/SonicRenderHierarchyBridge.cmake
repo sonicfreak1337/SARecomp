@@ -1,7 +1,8 @@
 foreach(hierarchy_unit IN ITEMS unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
         unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp
         unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp
-        unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp)
+        unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp
+        unit-v8C0FD05A-8C0FE340-9f120c53ca8c2b89.cpp)
     set(hierarchy_bridge "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge/${hierarchy_unit}")
     if(TARGET sonic_linux_guest)
         set(hierarchy_target sonic_linux_guest)
@@ -50,6 +51,7 @@ foreach(hierarchy_unit IN ITEMS unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
             --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
         DEPENDS "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${hierarchy_input}"
             "${SONIC_ROOT}/tools/land-render-owners.json"
+            "${SONIC_ROOT}/tools/actor-operation-owners.json"
             "${SONIC_ROOT}/tools/prepare-render-hierarchy.py"
             "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
     list(APPEND hierarchy_bridges "${hierarchy_bridge}")
@@ -58,11 +60,13 @@ endforeach()
 
 set(hierarchy_original "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge/private-original.cpp")
 add_custom_command(OUTPUT "${hierarchy_original}"
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge/hierarchy-test-externals.inc"
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py"
         --source-root "${SONIC_WORKING}/generated" --output "${hierarchy_original}"
         --ram "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"
     DEPENDS "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${SONIC_ROOT}/tools/prepare-render-hierarchy.py"
         "${SONIC_ROOT}/tools/land-render-owners.json"
+        "${SONIC_ROOT}/tools/actor-operation-owners.json"
         "${SONIC_WORKING}/generated/.katana-generated-artifacts" VERBATIM)
 target_sources(${hierarchy_target} PRIVATE "${hierarchy_original}")
 set_source_files_properties("${hierarchy_original}" PROPERTIES INCLUDE_DIRECTORIES "${SONIC_ROOT}/src;${SONIC_WORKING}/generated/include")
@@ -79,12 +83,21 @@ foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITION
         set_property(TARGET sonic-render-hierarchy-aot-tests PROPERTY ${property} "${value}")
     endif()
 endforeach()
-target_include_directories(sonic-render-hierarchy-aot-tests PRIVATE "${SONIC_WORKING}/generated/include")
+target_include_directories(sonic-render-hierarchy-aot-tests PRIVATE "${SONIC_WORKING}/generated/include" "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge")
 add_executable(sonic-land-render-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_land_render.cpp"
     ${hierarchy_test_sources} "${hierarchy_original}")
 foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITIONS LINK_LIBRARIES LINK_OPTIONS)
     get_target_property(value sonic-render-hierarchy-aot-tests ${property})
     if(value)
         set_property(TARGET sonic-land-render-tests PROPERTY ${property} "${value}")
+    endif()
+endforeach()
+
+add_executable(sonic-actor-operation-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_actor_operation.cpp"
+    ${hierarchy_test_sources} "${hierarchy_original}")
+foreach(property IN ITEMS INCLUDE_DIRECTORIES COMPILE_OPTIONS COMPILE_DEFINITIONS LINK_LIBRARIES LINK_OPTIONS)
+    get_target_property(value sonic-render-hierarchy-aot-tests ${property})
+    if(value)
+        set_property(TARGET sonic-actor-operation-tests PROPERTY ${property} "${value}")
     endif()
 endforeach()

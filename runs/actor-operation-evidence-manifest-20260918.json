@@ -1,0 +1,178 @@
+{
+  "src/sonic_render_hierarchy.hpp": {
+    "bytes": 3575,
+    "sha256": "34e0f51056edf02c817839db775c87510372794df6897e1714af4b10a5e2a0f9"
+  },
+  "src/sonic_render_hierarchy.cpp": {
+    "bytes": 17147,
+    "sha256": "0dfdb59b380aa2b3d4b8a6ea9978d616f2d5035b4413fd68dda17fb5d2923766"
+  },
+  "src/native_title_adapter.cpp": {
+    "bytes": 2289403,
+    "sha256": "09d2d1bba6785cde3a25d28ad19906c3a6004b14137833c6bf9cc770f98577fa"
+  },
+  "tools/prepare-render-hierarchy.py": {
+    "bytes": 20024,
+    "sha256": "1bb4af69cc4dbf7c6189f66385de383f93348814cacbdc9b2195053042a15259"
+  },
+  "tools/prepare-render-hierarchy-bridge.py": {
+    "bytes": 15679,
+    "sha256": "df81cf333573eee6ace20fc89ecd599ec522fc35b7122a67ae49021726e0e116"
+  },
+  "tools/actor-operation-owners.json": {
+    "bytes": 12857,
+    "sha256": "4ff9f0ceda4b6c7f98c4f420cdc724be43296a5a0683a2d2c13a693689f96f10"
+  },
+  "tools/test_actor_operation.cpp": {
+    "bytes": 10017,
+    "sha256": "8b9625a9d5c88121ac449433c4227239489c59e410e1fb41cc635385cde0525c"
+  },
+  "tools/test_render_hierarchy_aot.cpp": {
+    "bytes": 11644,
+    "sha256": "eb0683588026241dd4e75b61c729ca1ec3d18c3305b1b775d24c85557d5eb252"
+  },
+  "cmake/SonicRenderHierarchy.cmake": {
+    "bytes": 5133,
+    "sha256": "155a63874b93c3b0450fa868fb446b245a8adc1e7e1578d00bfeddce5c78eeba"
+  },
+  "cmake/SonicRenderHierarchyBridge.cmake": {
+    "bytes": 6291,
+    "sha256": "624eabf50607fe6a8de6be9dea73a148c9ce53c7db0390ccfed3d298490f1592"
+  },
+  "cmake/SonicMovementContact.cmake": {
+    "bytes": 4268,
+    "sha256": "81666cad737f7bae0ad6508f78e65188d545add955261329d5ba7b7593d4fcf5"
+  },
+  "cmake/AdapterIdentity.cmake": {
+    "bytes": 6584,
+    "sha256": "076ee5679459b57948cd31b3b6195632eec09bc7458c3861f0ab40e83139859a"
+  },
+  "tools/benchmark-stage.py": {
+    "bytes": 40041,
+    "sha256": "f96caddffce17395c13f97d48d1cde30e64e932723104825ca4bd28d2c5d6a1a"
+  },
+  "tools/benchmark-linux-stage.py": {
+    "bytes": 26133,
+    "sha256": "62763f2c0587998f95a8a76f089445613f3213280186c6f8aa20d49bc5e310bf"
+  },
+  "runs/actor-operation-executables-20260918.json": {
+    "bytes": 949,
+    "sha256": "af161a7be73da86b80b5e63fbc80edb9c9f26c9e53665e61300ca12fedab199d"
+  },
+  "runs/actor-operation-allocated-sections-20260918.json": {
+    "bytes": 5804,
+    "sha256": "c0f569d297ee06c756c37f48609723eaeac237d66085a8dfa7d9244148a96fdc"
+  },
+  "runs/actor-operation-unchanged-generated-20260918.json": {
+    "bytes": 31730,
+    "sha256": "7b097b3ac81241fdd93f341a3f75877cdb1d6c100e0f59d038d219f3cd51c8db"
+  },
+  "runs/actor-operation-gameplay-comparison-windows-20260918.json": {
+    "bytes": 3439,
+    "sha256": "1137bc8d05a56afe2cd1c59d6260add5d9a2fdc8d4bb3e1945be5faa56c03028"
+  },
+  "runs/actor-operation-gamma-comparison-linux-20260918.json": {
+    "bytes": 7751,
+    "sha256": "d434e742eacc663ed538a0596250a1c002877cfbe71aac5c5cf206d62f03f5cf"
+  },
+  "runs/build-actor-operation-windows-game-20260918.log": {
+    "bytes": 288561,
+    "sha256": "7f981d1de323a88207248a744f92273f7d06544897b2d2428f1390308c1ff435"
+  },
+  "runs/build-actor-operation-linux-game-20260918.log": {
+    "bytes": 119799,
+    "sha256": "598cea989e9b68ac8e0e3fdc581d51e059315e20125e3bf5b9589876066c5b93"
+  },
+  "runs/test-actor-operation-windows-20260918.log": {
+    "bytes": 2766,
+    "sha256": "cce533677064f7cc9ddb30b458cecb284836d7efba7f38ef8703029124a420ee"
+  },
+  "runs/test-actor-operation-linux-20260918.log": {
+    "bytes": 2766,
+    "sha256": "cce533677064f7cc9ddb30b458cecb284836d7efba7f38ef8703029124a420ee"
+  },
+  "runs/test-actor-render-regression-windows-20260918.log": {
+    "bytes": 1416,
+    "sha256": "6951aa96a0a716a4eaf5471708200eb32de51071855fb3ee0d0af4d46ea091c3"
+  },
+  "runs/compare-actor-operation-windows-20260918.py": {
+    "bytes": 2293,
+    "sha256": "3d23326b43fdd70041da0652fa55a5fca370ae780a661347dfb0bc2b5d6e42ef"
+  },
+  "runs/compare-actor-operation-linux-20260918.py": {
+    "bytes": 3100,
+    "sha256": "1f9349737ab0db8dc3d4745bd2cfbeec50bffeed018ffd5af8f9ae7c61b11816"
+  },
+  "runs/inspect-player-local-dispatch-20260918.py": {
+    "bytes": 2627,
+    "sha256": "eaeda59d4b8fc2e56f1be49ee31be737842167f4824eabc62f7ebd4466cd0071"
+  },
+  "runs/player-local-dispatch-20260918.json": {
+    "bytes": 2769,
+    "sha256": "939cc894c60bb4b3321dffa42d8f6e36a016a75e0adedfb1db988083b04f6430"
+  },
+  "runs/actor-operation-windows-off-20260918/result.json": {
+    "bytes": 27971,
+    "sha256": "36d6d41a23e8107876a78d66660d31380049555b136c3394683c8b0acbb3740a"
+  },
+  "runs/actor-operation-windows-off-20260918/stderr.log": {
+    "bytes": 33126,
+    "sha256": "224168feb28057bd6679a584c0faa1c4b5f615bac64dc4a2cef5c61e3a54d8a6"
+  },
+  "runs/actor-operation-gamma-linux-off-20260918/summary.json": {
+    "bytes": 192952,
+    "sha256": "8d512dd9c84d614201e0055bb07e9a9ca47ed8c19ab9c9a70d084e494fb3d542"
+  },
+  "runs/actor-operation-gamma-linux-off-20260918/game.log": {
+    "bytes": 148001,
+    "sha256": "d6575a09490e2909341eb89d3ff762faa56079b7cbddf89575fd83f54ffc9658"
+  },
+  "runs/actor-operation-gamma-linux-off-20260918/sonic-display.ini": {
+    "bytes": 135,
+    "sha256": "89998d7f2a897e6758f9a59663d64004624040978b0069a8be5ba7b2596e0187"
+  },
+  "runs/actor-operation-windows-on-20260918/result.json": {
+    "bytes": 27991,
+    "sha256": "dc5c5d5bd95bf25635710ba80e4fcafe02745bce90416703217bad4c6175e274"
+  },
+  "runs/actor-operation-windows-on-20260918/stderr.log": {
+    "bytes": 33146,
+    "sha256": "492df694628b9999e3cf66d97b8c245cb5f6aeeba53f6fd48f1611152f7c0ab2"
+  },
+  "runs/actor-operation-gamma-linux-on-20260918/summary.json": {
+    "bytes": 193089,
+    "sha256": "61806253c422ec5d585c0e7f0a70bc06cef2994af0868614798a2d032edc3721"
+  },
+  "runs/actor-operation-gamma-linux-on-20260918/game.log": {
+    "bytes": 148146,
+    "sha256": "5a02ca0d18d24b946204b6a83907ae1418f155752adeb016c6238dd80ecf56a5"
+  },
+  "runs/actor-operation-gamma-linux-on-20260918/sonic-display.ini": {
+    "bytes": 135,
+    "sha256": "89998d7f2a897e6758f9a59663d64004624040978b0069a8be5ba7b2596e0187"
+  },
+  "runs/actor-operation-lost-linux-on-20260918/summary.json": {
+    "bytes": 124446,
+    "sha256": "0aecdc4b801150b9a4b9c48f06a51486a863efb641b51c44cd47afae35b8ab92"
+  },
+  "runs/actor-operation-lost-linux-on-20260918/game.log": {
+    "bytes": 100065,
+    "sha256": "5ca196724cc361a48ae078ebd0178e8a8413d945c815e05bb4caed04360be7be"
+  },
+  "runs/actor-operation-lost-linux-on-20260918/sonic-display.ini": {
+    "bytes": 135,
+    "sha256": "89998d7f2a897e6758f9a59663d64004624040978b0069a8be5ba7b2596e0187"
+  },
+  "runs/actor-operation-sky-linux-on-20260918/summary.json": {
+    "bytes": 94083,
+    "sha256": "7e87b632f11d722e48b8964e10ab3482e8a914706db9aa9856ff2cc14eb375b8"
+  },
+  "runs/actor-operation-sky-linux-on-20260918/game.log": {
+    "bytes": 79762,
+    "sha256": "17d3cc2a80f52b0ef066af26d2ce6840106c710f4ea114f9b7f40559ada561d9"
+  },
+  "runs/actor-operation-sky-linux-on-20260918/sonic-display.ini": {
+    "bytes": 135,
+    "sha256": "89998d7f2a897e6758f9a59663d64004624040978b0069a8be5ba7b2596e0187"
+  }
+}

@@ -10,12 +10,14 @@ foreach(part rigid_hierarchy hierarchy static_position static_zyx static_yxz sta
     blend_position blend_scale blend_angle blend_key_index blend_float_key blend_angle_key blend_apply)
     list(APPEND render_hierarchy_outputs "${render_hierarchy_dir}/hierarchy-${part}.inc")
 endforeach()
-file(READ "${SONIC_ROOT}/tools/land-render-owners.json" land_owner_json)
-string(JSON land_owner_count LENGTH "${land_owner_json}")
-math(EXPR land_owner_last "${land_owner_count}-1")
-foreach(index RANGE 0 ${land_owner_last})
-    string(JSON part GET "${land_owner_json}" ${index} name)
-    list(APPEND render_hierarchy_outputs "${render_hierarchy_dir}/hierarchy-${part}.inc")
+foreach(owner_file IN ITEMS land-render-owners.json actor-operation-owners.json)
+    file(READ "${SONIC_ROOT}/tools/${owner_file}" owner_json)
+    string(JSON owner_count LENGTH "${owner_json}")
+    math(EXPR owner_last "${owner_count}-1")
+    foreach(index RANGE 0 ${owner_last})
+        string(JSON part GET "${owner_json}" ${index} name)
+        list(APPEND render_hierarchy_outputs "${render_hierarchy_dir}/hierarchy-${part}.inc")
+    endforeach()
 endforeach()
 add_custom_command(OUTPUT ${render_hierarchy_outputs}
     COMMAND "${Python3_EXECUTABLE}" "${SONIC_ROOT}/tools/prepare-render-hierarchy.py"
@@ -23,6 +25,7 @@ add_custom_command(OUTPUT ${render_hierarchy_outputs}
         --output "${render_hierarchy_dir}"
     DEPENDS "${SONIC_ROOT}/tools/prepare-render-hierarchy.py" "${SONIC_ROOT}/tools/prepare-collision-world.py"
         "${SONIC_ROOT}/tools/land-render-owners.json"
+        "${SONIC_ROOT}/tools/actor-operation-owners.json"
         "${SONIC_ROOT}/tools/prepare_collision_candidates.py" "${SONIC_ROOT}/tools/prepare_motion_sampling.py"
         "${SONIC_ROOT}/tools/prepare-movement-resolver.py" "${SONIC_ROOT}/tools/prepare_near_collision.py"
         "${SONIC_ROOT}/.local/baseline/r354/native-content/postpal-main-ram-native-ready.bin"

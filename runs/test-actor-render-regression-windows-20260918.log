@@ -1,0 +1,40 @@
+hierarchy-aot case=0 outcome=1
+hierarchy-aot case=1 outcome=1
+hierarchy-aot case=2 outcome=3
+hierarchy-aot case=3 outcome=3
+hierarchy-aot case=4 outcome=3
+hierarchy-aot case=5 outcome=3
+hierarchy-aot case=6 outcome=3
+hierarchy-aot case=7 outcome=3
+hierarchy-aot case=8 outcome=1
+hierarchy-aot case=9 outcome=1
+hierarchy-aot case=10 outcome=1
+hierarchy-aot case=11 outcome=1
+hierarchy-aot case=12 outcome=1
+hierarchy-aot case=13 outcome=1
+hierarchy-aot case=14 outcome=3
+hierarchy-aot case=15 outcome=3
+hierarchy-aot case=16 outcome=3
+hierarchy-aot case=17 outcome=3
+hierarchy-aot case=18 outcome=1
+rigid-aot case=19 outcome=3 return=8c63a61e pc=8c036ca8
+hierarchy-aot case=19 outcome=3
+rigid-aot case=20 outcome=1 return=8c036f0e pc=8c010000
+hierarchy-aot case=20 outcome=1
+rigid-aot case=21 outcome=3 return=0 pc=100
+hierarchy-aot case=21 outcome=3
+rigid-aot case=22 outcome=3 return=8c63a61e pc=100
+hierarchy-aot case=22 outcome=3
+rigid-aot case=23 outcome=1 return=8c036f0e pc=8c010000
+hierarchy-aot case=23 outcome=1
+rigid-aot case=24 outcome=3 return=0 pc=100
+hierarchy-aot case=24 outcome=3
+hierarchy-aot case=25 outcome=1
+hierarchy-aot case=26 outcome=1
+hierarchy-aot case=27 outcome=3
+hierarchy-aot case=28 outcome=1
+hierarchy-aot case=29 outcome=1
+hierarchy-aot case=30 outcome=1
+hierarchy-aot case=31 outcome=3
+hierarchy-aot case=32 outcome=3
+SONIC_RENDER_HIERARCHY_AOT_PASS cases=33 original_entries=1540

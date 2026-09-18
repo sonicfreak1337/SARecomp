@@ -1,0 +1,85 @@
+actor state=0 variant=0 mode=0
+actor state=1 variant=0 mode=0
+actor state=2 variant=0 mode=0
+actor state=3 variant=0 mode=0
+actor state=4 variant=0 mode=0
+actor state=5 variant=0 mode=0
+actor state=6 variant=0 mode=0
+actor state=7 variant=0 mode=0
+actor state=8 variant=0 mode=0
+actor state=9 variant=0 mode=0
+actor state=10 variant=0 mode=0
+actor state=11 variant=0 mode=0
+actor state=12 variant=0 mode=0
+actor state=13 variant=0 mode=0
+actor state=255 variant=0 mode=0
+actor state=0 variant=1 mode=0
+actor state=1 variant=1 mode=0
+actor state=2 variant=1 mode=0
+actor state=3 variant=1 mode=0
+actor state=4 variant=1 mode=0
+actor state=5 variant=1 mode=0
+actor state=6 variant=1 mode=0
+actor state=7 variant=1 mode=0
+actor state=8 variant=1 mode=0
+actor state=9 variant=1 mode=0
+actor state=10 variant=1 mode=0
+actor state=11 variant=1 mode=0
+actor state=12 variant=1 mode=0
+actor state=13 variant=1 mode=0
+actor state=255 variant=1 mode=0
+actor state=0 variant=0 mode=1
+actor state=1 variant=0 mode=1
+actor state=2 variant=0 mode=1
+actor state=3 variant=0 mode=1
+actor state=4 variant=0 mode=1
+actor state=5 variant=0 mode=1
+actor state=6 variant=0 mode=1
+actor state=7 variant=0 mode=1
+actor state=8 variant=0 mode=1
+actor state=9 variant=0 mode=1
+actor state=10 variant=0 mode=1
+actor state=11 variant=0 mode=1
+actor state=12 variant=0 mode=1
+actor state=13 variant=0 mode=1
+actor state=255 variant=0 mode=1
+actor state=0 variant=1 mode=1
+actor state=1 variant=1 mode=1
+actor state=2 variant=1 mode=1
+actor state=3 variant=1 mode=1
+actor state=4 variant=1 mode=1
+actor state=5 variant=1 mode=1
+actor state=6 variant=1 mode=1
+actor state=7 variant=1 mode=1
+actor state=8 variant=1 mode=1
+actor state=9 variant=1 mode=1
+actor state=10 variant=1 mode=1
+actor state=11 variant=1 mode=1
+actor state=12 variant=1 mode=1
+actor state=13 variant=1 mode=1
+actor state=255 variant=1 mode=1
+actor special=0
+actor special=1
+actor special=2
+actor special=3
+actor actual-aot=0 whole-original=1
+actor actual-aot=1 whole-original=1
+actor actual-aot=2 whole-original=1
+actor actual-aot=3 whole-original=1
+actor actual-aot=4 whole-original=1
+actor actual-aot=5 whole-original=1
+actor actual-aot=6 whole-original=1
+actor actual-aot=7 whole-original=1
+actor actual-aot=8 whole-original=1
+actor actual-aot=9 whole-original=1
+actor actual-aot=10 whole-original=1
+actor actual-aot=11 whole-original=1
+actor actual-aot=12 whole-original=1
+actor actual-aot=13 whole-original=1
+actor actual-aot=14 whole-original=1
+actor actual-aot=15 whole-original=1
+actor actual-aot=16 whole-original=0
+actor actual-aot=17 whole-original=0
+actor actual-aot=18 whole-original=0
+actor actual-aot=19 whole-original=0
+SONIC_ACTOR_OPERATION_PASS cases=84 calls=68 state_transfers=107 internal=978 resumes=3

@@ -18,7 +18,7 @@ std::map<std::uint32_t,std::uint32_t> original_owners;
 bool original_entry(std::uint32_t pc) noexcept{return original_entries.contains(pc);}
 void load_original_entries(const std::filesystem::path& root){
     const std::regex row(R"(\{0x([A-F0-9]{8})u, &fn_([A-F0-9]{8})_runtime_entry, true, (?:true|false)\})");
-    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202951.cpp"}){
+    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202783.cpp","native-port-dispatch-shard-202951.cpp"}){
         std::ifstream f(root/name);const std::string text{std::istreambuf_iterator<char>(f),{}};
         require(!text.empty(),"original entry shard missing");
         for(auto i=std::sregex_iterator(text.begin(),text.end(),row);i!=std::sregex_iterator();++i)
@@ -77,12 +77,7 @@ BOUNDARY(runtime_only_call) BOUNDARY(runtime_only_jump) BOUNDARY(unresolved_call
 #undef BOUNDARY
 void exact_guarded_call(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
 void exact_guarded_jump(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
-BlockExit fn_8C037098_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C037098u);return {};}
-BlockExit fn_8C03700C_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C03700Cu);return {};}
-#define LAND_FOREIGN(e) BlockExit fn_##e##_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x##e##u);return {};}
-LAND_FOREIGN(8C037108) LAND_FOREIGN(8C051A16) LAND_FOREIGN(8C051CC0) LAND_FOREIGN(8C052A00)
-LAND_FOREIGN(8C605CEC) LAND_FOREIGN(8C60ED30)
-#undef LAND_FOREIGN
+#include "hierarchy-test-externals.inc"
 }
 #ifndef SARECOMP_HIERARCHY_AOT_TEST_ENTRY
 #define SARECOMP_HIERARCHY_AOT_TEST_ENTRY main

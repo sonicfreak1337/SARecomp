@@ -20,6 +20,7 @@ add_custom_command(OUTPUT ${movement_contact_outputs}
         --output "${movement_contact_dir}" --source-root "${SONIC_WORKING}/generated"
     DEPENDS "${SONIC_ROOT}/tools/prepare-movement-contact.py" "${SONIC_ROOT}/tools/movement-contact-owners.json"
         "${SONIC_ROOT}/tools/object-contact-owners.json" "${SONIC_ROOT}/tools/camera-operation-owners.json"
+        "${SONIC_ROOT}/tools/actor-operation-owners.json"
         "${SONIC_ROOT}/tools/prepare-render-hierarchy.py" "${SONIC_ROOT}/tools/prepare-render-hierarchy-bridge.py" "${SONIC_ROOT}/tools/prepare-collision-world.py"
         "${SONIC_ROOT}/tools/prepare_collision_candidates.py" "${SONIC_ROOT}/tools/prepare_motion_sampling.py"
         "${SONIC_ROOT}/tools/prepare-movement-resolver.py" "${SONIC_ROOT}/tools/prepare_near_collision.py"
