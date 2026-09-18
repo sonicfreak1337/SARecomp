@@ -560,6 +560,22 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   but only -2.81% execution CPU and unchanged Linux image throughput; it stays
   OFF. Do not repeat that unchanged comparison or revive isolated micro-work.
 
+- The model-to-GPU vertex-stream experiment remains private-OFF; see
+  `docs/native-model-vertex-stream-20260918.md`. It replaces expanded corners
+  with immutable indexed points across the ordered Vulkan consumer, retaining
+  original guest projection/palette effects and callbacks. Windows and Linux
+  each pass 256 exact vertex cases plus 20 exact GPU image cases in serial and
+  parallel modes; Linux Khronos validation is clean. D3D11 deliberately retains
+  its expanded fallback. The matched Windows Gamma pair changes execution
+  cycles only +0.38% (neutral); Linux is substantially slower with a one-update
+  start difference and is not exact-work evidence. No useful serial game gain
+  exists. Do not repeat unchanged pairs, broaden this test matrix, implement a
+  D3D11 gather path or enable it in a patch. Current isolated outputs are
+  `build-linux/game` and `out/model-vertex-stream-windows-20260918/game.exe`;
+  the delivered Sep18 patch is unchanged. Next is the connected movement /
+  NEAR eligibility / TOUCH candidate / contact-classification group, rather
+  than re-enabling any old isolated movement or NEAR switch.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

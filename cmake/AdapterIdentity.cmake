@@ -32,7 +32,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
     sonic_render_context.hpp sonic_render_context.cpp ../tools/prepare-render-context.py
     sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py
-    sonic_mesh_plan.hpp sonic_mesh_plan.cpp sonic_model_packet.hpp
+    sonic_mesh_plan.hpp sonic_mesh_plan.cpp sonic_model_packet.hpp sonic_model_vertex_stream.hpp
     sonic_atan_math.hpp sonic_atan_math.cpp
     ../tools/prepare-inverse-trig.py ../tools/prepare-inverse-trig-bridge.py
     sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp

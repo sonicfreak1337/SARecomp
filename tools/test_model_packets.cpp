@@ -1,4 +1,5 @@
 #include "sonic_model_packet.hpp"
+#include "sonic_model_vertex_stream.hpp"
 #include "renderer/renderer_selection.hpp"
 #include "sonic_internal_diagnostics.hpp"
 #include <cstring>
@@ -28,15 +29,17 @@ std::vector<char> read(const std::filesystem::path& p){
     return {std::istreambuf_iterator<char>(f),{}};
 }
 int main(int argc,char** argv){try{
-    require(argc==4,"backend, output directory and serial/parallel required");
+    require(argc==4 || (argc==5 && std::string_view(argv[4])=="stream"),"backend, output directory, serial/parallel and optional stream required");
+    const bool stream=argc==5;
+    _putenv_s("SARECOMP_NATIVE_MODEL_VERTEX_STREAM",stream?"1":"0");
     _putenv_s("KATANA_PORT_BACKGROUND_TEST","1");
     _putenv_s("SARECOMP_VULKAN_OFFSCREEN_TEST","1");
     _putenv_s("KATANA_PORT_DISABLE_RENDER_THREAD",std::string_view(argv[3])=="serial"?"1":"0");
     _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_DIRECTORY",argv[2]);
     _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_START_FRAME","1");
-    _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME","4");
+    _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_END_FRAME",stream?"20":"4");
     _putenv_s("KATANA_NATIVE_GRAPHICS_CAPTURE_INTERVAL","1");
-    sonic::diagnostics::internal_runtime_enabled=true;
+    sonic::diagnostics::internal_runtime_enabled=!stream;
     std::filesystem::create_directories(argv[2]);
     sonic::rendering::selected_renderer=std::string_view(argv[1])=="vulkan"?
         sonic::rendering::Renderer::Vulkan:sonic::rendering::Renderer::D3D11;
@@ -121,6 +124,61 @@ int main(int argc,char** argv){try{
         if(frame==4)device.destroy_texture(handle);
     }
     require(read(std::filesystem::path(argv[2])/"frame-3.bmp")==read(std::filesystem::path(argv[2])/"frame-4.bmp"),"split-lease state or order differs");
+    if(stream){
+        // Compare the actual shaders, including UV seams, lighting, secondary
+        // fog and Type2's separate capture/resolve pipeline. Never accept a
+        // silent fallback as evidence that the new GPU path was exercised.
+        const std::array<std::byte,16> pixels{std::byte{255},std::byte{32},std::byte{0},std::byte{128},
+            std::byte{0},std::byte{255},std::byte{64},std::byte{192},std::byte{32},std::byte{0},std::byte{255},std::byte{96},
+            std::byte{255},std::byte{255},std::byte{255},std::byte{224}};
+        NativePortImageView image;image.extent={2,2};image.format=NativePortTextureFormat::Rgba8Unorm;
+        image.stride_bytes=8;image.pixels=pixels;
+        handle=device.create_texture(texture,&image);
+        const std::array<mp::Vec3,3> n{{{.2f,.3f,1},{-.3f,.1f,1},{.5f,-.2f,1}}};
+        const std::array<unsigned,3> secondary{0x40112233u,0x90223311u,0xC0331122u};
+        a.attributes=mp::Attributes::capture(triangle_points,n,red,secondary);
+        packet={};packet.vertex_space=NativePortVertexSpace::ObjectHomogeneous;
+        packet.rasterizer.cull=NativePortCullMode::None;packet.texture=handle;
+        packet.texture_stage=NativePortTextureStage::RequiredResolved;packet.sampler.filter=NativePortTextureFilter::Point;
+        packet.material.lighting_enabled=true;packet.lighting.ambient={.3f,.4f,.2f,1};packet.lighting.light_count=1;
+        packet.lighting.lights[0].direction={0,0,1};packet.material.diffuse={.8f,.6f,.9f,.5f};
+        unsigned frame=5;
+        for(unsigned type2=0;type2<2;++type2)for(unsigned flags:{0u,3u,6u,7u}){
+            a.ignore_light=flags&1;a.use_secondary=flags&2;a.vertex_fog=flags&4;a.host_mode=0x4000u;
+            packet.material.use_secondary_color=a.use_secondary;
+            packet.fog.mode=a.vertex_fog?NativePortFogMode::VertexFactor:NativePortFogMode::Disabled;
+            packet.fog.color={.2f,.4f,.7f,1};
+            packet.draw_class=type2?NativePortDrawClass::Translucent:NativePortDrawClass::Opaque;
+            packet.translucency=type2?NativePortTranslucencyPolicy::Type2AutoSorted:NativePortTranslucencyPolicy::NotApplicable;
+            packet.blend.enabled=type2;packet.blend.source_color=packet.blend.source_alpha=NativePortBlendFactor::SourceAlpha;
+            packet.blend.destination_color=packet.blend.destination_alpha=NativePortBlendFactor::InverseSourceAlpha;
+            NativePortFrameConfig frame_config;
+            frame_config.depth_buffer=type2?NativePortDepthBufferConvention::ReciprocalPositive:NativePortDepthBufferConvention::Forward;
+            frame_config.clear_depth=type2?0.0f:1.0f;
+            packet.depth.compare=type2?NativePortCompareOperation::GreaterEqual:NativePortCompareOperation::LessEqual;
+            packet.depth_mapping.mode=type2?NativePortDepthCoordinateMode::ReciprocalPositiveHomogeneousClip:NativePortDepthCoordinateMode::ClipSpace;
+            mp::expand(a,av);
+            const auto before=sonic::model_vertex_stream::gpu_draws.load();
+            const auto uploaded=sonic::model_vertex_stream::point_uploads.load();
+            for(unsigned compact=0;compact<2;++compact){
+                packet.vertices=compact?std::span<const NativePortVertex>{}:std::span<const NativePortVertex>{av};
+                packet.indices=compact?std::span<const unsigned>{}:std::span<const unsigned>{triangle_indices};
+                device.begin_frame(frame_config);packet.batch.identity=frame+compact;
+                for(unsigned repeat=0;repeat<2;++repeat){
+                    packet.batch.submission_order=repeat;
+                    mp::Submission scope(compact?&a:nullptr);device.draw(packet);
+                }
+                device.present();device.finish();
+            }
+            const auto path=std::filesystem::path(argv[2]);
+            require(read(path/("frame-"+std::to_string(frame)+".bmp"))==read(path/("frame-"+std::to_string(frame+1)+".bmp")),"model GPU material pixels differ");
+            const bool vulkan=std::string_view(argv[1])=="vulkan";
+            require(sonic::model_vertex_stream::gpu_draws.load()-before==(vulkan?2u:0u),"model GPU admission/fallback differs");
+            require(sonic::model_vertex_stream::point_uploads.load()-uploaded==(vulkan?1u:0u),"model point generation not reused");
+            frame+=2;
+        }
+        device.destroy_texture(handle);packet.texture={};packet.texture_stage=NativePortTextureStage::Disabled;
+    }
     // Empty/invalid shape is rejected before either thread consumes it.
     bool rejected=false;try{mp::Geometry::capture(4,{},{});}catch(const std::invalid_argument&){rejected=true;}
     require(rejected,"invalid geometry accepted");
@@ -129,11 +187,12 @@ int main(int argc,char** argv){try{
     {mp::Submission scope(&bad);try{device.draw(packet);}catch(const NativePortGraphicsError&){rejected=true;}}
     require(rejected,"invalid queued model accepted");
     // Failed producer encoding leaves no sidecar for the next frame.
-    device.begin_frame();packet.vertices=av;packet.indices=triangle_indices;
+    device.begin_frame();packet={};packet.vertices=av;packet.indices=triangle_indices;
     packet.batch.identity=5;packet.batch.submission_order=0;
     device.draw(packet);device.present();device.finish();
     require(!mp::submitted,"submission scope leaked");
     std::cout<<"MODEL_PACKETS_OK backend="<<argv[1]<<" queue="<<argv[3]<<" vertex_cases="<<cases
-        <<" exact_pixels=4 ownership=ok split_prefix=ok abort_recovery=ok rounding=ok\n";
+        <<" exact_pixels="<<(stream?20:4)<<" gpu_draws="<<sonic::model_vertex_stream::gpu_draws.load()
+        <<" ownership=ok split_prefix=ok abort_recovery=ok rounding=ok\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<"MODEL_PACKETS_FAIL "<<e.what()<<'\n';return 1;}}

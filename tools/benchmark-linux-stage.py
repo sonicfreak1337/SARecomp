@@ -68,6 +68,7 @@ p.add_argument('--native-animation', choices=('off','on','installed'), default='
 p.add_argument('--native-pose', choices=('off','on','installed'), default='installed',
                help='Same-executable comparison of the complete native pose mixer')
 p.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
+p.add_argument('--native-model-vertex-stream', choices=('off','on'), default='off')
 p.add_argument('--native-projection-batch', choices=('off','on','verify','installed'), default='installed')
 p.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 p.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
@@ -163,8 +164,9 @@ env.update({
     'SARECOMP_GAMEPLAY_MATH_RETAINED':'1' if a.gameplay_math=='retained' else '0',
     'SARECOMP_NATIVE_MATH_GAMEPLAY_ONLY':str(int(a.math_scope=='gameplay')),
     'SARECOMP_NATIVE_ANIMATION_HIERARCHY':str(int(a.native_animation=='on')),
-    'SARECOMP_NATIVE_MODEL_PACKETS':str(int(a.native_model_packets!='off')),
+    'SARECOMP_NATIVE_MODEL_PACKETS':str(int(a.native_model_packets!='off' or a.native_model_vertex_stream=='on')),
     'SARECOMP_NATIVE_MODEL_PACKETS_VERIFY':str(int(a.native_model_packets=='verify')),
+    'SARECOMP_NATIVE_MODEL_VERTEX_STREAM':str(int(a.native_model_vertex_stream=='on')),
     'SARECOMP_NATIVE_PROJECTION_BATCH':str(int(a.native_projection_batch!='off')),
     'SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY':str(int(a.native_projection_batch=='verify')),
     'SARECOMP_RAM_PREPARED_ACCESS':str(int(a.ram_prepared_access=='on')),
@@ -327,6 +329,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'math_scope':a.math_scope, 'phase':a.phase,
           'native_animation':a.native_animation,
           'native_model_packets':a.native_model_packets,
+          'native_model_vertex_stream':a.native_model_vertex_stream,
           'native_projection_batch':a.native_projection_batch,
           'ram_prepared_access':a.ram_prepared_access,
           'native_matrix_bulk':a.native_matrix_bulk,

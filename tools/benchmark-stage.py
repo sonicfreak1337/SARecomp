@@ -70,6 +70,7 @@ parser.add_argument('--async-audio-status', choices=('off','on','installed'), de
 parser.add_argument('--sound-metadata', choices=('off','on','verify'), default='off')
 parser.add_argument('--deferred-midi-notes', choices=('off','on'), default='off')
 parser.add_argument('--native-model-packets', choices=('off','on','verify'), default='off')
+parser.add_argument('--native-model-vertex-stream', choices=('off','on'), default='off')
 parser.add_argument('--native-projection-batch', choices=('off','on','verify','installed'), default='installed')
 parser.add_argument('--native-matrix-bulk', choices=('off','on'), default='off')
 parser.add_argument('--ram-prepared-access', choices=('off','on'), default='off')
@@ -202,8 +203,9 @@ env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'
 env['SARECOMP_SOUND_METADATA_CACHE']='1' if args.sound_metadata!='off' else '0'
 env['SARECOMP_SOUND_METADATA_VERIFY']='1' if args.sound_metadata=='verify' else '0'
 env['SARECOMP_DEFERRED_MIDI_NOTES']='1' if args.deferred_midi_notes=='on' else '0'
-env['SARECOMP_NATIVE_MODEL_PACKETS']='0' if args.native_model_packets=='off' else '1'
+env['SARECOMP_NATIVE_MODEL_PACKETS']=str(int(args.native_model_packets!='off' or args.native_model_vertex_stream=='on'))
 env['SARECOMP_NATIVE_MODEL_PACKETS_VERIFY']='1' if args.native_model_packets=='verify' else '0'
+env['SARECOMP_NATIVE_MODEL_VERTEX_STREAM']=str(int(args.native_model_vertex_stream=='on'))
 env['SARECOMP_NATIVE_PROJECTION_BATCH']=str(int(args.native_projection_batch!='off'))
 env['SARECOMP_NATIVE_PROJECTION_BATCH_VERIFY']=str(int(args.native_projection_batch=='verify'))
 env['SARECOMP_NATIVE_MATRIX_BULK']=str(int(args.native_matrix_bulk=='on'))

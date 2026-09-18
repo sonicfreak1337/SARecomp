@@ -51,6 +51,7 @@
 #include "sonic_model_uv.hpp"
 #include "sonic_corner_indices.hpp"
 #include "sonic_model_packet.hpp"
+#include "sonic_model_vertex_stream.hpp"
 #include "sonic_fpu_scratch.hpp"
 #include "sonic_camera_policy.hpp"
 #include "sonic_tutorial_prompt.hpp"
@@ -18116,6 +18117,9 @@ void emit_sonic_native_gameplay_probe_sample(
               << " model_snapshots=" << sonic_native_title_state.model_source_plans.stats.model_snapshots
               << " model_packet_verified=" << sonic_native_title_state.model_source_plans.stats.model_packet_verified
               << " model_packet_vertices=" << sonic_native_title_state.model_source_plans.stats.model_packet_vertices
+              << " model_gpu_draws=" << sonic::model_vertex_stream::gpu_draws.load(std::memory_order_relaxed)
+              << " model_point_uploads=" << sonic::model_vertex_stream::point_uploads.load(std::memory_order_relaxed)
+              << " model_corner_uploads=" << sonic::model_vertex_stream::corner_uploads.load(std::memory_order_relaxed)
               << " closed_memory_calls=" << sonic::model_memory::closed_leaf_counts.calls
               << " closed_memory_words=" << sonic::model_memory::closed_leaf_counts.words
               << " collision_memory_intervals=" << sonic::collision_memory::counts.intervals

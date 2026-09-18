@@ -12,6 +12,7 @@
 #include "sonic_vulkan_shaders.hpp"
 #include "../sonic_startup.hpp"
 #include "../sonic_presentation.hpp"
+#include "../sonic_model_vertex_stream.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -103,6 +104,23 @@ struct VulkanRenderer::Impl {
     struct Buffer { VkBuffer buffer{}; VkDeviceMemory memory{}; VkDeviceSize size{}; std::byte* mapped{}; };
     struct Mesh { Buffer vertices,indices; unsigned vertex_count{},index_count{}; };
     struct UploadBlock { Buffer buffer; VkDeviceSize used=0; };
+    struct ModelPointKey {
+        const model_packet::Attributes* attributes{};unsigned mode{};
+        bool operator==(const ModelPointKey&)const=default;
+    };
+    struct ModelPointHash {
+        std::size_t operator()(const ModelPointKey& key)const noexcept {
+            return std::hash<const void*>{}(key.attributes)^(std::size_t(key.mode)<<1);
+        }
+    };
+    struct ModelPoints {
+        std::shared_ptr<const model_packet::Attributes> owner;
+        VkDescriptorBufferInfo storage;
+    };
+    struct ModelGeometry {
+        std::shared_ptr<const model_packet::Geometry> owner;
+        VkBuffer vertices{},indices{};VkDeviceSize vertex_offset{},index_offset{};
+    };
     struct Submission {
         VkCommandPool pool{}; VkCommandBuffer command{}; VkFence fence{}; VkSemaphore acquire{};
         std::vector<VkDescriptorPool> descriptors; unsigned descriptor_pool=0, sets=0;
@@ -114,6 +132,11 @@ struct VulkanRenderer::Impl {
         DrawDescriptorKey last_draw_key{};VkDescriptorSet last_draw_set{};
         decltype(NativePortFogState{}.lookup_table) last_fog{};
         VkDescriptorBufferInfo fog_upload{};bool fog_valid=false;
+        // Raw-pointer lookup is safe only while these immutable owners are
+        // retained. No guest pointer or mutable source generation is a key.
+        std::unordered_map<ModelPointKey,ModelPoints,ModelPointHash> model_points;
+        std::unordered_map<const model_packet::Geometry*,ModelGeometry> model_geometry;
+        std::unordered_map<DrawDescriptorKey,VkDescriptorSet,DrawDescriptorHash> model_sets;
     };
     VkInstance instance{}; VkSurfaceKHR surface{}; VkPhysicalDevice physical{}; VkDevice device{};
 #ifdef _WIN32
@@ -142,6 +165,10 @@ struct VulkanRenderer::Impl {
     VkDescriptorSetLayout draw_layout{},capture_layout{},resolve_layout{},composite_layout{},overlay_layout{};
     VkPipelineLayout draw_pipeline_layout{},capture_pipeline_layout{},resolve_pipeline_layout{},composite_pipeline_layout{},overlay_pipeline_layout{};
     VkShaderModule draw_vs{},draw_ps{},capture_ps{},composite_vs{},composite_ps{},resolve_ps{},overlay_ps{};
+    VkDescriptorSetLayout model_layout{};
+    VkPipelineLayout model_draw_pipeline_layout{},model_capture_pipeline_layout{};
+    VkShaderModule model_vs{};
+    std::vector<model_vertex_stream::Point> model_point_scratch;
     VkPipelineCache pipeline_cache{};
     std::string cache_key;
     bool warming_pipelines=false;
@@ -286,6 +313,8 @@ struct VulkanRenderer::Impl {
     VkSampler sampler(const NativePortSamplerState&);
     std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> draw_descriptor(
         const NativePortDrawPacket&,const Image&,std::span<const std::byte>,bool);
+    ModelGeometry model_topology(const model_packet::Draw&);
+    std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> model_descriptor(const model_packet::Draw&);
     VkPipeline pipeline(const NativePortDrawPacket&,NativePortPrimitiveTopology,int kind,VkFormat format);
     void warm_pipelines();
     void save_pipeline_cache() noexcept;
@@ -451,11 +480,28 @@ void VulkanRenderer::Impl::initialize(void* window) {
     layout({{2,ub},{5,si},{6,si},{7,sb},{8,si},{9,sb}},resolve_layout,resolve_pipeline_layout);
     layout({{4,si},{12,sa}},composite_layout,composite_pipeline_layout);
     layout({{2,ub}},overlay_layout,overlay_pipeline_layout);
+    if(model_vertex_stream::enabled()){
+        const VkDescriptorSetLayoutBinding bindings[]{
+            {0,du,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr},
+            {1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr}};
+        VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        info.bindingCount=2;info.pBindings=bindings;
+        check(vkCreateDescriptorSetLayout(device,&info,nullptr,&model_layout),"vulkan-model-layout");
+        const auto pipeline_layout=[&](VkDescriptorSetLayout scene,VkPipelineLayout& target){
+            const VkDescriptorSetLayout sets[]{scene,model_layout};
+            VkPipelineLayoutCreateInfo create{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+            create.setLayoutCount=2;create.pSetLayouts=sets;
+            check(vkCreatePipelineLayout(device,&create,nullptr,&target),"vulkan-model-pipeline-layout");
+        };
+        pipeline_layout(draw_layout,model_draw_pipeline_layout);
+        pipeline_layout(capture_layout,model_capture_pipeline_layout);
+    }
     auto shader=[&](std::span<const std::uint32_t> code,VkShaderModule& output) {
         VkShaderModuleCreateInfo create{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO}; create.codeSize=code.size_bytes(); create.pCode=code.data();
         check(vkCreateShaderModule(device,&create,nullptr,&output),"vulkan-shader");
     };
     shader(shaders::draw_vs,draw_vs); shader(shaders::draw_ps,draw_ps); shader(shaders::capture_ps,capture_ps);
+    if(model_vertex_stream::enabled())shader(shaders::draw_model_vs,model_vs);
     shader(shaders::composite_vs,composite_vs); shader(shaders::composite_ps,composite_ps); shader(shaders::overlay_ps,overlay_ps);
     if(config.maximum_type2_fragments_per_pixel<=32) shader(shaders::resolve_ps_32,resolve_ps);
     else if(config.maximum_type2_fragments_per_pixel<=64) shader(shaders::resolve_ps_64,resolve_ps);
@@ -467,6 +513,7 @@ void VulkanRenderer::Impl::initialize(void* window) {
     contract.append(reinterpret_cast<const char*>(properties.pipelineCacheUUID),VK_UUID_SIZE);
     const auto bind_shader=[&](std::span<const std::uint32_t> code){contract+=sonic::startup::digest(std::as_bytes(code));};
     bind_shader(shaders::draw_vs);bind_shader(shaders::draw_ps);bind_shader(shaders::capture_ps);
+    if(model_vertex_stream::enabled())bind_shader(shaders::draw_model_vs);
     bind_shader(shaders::composite_vs);bind_shader(shaders::composite_ps);bind_shader(shaders::overlay_ps);
     bind_shader(shaders::resolve_ps_32);bind_shader(shaders::resolve_ps_64);bind_shader(shaders::resolve_ps_128);bind_shader(shaders::resolve_ps_256);
     cache_key=sonic::startup::digest(contract);
@@ -603,6 +650,7 @@ bool VulkanRenderer::Impl::start(bool nonblocking) {
     check(vkResetCommandPool(device,s.pool,0),"vulkan-reset-command-pool");
     for(auto pool:s.descriptors) check(vkResetDescriptorPool(device,pool,0),"vulkan-reset-descriptors");
     s.draw_sets.clear();s.last_draw_set={};s.fog_valid=false;
+    s.model_sets.clear();s.model_points.clear();s.model_geometry.clear();
     s.descriptor_pool=0; s.sets=0; s.upload_block=0;
     for(auto& block:s.uploads) block.used=0;
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -626,6 +674,9 @@ void VulkanRenderer::Impl::submit(VkSemaphore wait,VkSemaphore signal) {
     submit.signalSemaphoreInfoCount=signal?1:0; submit.pSignalSemaphoreInfos=signal?&present:nullptr;
     check(vkResetFences(device,1,&current->fence),"vulkan-reset-fence");
     check(vkQueueSubmit2(queue,1,&submit,current->fence),"vulkan-submit"); current->pending=true;
+    // Recording is sealed: pointer-key lookups cannot recur. Release host
+    // snapshots now; their copied upload bytes and descriptors stay fenced.
+    current->model_points.clear();current->model_geometry.clear();current->model_sets.clear();
     current=nullptr; command={}; submission_index=(submission_index+1)%submissions.size();
 }
 std::pair<VkBuffer,VkDeviceSize> VulkanRenderer::Impl::upload(std::span<const std::byte> data,VkDeviceSize alignment) {
@@ -633,7 +684,8 @@ std::pair<VkBuffer,VkDeviceSize> VulkanRenderer::Impl::upload(std::span<const st
     for(;;) {
         if(current->upload_block==current->uploads.size())
             current->uploads.push_back({make_buffer(std::max<VkDeviceSize>(4*1024*1024,data.size()+alignment),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,true),0});
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|
+                (model_vertex_stream::enabled()?VK_BUFFER_USAGE_STORAGE_BUFFER_BIT:0u),true),0});
         auto& block=current->uploads[current->upload_block];
         auto offset=(block.used+alignment-1)&~(alignment-1);
         if(offset+data.size()<=block.buffer.size) {
@@ -648,7 +700,8 @@ VkDescriptorSet VulkanRenderer::Impl::descriptor(VkDescriptorSetLayout layout) {
     if(current->sets==4096) { ++current->descriptor_pool; current->sets=0; }
     if(current->descriptor_pool==current->descriptors.size()) {
         const VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,12288},{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,8192},{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,24576},
-            {VK_DESCRIPTOR_TYPE_SAMPLER,4096},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,8192},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,8192}};
+            {VK_DESCRIPTOR_TYPE_SAMPLER,4096},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,8192},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,8192},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,4096}};
         VkDescriptorPoolCreateInfo create{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; create.maxSets=4096;
         create.poolSizeCount=std::size(sizes); create.pPoolSizes=sizes;
         VkDescriptorPool pool; check(vkCreateDescriptorPool(device,&create,nullptr,&pool),"vulkan-descriptor-pool");
@@ -743,6 +796,46 @@ std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> VulkanRenderer::Impl::dra
     }
     return {set,offsets};
 }
+VulkanRenderer::Impl::ModelGeometry VulkanRenderer::Impl::model_topology(const model_packet::Draw& draw) {
+    auto& cache=current->model_geometry;
+    if(const auto found=cache.find(draw.geometry.get());found!=cache.end())return found->second;
+    const auto [vb,vo]=upload(std::as_bytes(std::span(draw.geometry->corners)),4);
+    const auto [ib,io]=upload(std::as_bytes(std::span(draw.geometry->indices)),4);
+    ModelGeometry result{draw.geometry,vb,ib,vo,io};
+    // The fenced arena owns GPU bytes. Retain the source while recording so
+    // allocator address reuse cannot alias this submission's lookup.
+    if(cache.size()<4096)cache.emplace(draw.geometry.get(),result);
+    model_vertex_stream::corner_uploads.fetch_add(1,std::memory_order_relaxed);
+    return result;
+}
+std::pair<VkDescriptorSet,std::array<std::uint32_t,2>> VulkanRenderer::Impl::model_descriptor(const model_packet::Draw& draw) {
+    auto& s=*current;const ModelPointKey point_key{draw.attributes.get(),draw.host_mode};
+    VkDescriptorBufferInfo points{};
+    if(const auto found=s.model_points.find(point_key);found!=s.model_points.end())points=found->second.storage;
+    else{
+        model_vertex_stream::prepare_points(*draw.attributes,draw.host_mode,model_point_scratch);
+        const auto data=std::as_bytes(std::span(model_point_scratch));
+        if(data.size()>properties.limits.maxStorageBufferRange)
+            throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceLimit,0,"vulkan-model-point-range");
+        const auto [buffer,offset]=upload(data,std::max<VkDeviceSize>(16,properties.limits.minStorageBufferOffsetAlignment));
+        points={buffer,offset,data.size()};
+        if(s.model_points.size()<4096)s.model_points.emplace(point_key,ModelPoints{draw.attributes,points});
+        model_vertex_stream::point_uploads.fetch_add(1,std::memory_order_relaxed);
+    }
+    const auto constants=model_vertex_stream::constants(draw);
+    const auto [buffer,offset]=upload(bytes(constants),std::max<VkDeviceSize>(16,properties.limits.minUniformBufferOffsetAlignment));
+    if(offset>UINT32_MAX || points.offset>UINT32_MAX)throw std::logic_error("vulkan-model-dynamic-offset");
+    const std::array<std::uint32_t,2> offsets{std::uint32_t(offset),std::uint32_t(points.offset)};
+    DrawDescriptorKey key{};key[0]=std::bit_cast<std::uint64_t>(buffer);key[1]=sizeof(constants);
+    key[2]=std::bit_cast<std::uint64_t>(points.buffer);key[3]=points.range;
+    if(const auto found=s.model_sets.find(key);found!=s.model_sets.end())return {found->second,offsets};
+    const auto set=descriptor(model_layout);DescriptorWrites writes(set);
+    writes.buffer(0,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,{buffer,0,sizeof(constants)});
+    writes.buffer(1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,{points.buffer,0,points.range});
+    writes.commit(device);
+    if(s.model_sets.size()<4096)s.model_sets.emplace(key,set);
+    return {set,offsets};
+}
 VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,NativePortPrimitiveTopology topology,int kind,VkFormat format) {
     // Semantic keys, never struct padding or per-draw material/clip constants.
     PipelineKey key;std::size_t position=0;
@@ -762,15 +855,17 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
             unused_warm_pipelines.erase(victim);
         } else throw NativePortGraphicsError(NativePortGraphicsFailure::ResourceLimit,0,"vulkan-pipelines");
     }
-    const bool geometry=kind<=1;
+    const bool model=kind==5 || kind==6;
+    const int base_kind=model?kind-5:kind;
+    const bool geometry=base_kind<=1;
     VkPipelineShaderStageCreateInfo stages[2]{};
     for(auto& stage:stages) stage.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=geometry?draw_vs:composite_vs;
-    stages[0].pName=geometry?"draw_vertex_main":"composite_vertex_main";
+    stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=model?model_vs:geometry?draw_vs:composite_vs;
+    stages[0].pName=model?"draw_model_vertex_main":geometry?"draw_vertex_main":"composite_vertex_main";
     stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module=kind==0?draw_ps:kind==1?capture_ps:kind==2?resolve_ps:kind==3?composite_ps:overlay_ps;
-    stages[1].pName=kind==0?"draw_pixel_main":kind==1?"draw_type_two_capture_main":kind==2?"type_two_resolve_pixel_main":kind==3?"composite_pixel_main":"performance_overlay_pixel_main";
-    VkVertexInputBindingDescription binding{0,sizeof(NativePortVertex),VK_VERTEX_INPUT_RATE_VERTEX};
+    stages[1].module=base_kind==0?draw_ps:base_kind==1?capture_ps:base_kind==2?resolve_ps:base_kind==3?composite_ps:overlay_ps;
+    stages[1].pName=base_kind==0?"draw_pixel_main":base_kind==1?"draw_type_two_capture_main":base_kind==2?"type_two_resolve_pixel_main":base_kind==3?"composite_pixel_main":"performance_overlay_pixel_main";
+    VkVertexInputBindingDescription binding{0,unsigned(model?sizeof(model_packet::Corner):sizeof(NativePortVertex)),VK_VERTEX_INPUT_RATE_VERTEX};
     const VkVertexInputAttributeDescription attributes[]={
         {0,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(NativePortVertex,position)},
         {1,0,VK_FORMAT_R32_SFLOAT,offsetof(NativePortVertex,position_w)},
@@ -782,6 +877,10 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
         {7,0,VK_FORMAT_R32_SFLOAT,offsetof(NativePortVertex,depth_coordinate)}};
     VkPipelineVertexInputStateCreateInfo vertex{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     if(geometry) { vertex.vertexBindingDescriptionCount=1; vertex.pVertexBindingDescriptions=&binding; vertex.vertexAttributeDescriptionCount=std::size(attributes); vertex.pVertexAttributeDescriptions=attributes; }
+    const VkVertexInputAttributeDescription model_attributes[]{
+        {0,0,VK_FORMAT_R32_UINT,offsetof(model_packet::Corner,point)},
+        {1,0,VK_FORMAT_R32G32_SFLOAT,offsetof(model_packet::Corner,uv)}};
+    if(model){vertex.vertexAttributeDescriptionCount=2;vertex.pVertexAttributeDescriptions=model_attributes;}
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO}; assembly.topology=topologies[unsigned(topology)];
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO}; viewport.viewportCount=1; viewport.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rasterizer{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -791,7 +890,7 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
     rasterizer.depthClampEnable=!raster.depth_clip_enabled; rasterizer.lineWidth=1;
     VkPipelineMultisampleStateCreateInfo samples{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; samples.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
     VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    depth_state.depthTestEnable=kind==0 && z.test_enabled; depth_state.depthWriteEnable=kind==0 && z.write_enabled;
+    depth_state.depthTestEnable=base_kind==0 && z.test_enabled; depth_state.depthWriteEnable=base_kind==0 && z.write_enabled;
     depth_state.depthCompareOp=z.test_enabled?VkCompareOp(z.compare):VK_COMPARE_OP_ALWAYS;
     VkPipelineColorBlendAttachmentState attachment{}; attachment.blendEnable=blend.enabled; attachment.colorWriteMask=blend.color_write_mask;
     attachment.srcColorBlendFactor=factors[unsigned(blend.source_color)]; attachment.dstColorBlendFactor=factors[unsigned(blend.destination_color)]; attachment.colorBlendOp=operations[unsigned(blend.color_operation)];
@@ -803,16 +902,17 @@ VkPipeline VulkanRenderer::Impl::pipeline(const NativePortDrawPacket& packet,Nat
         case NativePortBlendFactor::InverseDestinationColor:return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
         default:return factors[unsigned(f)]; }};
     attachment.srcAlphaBlendFactor=alpha_factor(blend.source_alpha); attachment.dstAlphaBlendFactor=alpha_factor(blend.destination_alpha); attachment.alphaBlendOp=operations[unsigned(blend.alpha_operation)];
-    VkPipelineColorBlendStateCreateInfo blending{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blending.attachmentCount=kind==1?0:1; blending.pAttachments=&attachment;
+    VkPipelineColorBlendStateCreateInfo blending{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blending.attachmentCount=base_kind==1?0:1; blending.pAttachments=&attachment;
     const VkDynamicState dynamic_states[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO}; dynamic.dynamicStateCount=2; dynamic.pDynamicStates=dynamic_states;
-    VkPipelineRenderingCreateInfo render{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO}; render.colorAttachmentCount=kind==1?0:1;
+    VkPipelineRenderingCreateInfo render{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO}; render.colorAttachmentCount=base_kind==1?0:1;
     render.pColorAttachmentFormats=&format; render.depthAttachmentFormat=geometry?depth_format:VK_FORMAT_UNDEFINED;
     VkGraphicsPipelineCreateInfo create{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO}; create.pNext=&render;
     create.stageCount=2; create.pStages=stages; create.pVertexInputState=&vertex; create.pInputAssemblyState=&assembly;
     create.pViewportState=&viewport; create.pRasterizationState=&rasterizer; create.pMultisampleState=&samples;
     create.pDepthStencilState=&depth_state; create.pColorBlendState=&blending; create.pDynamicState=&dynamic;
-    create.layout=kind==0?draw_pipeline_layout:kind==1?capture_pipeline_layout:kind==2?resolve_pipeline_layout:kind==3?composite_pipeline_layout:overlay_pipeline_layout;
+    create.layout=model?(base_kind==0?model_draw_pipeline_layout:model_capture_pipeline_layout):
+        kind==0?draw_pipeline_layout:kind==1?capture_pipeline_layout:kind==2?resolve_pipeline_layout:kind==3?composite_pipeline_layout:overlay_pipeline_layout;
     const auto started=std::chrono::steady_clock::now();
     VkPipeline result{};
     const auto status=vkCreateGraphicsPipelines(device,pipeline_cache,1,&create,nullptr,&result);
@@ -840,7 +940,7 @@ void VulkanRenderer::Impl::warm_pipelines() {
     };
     try {for(std::size_t offset=0;offset<recipes.size();offset+=stride) {
         std::array<std::uint32_t,18> k{};std::memcpy(k.data(),recipes.data()+offset,stride);
-        if(k[0]>4 || (k[1]!=VK_FORMAT_R8G8B8A8_UNORM && k[1]!=VK_FORMAT_B8G8R8A8_UNORM) || k[2]>=std::size(topologies) ||
+        if(k[0]>(model_vertex_stream::enabled()?6u:4u) || (k[1]!=VK_FORMAT_R8G8B8A8_UNORM && k[1]!=VK_FORMAT_B8G8R8A8_UNORM) || k[2]>=std::size(topologies) ||
             k[3]>1 || k[4]>=std::size(factors) || k[5]>=std::size(factors) || k[6]>=std::size(operations) ||
             k[7]>=std::size(factors) || k[8]>=std::size(factors) || k[9]>=std::size(operations) || k[10]>15 ||
             k[11]>1 || k[12]>1 || k[13]>7 || k[14]>2 || k[15]>1 || k[16]>1 || k[17]>1)continue;
@@ -950,18 +1050,30 @@ void VulkanRenderer::begin_frame(const NativePortFrameConfig& config) {
 }
 void VulkanRenderer::draw(const NativePortDrawPacket& packet,std::span<const NativePortVertex> vertices,
     std::span<const std::uint32_t> indices,NativePortPrimitiveTopology topology,std::uint64_t mesh,std::uint64_t texture,
-    NativePortPixelRect rect,std::span<const std::byte> constants,bool type_two) {
+    NativePortPixelRect rect,std::span<const std::byte> constants,bool type_two,const model_packet::Draw* model) {
     auto& p=*impl_; p.start();
     auto [set,offsets]=p.draw_descriptor(packet,texture?p.textures.at(texture):p.white,constants,type_two);
     VkBuffer vb{},ib{}; VkDeviceSize vo=0,io=0; unsigned vertex_count,index_count;
-    if(mesh) { const auto& source=p.meshes.at(mesh); vb=source.vertices.buffer; ib=source.indices.buffer;
+    if(model){
+        if(!model_vertex_stream::enabled() || !model->valid() || mesh)throw std::logic_error("vulkan-model-contract");
+        const auto source=p.model_topology(*model);
+        vb=source.vertices;ib=source.indices;vo=source.vertex_offset;io=source.index_offset;
+        vertex_count=unsigned(model->geometry->corners.size());index_count=unsigned(model->geometry->indices.size());
+    }else if(mesh) { const auto& source=p.meshes.at(mesh); vb=source.vertices.buffer; ib=source.indices.buffer;
         vertex_count=source.vertex_count; index_count=source.index_count; }
     else { std::tie(vb,vo)=p.upload(std::as_bytes(vertices)); vertex_count=unsigned(vertices.size()); index_count=unsigned(indices.size());
         if(index_count) std::tie(ib,io)=p.upload(std::as_bytes(indices),4); }
     if(!p.rendering) p.begin_render(type_two?nullptr:&p.working,&p.depth);
     p.viewport(rect);
-    p.bind_pipeline(p.pipeline(packet,topology,type_two?1:0,p.working.format));
-    vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,type_two?p.capture_pipeline_layout:p.draw_pipeline_layout,0,1,&set,unsigned(offsets.size()),offsets.data());
+    p.bind_pipeline(p.pipeline(packet,topology,model?(type_two?6:5):(type_two?1:0),p.working.format));
+    const auto layout=model?(type_two?p.model_capture_pipeline_layout:p.model_draw_pipeline_layout):
+        (type_two?p.capture_pipeline_layout:p.draw_pipeline_layout);
+    vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,unsigned(offsets.size()),offsets.data());
+    if(model){
+        const auto [model_set,model_offsets]=p.model_descriptor(*model);
+        vkCmdBindDescriptorSets(p.command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,1,1,&model_set,unsigned(model_offsets.size()),model_offsets.data());
+        model_vertex_stream::gpu_draws.fetch_add(1,std::memory_order_relaxed);
+    }
     vkCmdBindVertexBuffers(p.command,0,1,&vb,&vo);
     if(index_count) { vkCmdBindIndexBuffer(p.command,ib,io,VK_INDEX_TYPE_UINT32); vkCmdDrawIndexed(p.command,index_count,1,0,0,0); }
     else vkCmdDraw(p.command,vertex_count,1,0,0);
@@ -1120,9 +1232,9 @@ void VulkanRenderer::Impl::cleanup() noexcept {
         destroy(type_fragments); destroy(type_status); destroy_swapchain();
         for(auto [_,sampler]:samplers) vkDestroySampler(device,sampler,nullptr);
         for(auto [_,pipeline]:pipelines) vkDestroyPipeline(device,pipeline,nullptr);
-        for(auto shader:{draw_vs,draw_ps,capture_ps,composite_vs,composite_ps,resolve_ps,overlay_ps}) if(shader) vkDestroyShaderModule(device,shader,nullptr);
-        for(auto layout:{draw_pipeline_layout,capture_pipeline_layout,resolve_pipeline_layout,composite_pipeline_layout,overlay_pipeline_layout}) if(layout) vkDestroyPipelineLayout(device,layout,nullptr);
-        for(auto layout:{draw_layout,capture_layout,resolve_layout,composite_layout,overlay_layout}) if(layout) vkDestroyDescriptorSetLayout(device,layout,nullptr);
+        for(auto shader:{draw_vs,draw_ps,capture_ps,composite_vs,composite_ps,resolve_ps,overlay_ps,model_vs}) if(shader) vkDestroyShaderModule(device,shader,nullptr);
+        for(auto layout:{draw_pipeline_layout,capture_pipeline_layout,resolve_pipeline_layout,composite_pipeline_layout,overlay_pipeline_layout,model_draw_pipeline_layout,model_capture_pipeline_layout}) if(layout) vkDestroyPipelineLayout(device,layout,nullptr);
+        for(auto layout:{draw_layout,capture_layout,resolve_layout,composite_layout,overlay_layout,model_layout}) if(layout) vkDestroyDescriptorSetLayout(device,layout,nullptr);
         if(pipeline_cache) vkDestroyPipelineCache(device,pipeline_cache,nullptr);
         vkDestroyDevice(device,nullptr);
     }

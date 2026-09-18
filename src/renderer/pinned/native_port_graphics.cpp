@@ -10,6 +10,7 @@
 #include "../../sonic_presentation.hpp"
 #include "../../sonic_render_completion.hpp"
 #include "../../sonic_model_packet.hpp"
+#include "../../sonic_model_vertex_stream.hpp"
 #include "../../sonic_internal_diagnostics.hpp"
 #include "../sonic_motion.hpp"
 
@@ -1928,7 +1929,23 @@ class NativePortGraphicsBackend final {
         saturating_increment(snapshot_.begun_frames);
     }
 
-    void draw(const NativePortDrawPacket& packet) {
+    [[nodiscard]] bool accepts_model_vertex_stream(const NativePortDrawPacket& packet,
+        const sonic::model_packet::Draw& model) const noexcept {
+        return vulkan_ && sonic::model_vertex_stream::enabled() && model.valid() &&
+            !sonic::diagnostics::runtime_checks_enabled() && !drawstream_enabled_ &&
+            graphics_diagnostic_mode_==NativePortGraphicsDiagnosticMode::Off &&
+            !packet.mesh && packet.vertices.empty() && packet.indices.empty() &&
+            packet.viewport==NativePortViewportTarget::Game &&
+            packet.vertex_space==NativePortVertexSpace::ObjectHomogeneous &&
+            packet.topology==NativePortPrimitiveTopology::TriangleList &&
+            packet.rasterizer.shading==NativePortShadingMode::Smooth &&
+            packet.rasterizer.small_triangle_area_threshold==0.0f &&
+            model.geometry->corners.size()<=config_.maximum_transient_vertices &&
+            model.geometry->indices.size()<=config_.maximum_transient_indices;
+    }
+
+    void draw(const NativePortDrawPacket& packet,
+              const sonic::model_packet::Draw* model=nullptr) {
         require_owner_thread();
         const bool type2 = packet.translucency ==
             NativePortTranslucencyPolicy::Type2AutoSorted;
@@ -1969,11 +1986,12 @@ class NativePortGraphicsBackend final {
             }
             flush_type2_translucency();
         }
-        draw_immediate(packet, type2);
+        draw_immediate(packet, type2, model);
     }
 
     void draw_immediate(const NativePortDrawPacket& packet,
-                        const bool type2_gather) {
+                        const bool type2_gather,
+                        const sonic::model_packet::Draw* model=nullptr) {
         require_owner_thread();
         try {
         if (!frame_open_)
@@ -1982,6 +2000,8 @@ class NativePortGraphicsBackend final {
                                     ? &resolve_mesh(packet.mesh)
                                     : nullptr;
         validate_draw(packet, mesh_slot);
+        if(model && !accepts_model_vertex_stream(packet,*model))
+            fail(NativePortGraphicsFailure::InvalidDraw,0u,"draw-model-stream-contract");
         const auto* const texture_slot = packet.texture
             ? &resolve_texture(packet.texture)
             : nullptr;
@@ -2010,7 +2030,13 @@ class NativePortGraphicsBackend final {
         auto indices = packet.indices;
         auto topology = packet.topology;
         GeometryPreprocessStats preprocess_stats;
-        if (mesh_slot != nullptr) {
+        if(model){
+            // Sealed Geometry checked topology, UVs and every index at capture;
+            // Attributes checked every source point/normal. The queue retains
+            // both immutable owners through this command and its GPU upload.
+            // Pipeline/texture/batch validation above still executes normally.
+            indices=model->geometry->indices;
+        }else if (mesh_slot != nullptr) {
             topology = mesh_slot->gpu_topology;
             require_geometry_capabilities(packet, mesh_slot->capabilities);
         } else {
@@ -2311,8 +2337,8 @@ if (!vulkan_) {
             vulkan_->draw(packet, vertices, indices, topology,
                 mesh_slot ? mesh_slot->vulkan_mesh : 0,
                 texture_slot ? texture_slot->vulkan_texture : 0, viewport_rect,
-                std::as_bytes(std::span(&constants, 1)), type2_gather);
-            if (!mesh_slot) {
+                std::as_bytes(std::span(&constants, 1)), type2_gather, model);
+            if (!mesh_slot && !model) {
                 const auto uploaded = vertices.size_bytes() + indices.size_bytes();
                 saturating_add(snapshot_.uploaded_bytes, uploaded);
                 saturating_add(snapshot_.transient_geometry_uploaded_bytes, uploaded);
@@ -8955,12 +8981,13 @@ class NativePortGraphicsDevice::Impl final {
     }
 
     void draw_backend(NativePortGraphicsBackend& backend,
-                      const NativePortDrawPacket& source) {
+                      const NativePortDrawPacket& source,
+                      const sonic::model_packet::Draw* model=nullptr) {
         auto packet = source;
         if (packet.texture)
             packet.texture = resolve_texture_handle(packet.texture);
         if (packet.mesh) packet.mesh = resolve_mesh_handle(packet.mesh);
-        backend.draw(packet);
+        backend.draw(packet,model);
     }
 
     // Resource mutations cannot overtake deferred draws that still reference
@@ -9081,6 +9108,11 @@ class NativePortGraphicsDevice::Impl final {
         }
         case NativePortGraphicsCommandKind::Draw: {
             auto packet=std::get<NativePortGraphicsDrawView>(command.payload).packet;
+            if(model && !sonic::presentation::Settings::interpolation &&
+               backend.accepts_model_vertex_stream(packet,*model)){
+                draw_backend(backend,packet,model);
+                return false;
+            }
             if(model){
                 sonic::model_packet::expand(*model,model_vertices_);
                 packet.vertices=model_vertices_;packet.indices=model->geometry->indices;
@@ -9972,6 +10004,43 @@ DrawVertexOutput draw_vertex_main(DrawVertexInput input) {
 
 Texture2D draw_texture : register(t0);
 SamplerState draw_sampler : register(s0);
+
+// Immutable authored corners gather one current attribute record per point.
+// Colors have already been decoded under the producer's original host mode;
+// the shader does no palette or guest-CPU arithmetic.
+#ifdef SONIC_VULKAN_MODEL_STREAM
+[[vk::binding(0,1)]]
+#endif
+cbuffer ModelStreamConstants : register(b3) {
+    uint4 model_stream_flags;
+    float4 model_stream_white;
+};
+#ifdef SONIC_VULKAN_MODEL_STREAM
+[[vk::binding(1,1)]]
+StructuredBuffer<float4> model_stream_points : register(t10);
+#else
+Buffer<float4> model_stream_points : register(t10);
+#endif
+struct ModelStreamInput {
+    uint point_index : MODEL_POINT;
+    float2 texcoord : TEXCOORD0;
+};
+DrawVertexOutput draw_model_vertex_main(ModelStreamInput source) {
+    const uint base = model_stream_flags.w + source.point_index * 4u;
+    const bool ignore_light = model_stream_flags.x != 0u;
+    DrawVertexInput input;
+    input.position = model_stream_points[base].xyz;
+    input.position_w = 1.0;
+    input.texcoord = source.texcoord;
+    input.color = ignore_light ? model_stream_white : model_stream_points[base + 2u];
+    input.normal = ignore_light ? float3(0.0, 0.0, 1.0) : model_stream_points[base + 1u].xyz;
+    input.secondary_color = model_stream_flags.y != 0u && !ignore_light
+        ? model_stream_points[base + 3u] : float4(0.0, 0.0, 0.0, 0.0);
+    input.fog_coordinate = model_stream_flags.y != 0u && model_stream_flags.z != 0u
+        ? input.secondary_color.a : 0.0;
+    input.depth_coordinate = 0.0;
+    return draw_vertex_main(input);
+}
 
 bool alpha_test_passes(float alpha, uint operation, float reference) {
     if (operation == 0u) return false;

@@ -12,11 +12,22 @@
 #include <xmmintrin.h>
 
 namespace sonic::model_packet {
+inline constexpr std::size_t stream_point_bytes=64u,stream_constants_bytes=32u;
+inline bool vertex_stream_enabled() noexcept {
+    static const bool value=[] {
+        const auto* p=std::getenv("SARECOMP_NATIVE_MODEL_VERTEX_STREAM");
+        return p && std::string_view(p)=="1";
+    }();
+    return value;
+}
 // A port-local semantic submission. No guest address or producer scratch
 // survives capture. Queued draws retain their exact immutable generation.
 inline bool enabled() noexcept {
-    static const bool value=[] { const auto* p=std::getenv("SARECOMP_NATIVE_MODEL_PACKETS");
-        return p && std::string_view(p)=="1"; }();
+    static const bool value=[] {
+        const auto* p=std::getenv("SARECOMP_NATIVE_MODEL_PACKETS");
+        if(p)return std::string_view(p)=="1";
+        return vertex_stream_enabled();
+    }();
     return value;
 }
 using Vec3=std::array<float,3>;
@@ -81,7 +92,15 @@ struct Draw {
     std::size_t retained_bytes() const noexcept {return sizeof(*this)+geometry->bytes()+attributes->bytes();}
     // Charge sharing conservatively so neither title nor render queue limits
     // can be bypassed by an empty serialized vertex span.
-    std::size_t budget_bytes() const noexcept {return std::max(expanded_bytes(),retained_bytes());}
+    std::size_t budget_bytes() const noexcept {
+        const auto retained=retained_bytes();
+        // Include the immutable host snapshot AND its worst-case GPU gather
+        // upload. Shared sources are deliberately charged again per command.
+        const auto stream=vertex_stream_enabled()?retained+
+            attributes->points.size()*stream_point_bytes+stream_constants_bytes+
+            geometry->corners.size()*sizeof(Corner)+geometry->indices.size()*4u:retained;
+        return std::max(expanded_bytes(),stream);
+    }
 };
 inline void expand(const Draw& draw,std::vector<katana::runtime::NativePortVertex>& output) {
     if(!draw.valid())throw std::invalid_argument("model-packet-invalid");

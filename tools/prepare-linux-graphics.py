@@ -84,7 +84,7 @@ draw=method('draw_immediate')
 draw=draw.replace(section(draw,'        ID3D11Buffer* bound_vertex_buffer = nullptr;', '        const auto& current_layout = cached_layout_;'),'')
 draw=draw.replace(section(draw,'        if ((packet.fog.mode == NativePortFogMode::LookupTable ||','        constants.fog_parameters = {'),'')
 draw=remove_scope(draw,'if (!vulkan_ && (!draw_constants_valid_ ||')
-methods+=vulkan_only(draw)+method('draw')
+methods+=vulkan_only(draw)+method('draw')+method('accepts_model_vertex_stream')
 
 for name in ['begin_frame','complete_frame','present','completed_frame_ready','completed_image_available',
              'present_completed_image_on_deadline','abort_frame_after_command_failure','repeat_present',

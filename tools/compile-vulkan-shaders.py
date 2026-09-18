@@ -35,6 +35,7 @@ def main():
     work = args.output.parent / "vulkan-shaders"
     work.mkdir(parents=True, exist_ok=True)
     jobs = [("draw_vs", "", "draw_vertex_main", "vs"),
+            ("draw_model_vs", "", "draw_model_vertex_main", "vs"),
             ("draw_ps", "", "draw_pixel_main", "ps"),
             ("composite_vs", "", "composite_vertex_main", "vs"),
             ("composite_ps", "", "composite_pixel_main", "ps"),
@@ -45,7 +46,7 @@ def main():
     for name, family, entry, stage in jobs:
         hlsl = work / (name + ".hlsl")
         code = shaders[f"native_graphics{family}_shader_source"]
-        if name == "draw_vs":
+        if name in ("draw_vs", "draw_model_vs"):
             # D3D's fixed one-pixel point size is an explicit SPIR-V builtin.
             code = replace_once(code, "struct DrawVertexOutput {",
                 'struct DrawVertexOutput {\n    [[vk::builtin("PointSize")]] float point_size : PSIZE;')
@@ -71,6 +72,8 @@ def main():
                    "-T", stage + "_6_0", "-E", entry, "-Fo", str(spv), str(hlsl)]
         if stage == "vs":
             command += ["-fvk-invert-y"]
+        if name == "draw_model_vs":
+            command += ["-D", "SONIC_VULKAN_MODEL_STREAM=1"]
         if family == "_type_two_resolve":
             command += ["-D", "NATIVE_TYPE_TWO_SORT_CAPACITY=" + name.rsplit("_", 1)[1]]
         subprocess.run(command, check=True)

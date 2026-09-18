@@ -2,6 +2,7 @@
 #include "katana/runtime/native_port_graphics.hpp"
 #include <memory>
 #include <vector>
+namespace sonic::model_packet {struct Draw;}
 
 namespace sonic::rendering {
 // GPU half of the port-local backend. The pinned command/validation/window
@@ -21,7 +22,8 @@ public:
     void draw(const katana::runtime::NativePortDrawPacket&, std::span<const katana::runtime::NativePortVertex>,
               std::span<const std::uint32_t>, katana::runtime::NativePortPrimitiveTopology,
               std::uint64_t mesh, std::uint64_t texture, katana::runtime::NativePortPixelRect,
-              std::span<const std::byte> constants, bool type_two);
+              std::span<const std::byte> constants, bool type_two,
+              const sonic::model_packet::Draw* model=nullptr);
     void begin_type_two();
     std::uint32_t type_two_node_capacity()const noexcept;
     void resolve_type_two();

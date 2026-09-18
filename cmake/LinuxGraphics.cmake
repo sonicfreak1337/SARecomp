@@ -1,4 +1,8 @@
 set(sonic_linux_graphics_dir "${CMAKE_BINARY_DIR}/generated/linux-graphics")
+add_executable(sonic-linux-model-vertex-stream-tests EXCLUDE_FROM_ALL "${SONIC_ROOT}/tools/test_model_vertex_stream.cpp")
+target_include_directories(sonic-linux-model-vertex-stream-tests PRIVATE "${SONIC_ROOT}/src")
+target_compile_options(sonic-linux-model-vertex-stream-tests PRIVATE -O2 -g0 -ffp-contract=off)
+target_link_libraries(sonic-linux-model-vertex-stream-tests PRIVATE sonic_linux_sdk_headers)
 set(sonic_linux_graphics_shared)
 foreach(part IN ITEMS constants types methods members)
     list(APPEND sonic_linux_graphics_shared "${sonic_linux_graphics_dir}/linux_graphics_${part}.inc")
