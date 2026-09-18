@@ -120,7 +120,7 @@ for the source disc files, temporary extraction and update backups.
   stable 60 FPS across the whole game is not yet established.
 - **Widescreen cutscenes:** some scenes and effects can expose framing issues
   outside the original 4:3 area. This is confirmed in **Tails' first cutscene**.
-  Original 4:3 remains available as a workaround.
+  Original 4:3 remains available as a workaround, but the game will still work, it just looks a bit wonky.
 - **Stability:** bugs and isolated crashes may still occur. Please report
   reproducible problems so they can be investigated.
 
