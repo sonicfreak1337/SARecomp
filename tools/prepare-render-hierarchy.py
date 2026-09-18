@@ -11,6 +11,7 @@ import prepare_motion_sampling as motion
 spec=importlib.util.spec_from_file_location('render_world',Path(__file__).with_name('prepare-collision-world.py'))
 world=importlib.util.module_from_spec(spec);spec.loader.exec_module(world)
 ENTRY=0x8C040784
+LAND_ROWS=json.loads(Path(__file__).with_name('land-render-owners.json').read_text())
 # Exact lexical HostFpuExecutionEpoch scopes of the authenticated retained AOT.
 # Endpoints are exclusive. Adjacent scopes must stay separate: restoring host
 # flags/rounding at their boundary is observable by the following FPU helper.
@@ -78,6 +79,9 @@ OWNERS=(
  ('rotate_yxz_register',0x8C639F38,0x8C639F38,0x8C63A108),
 )
 
+OWNERS+=tuple((r['name'],r['entry'],r['begin'],r['end']) for r in LAND_ROWS)
+EPOCHS.update({r['entry']:tuple(map(tuple,r['epochs'])) for r in LAND_ROWS})
+
 def inspect(ram,entry,begin,end):
     pending=[entry];ins={};delays=set();calls=[]
     word=lambda pc:struct.unpack_from('<H',ram,pc-shared.BASE)[0]
@@ -106,7 +110,14 @@ def inspect(ram,entry,begin,end):
 
 def emit_simple(pc,op,ram,restart=None):
     n,m=(op>>8)&15,(op>>4)&15;r,s=f'cpu.r[{n}]',f'cpu.r[{m}]'
-    if op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
+    if 0x8C02E7F4<=pc<=0x8C02E802 and op&0xF00F==0xF009:
+        # This land matrix restore switches SZ just like the SDK pop owner.
+        # Odd encoded registers select pairs in the opposite bank in SZ mode.
+        body=f'fload({restart or f"RestartPoint{{0x{pc:08X}u}}"},{n}u,{s});{s}+=(cpu.fpscr&fpscr_sz_mask)?8u:4u;'
+    elif op&0xF00F==0x2000:body=f'store8({restart or f"RestartPoint{{0x{pc:08X}u}}"},{r},std::uint8_t({s}),CodeWriteSource::Cpu);'
+    elif op>>8==0xC2:body=f'store({restart or f"RestartPoint{{0x{pc:08X}u}}"},cpu.gbr+{(op&255)*4}u,cpu.r[0],CodeWriteSource::Cpu);'
+    elif op&0xF0FF==0x401E:body=f'cpu.gbr={r};'
+    elif op&0xF00F==0x600E:body=f'{r}=signed8(std::uint8_t({s}));'
     elif op&0xF00F==0x200B:body=f'{r}|={s};'
     elif op&0xF00F==0x3002:body=f'cpu.t={r}>={s};'
     elif op&0xF00F==0x3006:body=f'cpu.t={r}>{s};'
@@ -155,7 +166,7 @@ def emit_body(ram,entry,instructions):
         delay=lambda at:emit_simple(pc+2,word(pc+2),ram,at)
         if op==0xB:lines+=['const auto target=cpu.pr;',delay(at),f'return_site=0x{pc:08X}u;cpu.pc=target;return;']
         elif op&0xF0FF==0x402B:
-            lines+=[f'const auto target=cpu.r[{(op>>8)&15}];',delay(at),'call(target,true);return;']
+            lines+=[f'const auto target=cpu.r[{(op>>8)&15}];',delay(at),f'call(target,true,0x{pc:08X}u);return_site=0x{pc:08X}u;return;']
         elif high==0xA:lines+=[delay(at),f'goto {label(pc+4+2*shared.signed(op&4095,12))};']
         elif upper in (0x89,0x8B,0x8D,0x8F):
             delayed=upper in (0x8D,0x8F);condition='cpu.t' if upper in (0x89,0x8D) else '!cpu.t'
@@ -226,7 +237,8 @@ def main():
     proof.append('for(const auto& s:identities)for(auto p=(s.address&0xFFFFFFu)>>12u;p<=((s.address&0xFFFFFFu)+s.bytes.size()-1u)>>12u;++p)out[p]=true;return out;}();')
     (args.output/'hierarchy-identities.inc').write_text('\n'.join(proof)+'\n',encoding='ascii',newline='\n')
     (args.output/'hierarchy-switch.inc').write_text('\n'.join(f'case 0x{entry:08X}u: {{\n#include "hierarchy-{name}.inc"\n}}' for name,entry,_,_ in OWNERS)+'\n')
-    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS)+'\nreturn true;\n')
+    land={r['entry'] for r in LAND_ROWS}
+    (args.output/'hierarchy-members.inc').write_text('\n'.join(f'case 0x{entry:08X}u:' for _,entry,_,_ in OWNERS if entry not in land)+'\nreturn true;\n'+'\n'.join(f'case 0x{entry:08X}u:' for entry in sorted(land))+'\nreturn land_enabled();\n')
     (args.output/'hierarchy-inventory.json').write_text(json.dumps(dict(schema='sarecomp-render-hierarchy-v1',ram_sha256=shared.RAM_SHA,owners=reports,source_spans=[dict(address=f'{a:08X}',size=n,sha256=hashlib.sha256(ram[a-shared.BASE:a-shared.BASE+n]).hexdigest()) for a,n in merged]),indent=2)+'\n')
     print(f'SONIC_RENDER_HIERARCHY_READY owners={len(reports)} instructions={sum(x["instructions"] for x in reports)}')
 if __name__=='__main__':main()

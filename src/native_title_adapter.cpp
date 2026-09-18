@@ -92,6 +92,7 @@
 namespace katana_port_generated::runtime_dispatch_detail {
 extern thread_local katana::runtime::NativePortAotServices* active_services;
 extern thread_local katana::runtime::BlockEndKind active_exit_kind;
+extern thread_local katana::runtime::BlockAddress active_exit_source;
 }
 
 #include <algorithm>
@@ -18168,6 +18169,7 @@ void emit_sonic_native_gameplay_probe_sample(
               << " render_hierarchy_resumes=" << sonic::render_hierarchy::counts.resumes
               << " rigid_hierarchy_calls=" << sonic::render_hierarchy::counts.rigid_calls
               << " morph_hierarchy_calls=" << sonic::render_hierarchy::counts.morph_calls
+              << " land_render_calls=" << sonic::render_hierarchy::counts.land_calls
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -38652,12 +38654,18 @@ bool sonic_render_hierarchy_resume(void* opaque,katana::runtime::CpuState& cpu,s
        !services.can_chain_executable_block(owner) || !retained_source_matches(cpu,services.immutable_write_guard()))return false;
     struct Depth {Depth(){++resume_depth;++sonic_native_host_service_depth;}~Depth(){--resume_depth;--sonic_native_host_service_depth;}} depth;
     bool handled=resume_original(cpu,owner);
+    const auto retained_exit=katana_port_generated::runtime_dispatch_detail::active_exit_kind;
+    const auto retained_source=katana_port_generated::runtime_dispatch_detail::active_exit_source;
     // Retained dynamic tails publish the target for the outer dispatcher.
     // Finish that boundary here, with the same restored PR and callback path.
     if(handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None &&
        cpu.pc!=continuation && cpu.pr==continuation &&
        katana_port_generated::runtime_dispatch_detail::active_exit_kind==katana::runtime::BlockEndKind::DynamicBranch)
         handled=sonic_object_activation_call(&context,cpu,cpu.pc);
+    if(handled && !cpu.trap_pending && cpu.pc==continuation &&
+       (retained_exit==katana::runtime::BlockEndKind::Return ||
+        retained_exit==katana::runtime::BlockEndKind::DynamicBranch))
+        return_site=retained_source.virtual_address;
     return handled && !cpu.trap_pending && context.stop_reason==katana::runtime::NativePortStopReason::None;
 }
 }

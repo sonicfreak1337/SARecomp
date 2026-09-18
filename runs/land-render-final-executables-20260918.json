@@ -1,0 +1,21 @@
+{
+  "allocated_sections_identical": true,
+  "sections": 27,
+  "files": [
+    {
+      "path": "build-linux/game",
+      "bytes": 1757316784,
+      "sha256": "91d5952b95ee10ced36bb2b003ab19a251803e76860e0b912c0e26838270aa43"
+    },
+    {
+      "path": "out/land-render-final-linux-20260918/game",
+      "bytes": 1741485208,
+      "sha256": "a59a814b9f074036b02ed85ed5a195c4faac7c65d1a4323c83f299fff03ee2cb"
+    },
+    {
+      "path": "out/model-submission-windows-20260918/game.exe",
+      "bytes": 1926028288,
+      "sha256": "dc687110504d172dc3bea71ffa61e8c3c4b4c56e1c0180137e46f2216b3f4da6"
+    }
+  ]
+}

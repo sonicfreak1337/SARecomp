@@ -12,9 +12,11 @@ def sha(data):return hashlib.sha256(data).hexdigest()
 UNITS={'unit-v8C038802-8C03FF90-0329df60636b0242.cpp': '6e712b4cd2dc88ca28782efc79268ac7a49edac77bcc7cb1d4d38b31d66f4e4b', 'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp': '9a8b8e51de23c7982413a8d2d15ba783be133a0b77a406d656a2769da510e785', 'unit-v8C638FF0-8C639E9C-df982d963eeb3342.cpp': '79ecc1ebbdf3e06c517d5edcc42850c08eb50c7dfe6fe4359c59b0e626472558', 'unit-v8C639F38-8C63B05C-e3ea66f80473641e.cpp': '8716f427e7212908572f5b03d060864aa455c94458a55157135268b2c040b852'}
 UNITS['unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp']='b00ee65998295accfadc0e20866953410c3c42872670f0dae9cc66025c1c943b'
 UNITS['unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp']='c34ed098e7625b5a432263ebf286ae486cb86b534dad0cdb97d4991f2253e45a'
+UNITS.update({r['unit']:r['unit_sha'] for r in author.LAND_ROWS})
 ROOT_UNITS={'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp':0x8C040784,
             'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E,
-            'unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp':0x8C036BC0}
+            'unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp':0x8C036BC0,
+            'unit-v8C050BE4-8C051E00-44b823a416a623f6.cpp':0x8C0519C0}
 def verify_original_epochs(text,entry):
     # Match lexical scopes in the authenticated AOT, keeping adjacent epochs
     # distinct. Guest annotations come from the unmasked original text.
@@ -41,7 +43,7 @@ def local_resumes(text,ram,owner):
     _,entry,begin,end=owner
     verify_original_epochs(text,entry)
     instructions,delays,calls=author.inspect(ram,entry,begin,end)
-    memory=lambda line:re.search(r'\b(?:load|load16|load8|store|store16|fload|fstore)\(',line) is not None
+    memory=lambda line:re.search(r'\b(?:load|load16|load8|store|store16|store8|fload|fstore)\(',line) is not None
     restart={entry}
     for pc,op in instructions.items():
         if pc+2 in delays:
@@ -149,6 +151,8 @@ def main():
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::rigid_enabled()')
             if public_entry==0x8C040880:
                 injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::morph_enabled()')
+            if public_entry==0x8C0519C0:
+                injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::land_enabled()')
             out=out[:boundary]+injection+out[boundary:]
         out='#include "sonic_render_hierarchy.hpp"\n'+out.replace('#include "../include/','#include "')
     else:
@@ -167,8 +171,8 @@ def main():
         out=prefix+'\n'.join(definitions.values())
         for entry in owners:out=out.replace(f'fn_{entry:08X}_runtime_entry',f'hierarchy_original_{entry:08X}')
         declarations='\n'.join(f'BlockExit hierarchy_original_{e:08X}(CpuState&,BlockExecutionContext&);' for e in owners)
-        declarations+='\nBlockExit fn_8C037098_runtime_entry(CpuState&,BlockExecutionContext&);'
-        declarations+='\nBlockExit fn_8C03700C_runtime_entry(CpuState&,BlockExecutionContext&);'
+        foreign=sorted(set(re.findall(r'fn_([0-9A-F]{8})_runtime_entry',out)))
+        declarations+='\n'+'\n'.join(f'BlockExit fn_{e}_runtime_entry(CpuState&,BlockExecutionContext&);' for e in foreign)
         out=out.replace(prefix,prefix+declarations+'\n',1)+'\n}\n'
         out='#include "sonic_render_hierarchy.hpp"\n'+out
         out+='namespace sonic::render_hierarchy {\nbool resume_original(katana::runtime::CpuState& cpu,std::uint32_t owner) {\nkatana::runtime::BlockExecutionContext block;\nswitch(owner) {\n'

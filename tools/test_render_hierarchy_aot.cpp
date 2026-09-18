@@ -7,7 +7,10 @@
 #include <filesystem>
 #include <map>
 #include <regex>
-namespace katana_port_generated::runtime_dispatch_detail {extern thread_local katana::runtime::BlockEndKind active_exit_kind;}
+namespace katana_port_generated::runtime_dispatch_detail {
+extern thread_local katana::runtime::BlockEndKind active_exit_kind;
+extern thread_local katana::runtime::BlockAddress active_exit_source;
+}
 namespace {
 Fixture* active_fixture{};
 std::set<std::uint32_t> original_entries;
@@ -15,7 +18,7 @@ std::map<std::uint32_t,std::uint32_t> original_owners;
 bool original_entry(std::uint32_t pc) noexcept{return original_entries.contains(pc);}
 void load_original_entries(const std::filesystem::path& root){
     const std::regex row(R"(\{0x([A-F0-9]{8})u, &fn_([A-F0-9]{8})_runtime_entry, true, (?:true|false)\})");
-    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202951.cpp"}){
+    for(const auto* name:{"native-port-dispatch-shard-101379.cpp","native-port-dispatch-shard-202760.cpp","native-port-dispatch-shard-202762.cpp","native-port-dispatch-shard-202951.cpp"}){
         std::ifstream f(root/name);const std::string text{std::istreambuf_iterator<char>(f),{}};
         require(!text.empty(),"original entry shard missing");
         for(auto i=std::sregex_iterator(text.begin(),text.end(),row);i!=std::sregex_iterator();++i)
@@ -34,7 +37,9 @@ struct Host final:NativePortHostServices {
     void present_frame(std::uint64_t)override{}
     std::uint64_t presented_frames()const noexcept override{return 0;}
 } host;
+void (*external_override)(CpuState&,std::uint32_t){};
 void external(CpuState& c,std::uint32_t target){
+    if(external_override){external_override(c,target);return;}
     c.pc=target;
     if(Fixture::external(target)){require(Fixture::invoke(active_fixture,c,target),"AOT child failed");return;}
     const auto end=c.pr;
@@ -43,9 +48,14 @@ void external(CpuState& c,std::uint32_t target){
 bool resume(void*,CpuState& c,std::uint32_t owner,std::uint32_t continuation){
     struct Depth{Depth(){++family::resume_depth;}~Depth(){--family::resume_depth;}} depth;
     const bool handled=family::resume_original(c,owner);
+    const auto retained_exit=katana_port_generated::runtime_dispatch_detail::active_exit_kind;
+    const auto retained_source=katana_port_generated::runtime_dispatch_detail::active_exit_source;
     if(handled && !c.trap_pending && c.pc!=continuation && c.pr==continuation &&
        katana_port_generated::runtime_dispatch_detail::active_exit_kind==BlockEndKind::DynamicBranch)
         external(c,c.pc);
+    if(handled && !c.trap_pending && c.pc==continuation &&
+       (retained_exit==BlockEndKind::Return || retained_exit==BlockEndKind::DynamicBranch))
+        family::return_site=retained_source.virtual_address;
     return handled && !c.trap_pending;
 }
 }
@@ -69,8 +79,15 @@ void exact_guarded_call(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t)
 void exact_guarded_jump(CpuState& c,std::uint32_t t,std::uint32_t){external(c,t);}
 BlockExit fn_8C037098_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C037098u);return {};}
 BlockExit fn_8C03700C_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x8C03700Cu);return {};}
+#define LAND_FOREIGN(e) BlockExit fn_##e##_runtime_entry(CpuState& c,BlockExecutionContext&){external(c,0x##e##u);return {};}
+LAND_FOREIGN(8C037108) LAND_FOREIGN(8C051A16) LAND_FOREIGN(8C051CC0) LAND_FOREIGN(8C052A00)
+LAND_FOREIGN(8C605CEC) LAND_FOREIGN(8C60ED30)
+#undef LAND_FOREIGN
 }
-int main(int argc,char** argv)try{
+#ifndef SARECOMP_HIERARCHY_AOT_TEST_ENTRY
+#define SARECOMP_HIERARCHY_AOT_TEST_ENTRY main
+#endif
+int SARECOMP_HIERARCHY_AOT_TEST_ENTRY(int argc,char** argv)try{
     require(argc==3 || (argc==4 && (std::string(argv[3])=="--rigid-only" || std::string(argv[3])=="--morph-only")),"render-hierarchy-aot-tests <original-ram> <original-code-root> [--rigid-only|--morph-only]");
     std::ifstream file(argv[1],std::ios::binary);const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};
     require(image.size()==0x1000000u,"RAM size");load_original_entries(argv[2]);unsigned cases=0;

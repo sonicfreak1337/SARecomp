@@ -32,6 +32,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     ../tools/prepare-collision-world-sdk-bridge.py
     sonic_render_hierarchy.hpp sonic_render_hierarchy.cpp
     ../tools/prepare-render-hierarchy.py ../tools/prepare-render-hierarchy-bridge.py
+    ../tools/land-render-owners.json
     sonic_model_math.hpp sonic_native_model_memory.hpp sonic_pose_blend.hpp sonic_pose_blend.cpp
     sonic_render_context.hpp sonic_render_context.cpp ../tools/prepare-render-context.py
     sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py

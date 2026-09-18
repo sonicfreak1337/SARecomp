@@ -79,6 +79,7 @@ p.add_argument('--native-object-activation', choices=('off','on','installed'), d
 p.add_argument('--native-movement', choices=('off','on'), default='off')
 p.add_argument('--native-movement-contact', choices=('off','on'), default='off')
 p.add_argument('--native-model-submission', choices=('off','on'), default='off')
+p.add_argument('--native-land-render', choices=('off','on'), default='off')
 p.add_argument('--native-collision-world', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-world-sdk', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-hierarchy', choices=('off','on','installed'), default='installed')
@@ -181,6 +182,7 @@ env.update({
     'SARECOMP_NATIVE_MOVEMENT':str(int(a.native_movement=='on')),
     'SARECOMP_NATIVE_MOVEMENT_CONTACT':str(int(a.native_movement_contact=='on')),
     'SARECOMP_NATIVE_MODEL_SUBMISSION':str(int(a.native_model_submission=='on')),
+    'SARECOMP_NATIVE_LAND_RENDER':str(int(a.native_land_render=='on')),
     'SARECOMP_NATIVE_COLLISION_WORLD':str(int(a.native_collision_world=='on')),
     'SARECOMP_NATIVE_WORLD_SDK':str(int(a.native_world_sdk=='on')),
     'SARECOMP_NATIVE_RENDER_HIERARCHY':str(int(a.native_render_hierarchy=='on')),
@@ -344,6 +346,7 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_movement':a.native_movement,
           'native_movement_contact':a.native_movement_contact,
           'native_model_submission':a.native_model_submission,
+          'native_land_render':a.native_land_render,
           'native_collision_world':a.native_collision_world,
           'native_world_sdk':a.native_world_sdk,
           'native_render_hierarchy':a.native_render_hierarchy,

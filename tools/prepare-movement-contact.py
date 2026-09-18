@@ -78,8 +78,9 @@ def main():
         for call in calls:
             if call.get('tail'):
                 pc=int(call['pc'],16)
-                marker=f'L{pc:08X}:';at=body.index(marker);stop=body.index('call(target,true);return;',at)
-                body=body[:stop]+f'call(target,true,0x{pc:08X}u);return_site=0x{pc:08X}u;return;'+body[stop+len('call(target,true);return;'):]
+                marker=f'L{pc:08X}:';at=body.index(marker)
+                expected=f'call(target,true,0x{pc:08X}u);return_site=0x{pc:08X}u;return;'
+                if expected not in body[at:]:raise ValueError('Missing original tail provenance')
         if entry==0x8C10CD1C:
             # This complete record-copy operation includes all short-copy
             # jump-table tails. Its source span authenticates those bytes too.

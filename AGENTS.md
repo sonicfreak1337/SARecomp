@@ -662,6 +662,27 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   callbacks; do not repeat small model-copy changes or the already-native
   collision-world producer. The original camera is also present in this profile.
 
+- The common land display/model composition is implemented, private-OFF;
+  see `docs/native-land-render-20260918.md`. Its twenty added owners connect
+  0519C0, static/animated lists, visible-list preparation, transforms and the
+  existing shared model/motion operation (74 total owners). Preserve live list
+  order and foreign callbacks. The matrix restore has temporary paired FMOVs;
+  the final bridge also preserves actual retained return/tail provenance.
+  Windows/Linux each pass 73 final CPU/RAM/AOT cases. The initial hidden Gamma
+  frame is byte exact; both game targets build incrementally. Initial/final
+  executable manifests are runs/land-render[-final]-executables-20260918.json;
+  the current Windows filename is reused. Staged final Linux is under
+  out/land-render-final-linux-20260918, SHA a59a814b9f074036b02ed85ed5a195c4faac7c65d1a4323c83f299fff03ee2cb.
+  The combined movement/contact + model + land OFF/ON Linux pairs use Original
+  timing and LP_NUM_THREADS=2. All 16 endpoints and 68 updates match, with no
+  resumes/revocations: Gamma execution CPU -9.48%, process CPU -2.96%, images
+  +5.56%; Sky Deck execution CPU -8.16%, process CPU -1.02%, images -0.45%.
+  These are combined VM measurements, not incremental percentages or Deck FPS.
+  Keep the groups OFF pending a broader throughput result. Do not rerun the
+  completed pairs/component suite unchanged or build another patch for this
+  result. Continue substantial connected native work; the September 18
+  delivered patch/installers, baseline and saves remain untouched.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.

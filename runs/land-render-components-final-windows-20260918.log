@@ -1,0 +1,74 @@
+land case=0 mode=0 calls=5
+land case=1 mode=0 calls=12
+land case=2 mode=0 calls=17
+land case=3 mode=0 calls=16
+land case=4 mode=0 calls=14
+land case=5 mode=0 calls=12
+land case=6 mode=0 calls=16
+land case=7 mode=0 calls=8
+land case=8 mode=0 calls=8
+land case=9 mode=0 calls=13
+land case=10 mode=0 calls=0
+land case=11 mode=0 calls=2
+land case=12 mode=0 calls=7
+land case=13 mode=0 calls=6
+land case=14 mode=0 calls=6
+land case=15 mode=0 calls=6
+land case=16 mode=0 calls=0
+land case=17 mode=0 calls=0
+land case=18 mode=0 calls=0
+land case=19 mode=0 calls=0
+land case=20 mode=0 calls=8
+land case=21 mode=0 calls=8
+land case=22 mode=0 calls=0
+land case=23 mode=0 calls=2
+land case=24 mode=0 calls=0
+land case=25 mode=0 calls=0
+land case=26 mode=0 calls=0
+land case=27 mode=0 calls=2
+land case=28 mode=0 calls=1
+land case=29 mode=0 calls=6
+land case=30 mode=0 calls=2
+land case=31 mode=0 calls=8
+land case=0 mode=1 calls=5
+land case=1 mode=1 calls=12
+land case=2 mode=1 calls=17
+land case=3 mode=1 calls=16
+land case=4 mode=1 calls=14
+land case=5 mode=1 calls=12
+land case=6 mode=1 calls=16
+land case=7 mode=1 calls=8
+land case=8 mode=1 calls=8
+land case=9 mode=1 calls=13
+land case=10 mode=1 calls=0
+land case=11 mode=1 calls=2
+land case=12 mode=1 calls=7
+land case=13 mode=1 calls=6
+land case=14 mode=1 calls=6
+land case=15 mode=1 calls=6
+land case=16 mode=1 calls=0
+land case=17 mode=1 calls=0
+land case=18 mode=1 calls=0
+land case=19 mode=1 calls=0
+land case=20 mode=1 calls=8
+land case=21 mode=1 calls=8
+land case=22 mode=1 calls=0
+land case=23 mode=1 calls=2
+land case=24 mode=1 calls=0
+land case=25 mode=1 calls=0
+land case=26 mode=1 calls=0
+land case=27 mode=1 calls=2
+land case=28 mode=1 calls=1
+land case=29 mode=1 calls=6
+land case=30 mode=1 calls=2
+land case=31 mode=1 calls=8
+land actual-aot=0 whole-original=1
+land actual-aot=5 whole-original=1
+land actual-aot=8 whole-original=1
+land actual-aot=9 whole-original=1
+land actual-aot=15 whole-original=0
+land actual-aot=19 whole-original=0
+land actual-aot=23 whole-original=1
+land actual-aot=26 whole-original=0
+land actual-aot=28 whole-original=0
+SONIC_LAND_RENDER_PASS cases=73

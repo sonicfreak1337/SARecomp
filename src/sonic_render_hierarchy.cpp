@@ -11,9 +11,8 @@ namespace sonic::render_hierarchy {
 namespace {
 using namespace katana::runtime;
 #include "hierarchy-identities.inc"
-static_assert(owner_sources.size()<64u);
 struct Interrupted {};
-struct ResumeOriginal {bool completed_tail{};};
+struct ResumeOriginal {bool completed_tail{};std::uint32_t tail_site{};};
 // Unsupported accesses resume before the instruction. Nothing device-visible
 // is performed inside the native transaction. A delay slot resumes its branch;
 // a call also restores PR so that the retained branch executes exactly once.
@@ -43,8 +42,8 @@ class Access {
     bool p0{};
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
-    std::uint64_t proven_sources{};
-    const bool share_models=model_pipeline::submission_enabled();
+    std::bitset<owner_sources.size()> proven_sources{};
+    const bool share_models=model_pipeline::submission_enabled() || land_enabled();
     model_pipeline::SharedOperation models{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
@@ -85,17 +84,16 @@ public:
     }
     bool authenticate_all() noexcept {
         for(unsigned i=0;i<identities.size();++i)if(!identity(i))return false;
-        proven_sources=(std::uint64_t{1}<<owner_sources.size())-1u;return true;
+        proven_sources.set();return true;
     }
     bool authenticate(std::uint32_t owner) noexcept {
         const auto i=source_owner_index(owner);
         if(i>=owner_sources.size())return false;
-        const auto bit=std::uint64_t{1}<<i;
-        if(proven_sources&bit)return true;
+        if(proven_sources[i])return true;
         for(const auto& s:owner_sources[i])
             if(!range(s.address,std::uint32_t(s.bytes.size())) ||
                std::memcmp(read.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return false;
-        proven_sources|=bit;return true;
+        proven_sources.set(i);return true;
     }
     // Native stores may never alter a proved body or literal, even if an
     // unusual module range set does not mark those bytes immutable. Real
@@ -161,7 +159,13 @@ public:
 
 struct Flow {unsigned depth{},backedges{};};
 #ifdef SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE
-#define HIERARCHY_SITE(pc) (visited[((pc)>=0x8C639000u?0xD000u+(pc)-0x8C639000u:(pc)-0x8C036000u)/2u]=true)
+constexpr std::size_t coverage_index(std::uint32_t pc) {
+    if(pc>=0x8C639000u)return (0xD000u+pc-0x8C639000u)/2u;
+    if(pc>=0x8C638000u)return (0xF0000u+pc-0x8C638000u)/2u;
+    if(pc>=0x8C036000u && pc<0x8C046000u)return (pc-0x8C036000u)/2u;
+    return (0x10000u+(pc&0xFFFFFFu))/2u;
+}
+#define HIERARCHY_SITE(pc) (visited[coverage_index(pc)]=true)
 #else
 #define HIERARCHY_SITE(pc) ((void)0)
 #endif
@@ -172,6 +176,7 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     const auto load8=[&](RestartPoint at,std::uint32_t address){return a.load<std::uint8_t>(address,at);};
     const auto store=[&](RestartPoint at,std::uint32_t address,std::uint32_t value,CodeWriteSource source){a.store<std::uint32_t>(address,value,at,source);};
     const auto store16=[&](RestartPoint at,std::uint32_t address,std::uint16_t value,CodeWriteSource source){a.store<std::uint16_t>(address,value,at,source);};
+    const auto store8=[&](RestartPoint at,std::uint32_t address,std::uint8_t value,CodeWriteSource source){a.store<std::uint8_t>(address,value,at,source);};
     const auto fload=[&](RestartPoint at,unsigned reg,std::uint32_t address){a.fload(at,reg,address);};
     const auto fstore=[&](RestartPoint at,std::uint32_t address,unsigned reg){a.fstore(at,address,reg);};
     const auto set_t=[&](bool value){cpu.t=value;};
@@ -179,11 +184,11 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     // including the original FSCA/FTRV groups. No owner-wide scope may leak
     // across an ungrouped helper, a callback or an original continuation.
     const auto backedge=[&](std::uint32_t pc){if(++flow.backedges>=100000u)a.restart(pc);};
-    const auto call=[&](std::uint32_t target,bool tail=false){
+    const auto call=[&](std::uint32_t target,bool tail=false,std::uint32_t tail_site=0){
         cpu.pc=target;const auto continuation=cpu.pr;
         if(contains(target)){
             ++counts.internal_calls;
-            if(!run(cpu,a,calls,flow,target))throw ResumeOriginal{tail};
+            if(!run(cpu,a,calls,flow,target))throw ResumeOriginal{tail,tail_site};
         }else{
             a.flush();
             auto* models=a.model_operation();
@@ -198,8 +203,8 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
                 if(models){if(model==model_pipeline::Outcome::Complete)++counts.model_revocations;models->revoke();}
                 if(model==model_pipeline::Outcome::Declined &&
                    (!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation))throw Interrupted{};
-                if(!a.refresh())throw ResumeOriginal{tail};
-                if(!local_sources_enabled() && !a.authenticate_all())throw ResumeOriginal{tail};
+                if(!a.refresh())throw ResumeOriginal{tail,tail_site};
+                if(!local_sources_enabled() && !a.authenticate_all())throw ResumeOriginal{tail,tail_site};
             }
         }
         if(cpu.pc!=continuation)throw Interrupted{};
@@ -228,6 +233,7 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
         // A normal call/access must still resume when the incoming PR happens
         // to alias its internal continuation. The original transfer kind matters.
         if(state.completed_tail && cpu.pc==continuation){
+            if(state.tail_site)return_site=state.tail_site;
             if(owner==entry)return_site=0x8C04082Cu;
             if(owner==blended_entry)return_site=0x8C041B0Au;
             if(owner==rigid_entry)return_site=0x8C036F0Eu;
@@ -281,6 +287,7 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     --counts.declined;++counts.calls;Flow flow;
     if(cpu.pc==rigid_entry)++counts.rigid_calls;
     if(cpu.pc==morph_entry)++counts.morph_calls;
+    if(cpu.pc==land_entry)++counts.land_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}
