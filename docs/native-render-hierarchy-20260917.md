@@ -106,4 +106,46 @@ Evidence: `runs/blended-hierarchy-windows-test-20260917-c.log`,
 declaration is included in the successful incremental revision-E game builds.
 The Linux executable is
 `597e6c542c3bab5d2b13f962167b565ff294852cb3014438a9a13ed64da315eb`.
-Gameplay/image qualification is pending; the combined group stays OFF.
+These revision-E measurements are superseded by the scoped-proof revision H below.
+
+## Shared admission across the complete group, revision H
+
+The 39 owners now reuse source proofs only inside one admitted operation.
+Every foreign callback revokes all proofs, including when it edits source RAM
+without increasing a memory-generation counter. The returning parent is checked
+again before its continuation. Native writes also reject code aliases even when
+the caller's immutable guard omits that source. The bounded 4-KiB stack proof is
+refreshed at those same boundaries; deeper or unusual accesses retain the full
+per-access checks. There is no cache surviving the root operation.
+
+Both platforms pass 310 exact CPU/RAM comparisons and 19 actual-AOT cases.
+The four new cases cover parent, blend and future SDK source mutation and a
+partially completed MOVCA store to an unguarded source. Revision E's Windows
+ON/OFF capture at frame 265 is byte-identical. The later combined Windows
+Original and Recompiled probes pass; native inverse-trig admission is a separate
+experiment and is not implied by promoting this render group.
+
+Short, quiet Linux pairs use exactly the same revision-H executable:
+`ebb6e1266dc8aa2895cfe2f2447de8f442ac7efa4f77e5f0cdcebf03a6488407`.
+All 16 endpoint fields and 68 updates match in each pair (images 5..25).
+Standalone pose-call counters are intentionally replaced by the inlined closure.
+
+| Scene | Execution CPU/update | Process CPU/update | New images/s |
+| --- | ---: | ---: | ---: |
+| Gamma Emerald Coast | -8.48% | -2.25% | -0.19% |
+| Knuckles Sky Deck | +0.37% | +0.77% | -1.20% |
+| Knuckles Lost World | -6.93% | -4.77% | +7.24% |
+
+Sky Deck is approximately neutral, not an improvement. The earlier revision-E
+Lost World measurement overlapped a host build and is excluded. Revision H's
+measurement window ended before the subsequent build began. These VM results
+do not predict Steam Deck FPS and are not additive with earlier percentages.
+
+The complete render group now defaults ON for both timing modes/platforms.
+Global native-CPU OFF, per-group OFF and diagnostics retain original owners.
+Other rejected experiments remain OFF. The published September 17 programs,
+baseline and user saves have not been replaced by this source promotion.
+
+Evidence: `runs/hierarchy-scoped-*-comparison-linux-20260918-h.json`,
+`runs/hierarchy-scoped-proofs-*-20260918-h.log`, and
+`runs/inverse-trig-gamma-*-windows-20260918-a/result.json`.

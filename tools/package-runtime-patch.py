@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--base', type=Path)
     parser.add_argument('--target', type=Path)
     parser.add_argument('--delta', type=Path)
+    parser.add_argument('--full-runtime', action='store_true',
+                        help='The compressed input contains the complete runtime, supporting different known installation bases')
     parser.add_argument('--patch-id')
     parser.add_argument('--supported-hash', action='append', default=[])
     parser.add_argument('--reference-backup', action='append', default=[])
@@ -57,7 +59,7 @@ def main():
         # admitted program already matches target, so the apply engine can
         # only enter its existing mode-switch path, never reconstruct a file.
         delta = None
-    custom = any((args.base,args.target,args.delta,args.patch_id,args.supported_hash,args.reference_backup,args.readme))
+    custom = any((args.base,args.target,args.delta,args.patch_id,args.supported_hash,args.reference_backup,args.readme,args.full_runtime))
     if custom:
         if policy_only:
             raise RuntimeError('A policy-only switch cannot include a binary update')
@@ -110,6 +112,7 @@ def main():
     if custom:
         metadata.append('patch-id\t'+args.patch_id)
         metadata += ['reference-backup\t'+name for name in args.reference_backup]
+        if args.full_runtime: metadata.append('encoding\tfull')
     (stage/'patch.tsv').write_text('\n'.join(metadata)+'\n', encoding='ascii', newline='\n')
     (stage/'README.txt').write_text(
         'Sonic Adventure Recompiled - v5 Performance Patch\n\n'
@@ -209,7 +212,8 @@ exit $?
     result = {'file': str(output), 'bytes': output.stat().st_size, 'sha256': digest(output),
               'base_sha256': expected_base, 'target_sha256': target_hash,
               'target_bytes': target.stat().st_size, 'archive_sha256': archive_hash}
-    if custom: result.update(patch_id=args.patch_id,supported_sha256=supported,reference_backups=args.reference_backup)
+    if custom: result.update(patch_id=args.patch_id,supported_sha256=supported,reference_backups=args.reference_backup,
+                             encoding='full' if args.full_runtime else 'delta')
     if policy_only: result.update(diagnostics=args.diagnostics,policy_only=True)
     output.with_suffix(output.suffix+'.json').write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps(result, indent=2))

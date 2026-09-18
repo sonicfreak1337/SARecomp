@@ -1,5 +1,6 @@
 foreach(hierarchy_unit IN ITEMS unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp
-        unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp)
+        unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp
+        unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp)
     set(hierarchy_bridge "${CMAKE_BINARY_DIR}/generated/render-hierarchy-bridge/${hierarchy_unit}")
     if(TARGET sonic_linux_guest)
         set(hierarchy_target sonic_linux_guest)

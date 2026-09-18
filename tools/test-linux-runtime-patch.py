@@ -181,6 +181,32 @@ def main():
         else:
             assert (sha(directory/'game'),sha(directory/'resources/payload-files.tsv'))==before
         records.append('cpu-update-diagnostics-reference-'+mode)
+    for mode in ('success','damaged','rollback'):
+        data=fixture('full-runtime-'+mode)
+        run,bundle,apps,dirs,target=data
+        # A fresh installer can have a stripped program with no prior delta
+        # reference. Admit only its known hash, then decode one full runtime.
+        shutil.rmtree(dirs[0]); directory=dirs[1]
+        compressed=bundle/'game.delta.zst';compressed.unlink()
+        subprocess.run([str(decoder),'-q',str(target),'-o',str(compressed)],check=True)
+        metadata=(bundle/'patch.tsv').read_text().splitlines()
+        metadata=[('delta\t'+sha(compressed)) if row.startswith('delta\t') else row for row in metadata]
+        (bundle/'patch.tsv').write_text('\n'.join(metadata)+'\npatch-id\tfull-runtime-test\nencoding\tfull\n')
+        before=(sha(directory/'game'),sha(directory/'resources/payload-files.tsv'))
+        env=None
+        if mode=='damaged':compressed.write_bytes(b'damaged complete program')
+        if mode=='rollback':
+            shim=run/'commands';shim.mkdir()
+            (shim/'mv').write_text('#!/bin/sh\ncount=0\n[ ! -f "$SARECOMP_PATCH_TEST_COUNT" ] || count=$(cat "$SARECOMP_PATCH_TEST_COUNT")\ncount=$((count+1))\nprintf "%s" "$count" > "$SARECOMP_PATCH_TEST_COUNT"\n[ "$count" -ne 2 ] || exit 42\nexec /usr/bin/mv "$@"\n')
+            (shim/'mv').chmod(0o755)
+            env=dict(os.environ,PATH=str(shim)+':'+os.environ['PATH'],SARECOMP_PATCH_TEST_COUNT=str(run/'rename-count'))
+        apply(data,mode=='success',env)
+        if mode=='success':
+            assert sha(directory/'game')==sha(target)
+            assert sha(directory/'game.pre-full-runtime-test')==before[0]
+            apply(data,True)
+        else:assert (sha(directory/'game'),sha(directory/'resources/payload-files.tsv'))==before
+        records.append('full-runtime-without-delta-reference-'+mode)
     (root/'result.json').write_text(json.dumps({'passed':True,'checks':records},indent=2)+'\n')
     print('SONIC_RUNTIME_PATCH_TESTS_OK '+json.dumps(records))
 

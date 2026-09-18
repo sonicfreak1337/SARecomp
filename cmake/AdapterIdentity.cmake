@@ -34,6 +34,7 @@ set(components native_title_adapter.cpp sonic_corner_indices.hpp sonic_private_s
     sonic_scalar_write_view.hpp sonic_native_cpu_policy.hpp ../tools/prepare-scalar-writes.py
     sonic_mesh_plan.hpp sonic_mesh_plan.cpp sonic_model_packet.hpp
     sonic_atan_math.hpp sonic_atan_math.cpp
+    ../tools/prepare-inverse-trig.py ../tools/prepare-inverse-trig-bridge.py
     sonic_amy_hammer_effect.hpp sonic_amy_hammer_effect.cpp
     sonic_descriptor_index.hpp sonic_transition_task_graph.hpp sonic_contour.hpp
     sonic_qsound_reverb_medium_program.inc sonic_native_sdk_texture_release_plan.hpp sonic_texture_sentinel.hpp

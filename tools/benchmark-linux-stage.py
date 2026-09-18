@@ -79,6 +79,12 @@ p.add_argument('--native-movement', choices=('off','on'), default='off')
 p.add_argument('--native-collision-world', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-world-sdk', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-hierarchy', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-render-local-proofs', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-render-root-proofs', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-inverse-trig', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-inverse-memory', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-rigid-hierarchy', choices=('off','on','installed'), default='installed')
+p.add_argument('--native-morph-hierarchy', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-closed-memory', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-render-context', choices=('off','on','installed'), default='installed')
 p.add_argument('--native-palette-batch', choices=('off','on','installed'), default='installed')
@@ -172,6 +178,12 @@ env.update({
     'SARECOMP_NATIVE_COLLISION_WORLD':str(int(a.native_collision_world=='on')),
     'SARECOMP_NATIVE_WORLD_SDK':str(int(a.native_world_sdk=='on')),
     'SARECOMP_NATIVE_RENDER_HIERARCHY':str(int(a.native_render_hierarchy=='on')),
+    'SARECOMP_NATIVE_RENDER_LOCAL_PROOFS':str(int(a.native_render_local_proofs=='on')),
+    'SARECOMP_NATIVE_RENDER_ROOT_PROOFS':str(int(a.native_render_root_proofs=='on')),
+    'SARECOMP_NATIVE_INVERSE_TRIG':str(int(a.native_inverse_trig=='on')),
+    'SARECOMP_NATIVE_INVERSE_MEMORY':str(int(a.native_inverse_memory=='on')),
+    'SARECOMP_NATIVE_RIGID_HIERARCHY':str(int(a.native_rigid_hierarchy=='on')),
+    'SARECOMP_NATIVE_MORPH_HIERARCHY':str(int(a.native_morph_hierarchy=='on')),
     'SARECOMP_NATIVE_RENDER_CONTEXT':str(int(a.native_render_context=='on')),
     'SARECOMP_NATIVE_PALETTE_BATCH':str(int(a.native_palette_batch=='on')),
     'SARECOMP_ASYNC_AUDIO_STATUS':str(int(a.async_audio_status=='on')),
@@ -195,6 +207,12 @@ for name, selection in (
     ('SARECOMP_NATIVE_COLLISION_WORLD', a.native_collision_world),
     ('SARECOMP_NATIVE_WORLD_SDK', a.native_world_sdk),
     ('SARECOMP_NATIVE_RENDER_HIERARCHY', a.native_render_hierarchy),
+    ('SARECOMP_NATIVE_RENDER_LOCAL_PROOFS', a.native_render_local_proofs),
+    ('SARECOMP_NATIVE_RENDER_ROOT_PROOFS', a.native_render_root_proofs),
+    ('SARECOMP_NATIVE_INVERSE_TRIG', a.native_inverse_trig),
+    ('SARECOMP_NATIVE_INVERSE_MEMORY', a.native_inverse_memory),
+    ('SARECOMP_NATIVE_RIGID_HIERARCHY', a.native_rigid_hierarchy),
+    ('SARECOMP_NATIVE_MORPH_HIERARCHY', a.native_morph_hierarchy),
     ('SARECOMP_NATIVE_MODEL_PIPELINE', a.native_model_pipeline),
     ('SARECOMP_NATIVE_PROJECTION_BATCH', a.native_projection_batch),
     ('SARECOMP_NATIVE_CLOSED_MEMORY', a.native_closed_memory),
@@ -320,6 +338,12 @@ result = {'exit_code':game.returncode, 'forced_stop':forced, 'profile':a.profile
           'native_collision_world':a.native_collision_world,
           'native_world_sdk':a.native_world_sdk,
           'native_render_hierarchy':a.native_render_hierarchy,
+          'native_render_local_proofs':a.native_render_local_proofs,
+          'native_render_root_proofs':a.native_render_root_proofs,
+          'native_inverse_trig':a.native_inverse_trig,
+          'native_inverse_memory':a.native_inverse_memory,
+          'native_rigid_hierarchy':a.native_rigid_hierarchy,
+          'native_morph_hierarchy':a.native_morph_hierarchy,
           'native_object_activation':a.native_object_activation,
           'native_render_context':a.native_render_context,
           'native_palette_batch':a.native_palette_batch,

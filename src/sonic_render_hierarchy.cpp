@@ -11,6 +11,7 @@ namespace sonic::render_hierarchy {
 namespace {
 using namespace katana::runtime;
 #include "hierarchy-identities.inc"
+static_assert(owner_sources.size()<64u);
 struct Interrupted {};
 struct ResumeOriginal {bool completed_tail{};};
 // Unsupported accesses resume before the instruction. Nothing device-visible
@@ -42,11 +43,12 @@ class Access {
     bool p0{};
     std::uint32_t stack{},stack_size{};
     std::uint64_t stores{};
+    std::uint64_t proven_sources{};
 public:
     Access(CpuState& cpu,const NativePortImmutableWriteGuard& guard):c(cpu),immutable(guard){}
     ~Access(){flush();}
     bool refresh() {
-        read={};write={};
+        read={};write={};proven_sources=0;
         auto& m=c.memory;
         if(!mode_ok(c) || immutable.write_detected() || m.watchpoint_count() || m.has_trace_handler() ||
            m.has_guest_memory_access_sink() || m.has_mmio_trace_handler() ||
@@ -74,6 +76,33 @@ public:
         return range(s.address,std::uint32_t(s.bytes.size())) &&
             std::memcmp(read.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size())==0;
     }
+    bool authenticate_all() noexcept {
+        for(unsigned i=0;i<identities.size();++i)if(!identity(i))return false;
+        proven_sources=(std::uint64_t{1}<<owner_sources.size())-1u;return true;
+    }
+    bool authenticate(std::uint32_t owner) noexcept {
+        const auto i=source_owner_index(owner);
+        if(i>=owner_sources.size())return false;
+        const auto bit=std::uint64_t{1}<<i;
+        if(proven_sources&bit)return true;
+        for(const auto& s:owner_sources[i])
+            if(!range(s.address,std::uint32_t(s.bytes.size())) ||
+               std::memcmp(read.read_bytes+(s.address&0xFFFFFFu),s.bytes.data(),s.bytes.size()))return false;
+        proven_sources|=bit;return true;
+    }
+    // Native stores may never alter a proved body or literal, even if an
+    // unusual module range set does not mark those bytes immutable. Real
+    // callbacks invalidate every proof unconditionally in refresh().
+    bool source_overlap(std::uint32_t physical,std::uint32_t size)const noexcept {
+        bool candidate=false;
+        for(auto p=(physical-0x0C000000u)>>12u;p<=((physical-0x0C000000u)+size-1u)>>12u;++p)
+            candidate|=source_pages[p];
+        if(!candidate)return false;
+        for(const auto& s:identities)
+            if(physical<std::uint64_t(s.address&0x1FFFFFFFu)+s.bytes.size() &&
+               (s.address&0x1FFFFFFFu)<std::uint64_t(physical)+size)return true;
+        return false;
+    }
     void fload(RestartPoint at,unsigned reg,std::uint32_t address) {
         if(!(c.fpscr&fpscr_sz_mask)){c.fr[reg]=u32(address,at);return;}
         if(!range(address,8u,4u))restart(at);
@@ -83,12 +112,12 @@ public:
     void fstore(RestartPoint at,std::uint32_t address,unsigned reg) {
         if(!(c.fpscr&fpscr_sz_mask)){u32(address,c.fr[reg],at);return;}
         const auto physical=address&0x1FFFFFFFu;
-        if(!write || !range(address,8u,4u) || immutable.tracks_address(physical,8u))restart(at);
+        if(!write || !range(address,8u,4u) || immutable.tracks_address(physical,8u) || source_overlap(physical,8u))restart(at);
         const auto value=read_fpu_pair_bits(c,reg);
         std::memcpy(write.write_bytes+(address&0xFFFFFFu),&value,8u);stores+=2;
     }
     bool admit_stack(std::uint32_t a,std::uint32_t size) {
-        if(!write || !range(a,size,4u) || immutable.tracks_address(a&0x1FFFFFFFu,size) ||
+        if(!write || !range(a,size,4u) || immutable.tracks_address(a&0x1FFFFFFFu,size) || source_overlap(a&0x1FFFFFFFu,size) ||
            !c.memory.is_writable_linear_range(a&0x1FFFFFFFu,size,false))return false;
         stack=a;stack_size=size;return true;
     }
@@ -111,7 +140,8 @@ public:
         const auto physical=a&0x1FFFFFFFu;
         const bool on_stack=stack_size && physical>=(stack&0x1FFFFFFFu) &&
             std::uint64_t(physical)+sizeof(T)<=std::uint64_t(stack&0x1FFFFFFFu)+stack_size;
-        if(write && range(a,sizeof(T),sizeof(T)) && (on_stack || !immutable.tracks_address(physical,sizeof(T)))){
+        if(write && range(a,sizeof(T),sizeof(T)) && (on_stack ||
+           (!immutable.tracks_address(physical,sizeof(T)) && !source_overlap(physical,sizeof(T))))){
             const T value=static_cast<T>(v);std::memcpy(write.write_bytes+(a&0xFFFFFFu),&value,sizeof(T));++stores;return;
         }
         restart(at);
@@ -121,7 +151,7 @@ public:
 
 struct Flow {unsigned depth{},backedges{};};
 #ifdef SARECOMP_RENDER_HIERARCHY_TEST_COVERAGE
-#define HIERARCHY_SITE(pc) (visited[((pc)>=0x8C639000u?0x6000u+(pc)-0x8C639000u:(pc)-0x8C03F000u)/2u]=true)
+#define HIERARCHY_SITE(pc) (visited[((pc)>=0x8C639000u?0xD000u+(pc)-0x8C639000u:(pc)-0x8C036000u)/2u]=true)
 #else
 #define HIERARCHY_SITE(pc) ((void)0)
 #endif
@@ -135,8 +165,9 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
     const auto fload=[&](RestartPoint at,unsigned reg,std::uint32_t address){a.fload(at,reg,address);};
     const auto fstore=[&](RestartPoint at,std::uint32_t address,unsigned reg){a.fstore(at,address,reg);};
     const auto set_t=[&](bool value){cpu.t=value;};
-    // All FPU operations use the original helper scopes. No larger epoch may
-    // leak across FSCA, FTRV, a callback or an original continuation.
+    // Generated register-only sequences retain the exact original AOT epochs,
+    // including the original FSCA/FTRV groups. No owner-wide scope may leak
+    // across an ungrouped helper, a callback or an original continuation.
     const auto backedge=[&](std::uint32_t pc){if(++flow.backedges>=100000u)a.restart(pc);};
     const auto call=[&](std::uint32_t target,bool tail=false){
         cpu.pc=target;const auto continuation=cpu.pr;
@@ -147,9 +178,12 @@ void body(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
             a.flush();++counts.callbacks;
             if(!calls.invoke(calls.context,cpu,target) || cpu.pc!=continuation)throw Interrupted{};
             if(!a.refresh())throw ResumeOriginal{tail};
-            for(unsigned i=0;i<identities.size();++i)if(!a.identity(i))throw ResumeOriginal{tail};
+            if(!local_sources_enabled() && !a.authenticate_all())throw ResumeOriginal{tail};
         }
         if(cpu.pc!=continuation)throw Interrupted{};
+        // A nested child may have crossed a callback and revoked all source
+        // proofs. Authenticate this parent's continuation before using it.
+        if(!tail && local_sources_enabled() && !a.authenticate(owner))throw ResumeOriginal{};
     };
     switch(owner){
 #include "hierarchy-switch.inc"
@@ -163,6 +197,7 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
         // Invalid/very deep data retains the exact original owner and its
         // scheduler/fault behavior; never truncate or repair a tree/key list.
         if(flow.depth>=128u || (owner==0x8C03FEB8u && !cpu.r[5]))a.restart(owner);
+        if(local_sources_enabled() && !a.authenticate(owner))a.restart(owner);
         body(cpu,a,calls,flow,owner);return true;
     }catch(const ResumeOriginal& state){
         a.flush();
@@ -173,14 +208,18 @@ bool run(CpuState& cpu,Access& a,Calls calls,Flow& flow,std::uint32_t owner){
         if(state.completed_tail && cpu.pc==continuation){
             if(owner==entry)return_site=0x8C04082Cu;
             if(owner==blended_entry)return_site=0x8C041B0Au;
+            if(owner==rigid_entry)return_site=0x8C036F0Eu;
+            if(owner==morph_entry)return_site=0x8C04093Eu;
             return false;
         }
         if(!calls.resume)throw;
         if(!calls.resume(calls.context,cpu,owner,continuation) || cpu.pc!=continuation)throw Interrupted{};
         if(owner==entry)return_site=0x8C04082Cu;
         if(owner==blended_entry)return_site=0x8C041B0Au;
+        if(owner==rigid_entry)return_site=0x8C036F0Eu;
+        if(owner==morph_entry)return_site=0x8C04093Eu;
         if(!a.refresh())return false;
-        for(unsigned i=0;i<identities.size();++i)if(!a.identity(i))return false;
+        if(!local_sources_enabled() && !a.authenticate_all())return false;
         return true;
     }
 }
@@ -206,8 +245,20 @@ Outcome execute(CpuState& cpu,const NativePortImmutableWriteGuard* guard,Calls c
     if(!guard || !calls.invoke || !contains(cpu.pc))return Outcome::Declined;
     Access access(cpu,*guard);
     if(!access.refresh())return Outcome::Declined;
-    for(unsigned i=0;i<identities.size();++i)if(!access.identity(i))return Outcome::Declined;
+    // The root proves its own body/literals here. Each entered child proves
+    // its own sources in run(), sharing that proof until a foreign callback.
+    // Authenticating every unrelated family at every tiny rigid root turns
+    // a cheap object draw into a whole-inventory scan.
+    if(!(local_sources_enabled() && root_sources_enabled()
+            ?access.authenticate(cpu.pc):access.authenticate_all()))return Outcome::Declined;
+    // Prove a bounded shared scratch-stack window once for this connected
+    // hierarchy. Unusual/deeper accesses keep the per-store checked path.
+    // Every foreign return revalidates the window with the current mappings,
+    // observer and immutable ranges; this is not a persistent permission.
+    if(local_sources_enabled())(void)access.admit_stack(cpu.r[15]-4096u,4096u);
     --counts.declined;++counts.calls;Flow flow;
+    if(cpu.pc==rigid_entry)++counts.rigid_calls;
+    if(cpu.pc==morph_entry)++counts.morph_calls;
     try{run(cpu,access,calls,flow,cpu.pc);return Outcome::Complete;}
     catch(const ResumeOriginal&){return Outcome::ResumeOriginal;}
     catch(const Interrupted&){return Outcome::Interrupted;}

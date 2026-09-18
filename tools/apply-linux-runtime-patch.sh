@@ -40,7 +40,7 @@ flock -n 9 || fail 'Another installation or patch is running.'
 sha() { sha256sum -- "$1" | cut -d ' ' -f 1; }
 regular() { [[ -f $1 && ! -L $1 && -O $1 ]]; }
 declare -A supported=()
-target_hash= target_size= base_hash= delta_hash= tool_hash= diagnostics= patch_id=
+target_hash= target_size= base_hash= delta_hash= tool_hash= diagnostics= patch_id= encoding=delta
 reference_backups=()
 while IFS=$'\t' read -r kind first second; do
     case "$kind" in
@@ -52,6 +52,7 @@ while IFS=$'\t' read -r kind first second; do
         diagnostics) diagnostics=$first ;;
         patch-id) patch_id=$first ;;
         reference-backup) reference_backups+=("$first") ;;
+        encoding) encoding=$first ;;
         SARECOMP-RUNTIME-PATCH-1|'') ;;
         *) fail 'Unsupported patch metadata.' ;;
     esac
@@ -66,6 +67,7 @@ if [[ -n $patch_id ]]; then
     [[ $patch_id =~ ^[a-z0-9][a-z0-9-]{0,47}$ && -z $diagnostics ]] || fail 'Invalid performance patch identity.'
     backup_suffix="pre-$patch_id"
 fi
+[[ $encoding == delta || ( $encoding == full && -n $patch_id && -z $diagnostics ) ]] || fail 'Invalid runtime compression format.'
 for name in "${reference_backups[@]}"; do
     [[ $name =~ ^game\.pre-[a-z0-9-]+$ ]] || fail 'Invalid patch reference name.'
 done
@@ -150,7 +152,7 @@ if (( ${#dirs[@]} == 0 )); then
     [[ -n $ready_source ]] || fail 'No installation supported by this update was found. No game data was changed.'
     success=1; notice 'This performance patch is already installed.'; exit 0
 fi
-[[ -n $reference || -n $ready_source ]] || fail 'The reference program required for this update was not found. No game data was changed.'
+[[ $encoding == full || -n $reference || -n $ready_source ]] || fail 'The reference program required for this update was not found. No game data was changed.'
 # Steam shortcuts may still name an older version directory. Update every
 # authenticated installed launch path, so the existing Steam entry keeps working.
 for process in /proc/[0-9]*/exe; do
@@ -164,6 +166,9 @@ required_space=67108864
 stage=$(mktemp -d "$app_root/.native-math-patch.XXXXXXXX")
 if [[ -n $ready_source ]]; then
     ln -- "$ready_source" "$stage/game"
+elif [[ $encoding == full ]]; then
+    printf 'Unpacking the verified runtime update (the original game files are not needed)...\n'
+    "$bundle/zstd" -d -q -M2048MB "$bundle/game.delta.zst" -o "$stage/game"
 else
     printf 'Applying binary delta (the original game files are not needed)...\n'
     "$bundle/zstd" -d -q -M2048MB --patch-from="$reference" "$bundle/game.delta.zst" -o "$stage/game"

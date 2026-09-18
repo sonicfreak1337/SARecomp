@@ -1,12 +1,16 @@
 #include "sonic_atan_math.hpp"
+#include "sonic_scalar_write_view.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/dynamic_interpreter.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
 #include "katana/sh4/decoder.hpp"
+#include "katana/io/input_provenance.hpp"
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
 #include <bcrypt.h>
+#endif
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -26,10 +30,14 @@ namespace {
 using namespace sonic::atan_math;
 constexpr auto returned=0x8CF80000u, output_address=0x8CE10000u, stack_top=0x8CF00000u;
 constexpr auto code_range=[] {
-    std::array<NativePortImmutableRange,source_spans.size()> result{};
-    for(std::size_t i=0;i<result.size();++i) result[i]=NativePortImmutableRange{
+    std::array<NativePortImmutableRange,source_spans.size()+inverse_source_spans.size()+1> result{};
+    for(std::size_t i=0;i<source_spans.size();++i) result[i]=NativePortImmutableRange{
         source_spans[i].address&0x1FFFFFFFu,source_spans[i].size,
         native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)};
+    for(std::size_t i=0;i<inverse_source_spans.size();++i) result[source_spans.size()+i]={
+        inverse_source_spans[i].address&0x1FFFFFFFu,inverse_source_spans[i].size,
+        native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)};
+    result.back()={0x0C16017Cu,4u,native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)};
     // Source spans follow entry/API order; the immutable guard requires
     // ascending, disjoint physical ranges instead.
     std::sort(result.begin(),result.end(),[](const auto& a,const auto& b) {
@@ -67,6 +75,7 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
     return {std::istreambuf_iterator<char>(file), {}};
 }
 std::string digest(std::span<const std::uint8_t> bytes) {
+#ifdef _WIN32
     std::array<unsigned char, 32> result{};
     require(bytes.size() <= ULONG_MAX && BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0,
         const_cast<PUCHAR>(bytes.data()), ULONG(bytes.size()), result.data(), ULONG(result.size())) >= 0,
@@ -76,6 +85,9 @@ std::string digest(std::span<const std::uint8_t> bytes) {
         text[i * 2] = hex[result[i] >> 4]; text[i * 2 + 1] = hex[result[i] & 15];
     }
     return text;
+#else
+    return katana::io::sha256_bytes(std::string_view(reinterpret_cast<const char*>(bytes.data()),bytes.size()));
+#endif
 }
 
 // Architectural state only. Executor instruction/cycle/provenance bookkeeping
@@ -131,14 +143,26 @@ struct Fixture {
             events.emplace_back(e.address,e.size,e.source,e.bytes_changed);immutable.observe_write(e);
         },stable?GuestWriteObserverContract::StableForPrevalidatedLinearWrites:GuestWriteObserverContract::General);
     }
+    void observe_closed() {
+        cpu.memory.set_guest_write_observer([this](const GuestWriteEvent& e)noexcept{immutable.observe_write(e);},
+            GuestWriteObserverContract::StableForPrevalidatedLinearWrites);
+        cpu.memory.set_guest_write_batch_observer({&immutable,[](void*,std::span<const GuestWriteEvent>)noexcept{return true;},
+            [](void* p,std::span<const GuestWriteEvent> events)noexcept{
+                for(const auto& e:events)static_cast<NativePortImmutableWriteGuard*>(p)->observe_write(e);}});
+        sonic::scalar_writes::bind(cpu.memory,immutable,cpu.memory.guest_write_observer_generation());
+    }
+    ~Fixture(){sonic::scalar_writes::unbind(&cpu.memory,&immutable);}
 };
 
 std::uint64_t corrected_reference_ftrc=0u;
+void (*retained_reference)(CpuState&){};
 void execute_reference(CpuState& cpu) {
+    if(retained_reference){retained_reference(cpu);return;}
     for(unsigned n=0;cpu.pc!=returned && n<5000u;++n) {
         bool inside=false;
         for(unsigned i=0;i<4u;++i) inside=inside ||
             (cpu.pc>=source_spans[i].address && cpu.pc<source_spans[i].address+source_spans[i].size);
+        for(const auto& span:inverse_source_spans)inside=inside || (cpu.pc>=span.address && cpu.pc<span.address+span.size);
         require(inside,"reference left original atan family");
         const auto opcode=guest_fetch_u16(cpu,cpu.pc);
         const auto instruction=katana::sh4::decode(opcode);
@@ -166,15 +190,25 @@ void execute_reference(CpuState& cpu) {
     }
     require(cpu.pc==returned,"reference did not return");
 }
-void compare(Fixture& native, Fixture& reference) {
-    native.observe(); reference.observe();
+void compare(Fixture& native, Fixture& reference,bool closed=false) {
+    if(closed)native.observe_closed();else native.observe();
+    // The actual AOT oracle already owns the runtime's paired observers.
+    // Rebinding a fixture observer would revoke its execution contract.
+    // Ordered write events are checked by the separate instruction oracle.
+    if(!retained_reference)reference.observe();
     const auto host_before=_mm_getcsr();
+    const auto closed_before=sonic::atan_math::closed_memory_calls;
+    const auto stores_before=sonic::atan_math::closed_memory_stores;
     require(sonic::atan_math::try_execute(native.cpu, &native.immutable), "eligible leaf declined");
+    require(sonic::atan_math::closed_memory_calls==closed_before+unsigned(closed),"wrong closed-memory admission");
     require(_mm_getcsr()==host_before,"native changed ambient MXCSR");
     execute_reference(reference.cpu);
     require(_mm_getcsr()==host_before,"reference changed ambient MXCSR");
     if (architecture(native.cpu) != architecture(reference.cpu)) {
         std::cerr << native.label << '\n' << std::hex;
+        std::cerr << "PC=" << native.cpu.pc << '/' << reference.cpu.pc << " PR=" << native.cpu.pr << '/' << reference.cpu.pr
+                  << " trap=" << native.cpu.trap_pending << '/' << reference.cpu.trap_pending
+                  << " expevt=" << native.cpu.expevt << '/' << reference.cpu.expevt << '\n';
         for (unsigned i = 0; i < 16; ++i) {
             if (native.cpu.r[i] != reference.cpu.r[i]) std::cerr << "r" << i << " native=" << native.cpu.r[i] << " reference=" << reference.cpu.r[i] << '\n';
             if (native.cpu.fr[i] != reference.cpu.fr[i]) std::cerr << "fr" << i << " native=" << native.cpu.fr[i] << " reference=" << reference.cpu.fr[i] << '\n';
@@ -186,7 +220,9 @@ void compare(Fixture& native, Fixture& reference) {
     }
     require(std::equal(native.ram->bytes().begin(), native.ram->bytes().end(), reference.ram->bytes().begin()),
         "RAM/stack mismatch");
-    if (native.events != reference.events) {
+    if(closed && !retained_reference)
+        require(sonic::atan_math::closed_memory_stores-stores_before==reference.events.size(),"closed store count differs");
+    if (!closed && !retained_reference && native.events != reference.events) {
         std::cerr<<native.label<<" native_events="<<native.events.size()
                  <<" reference_events="<<reference.events.size()<<'\n';
         const auto shared=std::min(native.events.size(),reference.events.size());
@@ -242,6 +278,9 @@ int main(int argc,char** argv) {
         for(const auto& span:source_spans)
             require(digest(std::span<const std::uint8_t>(boot).subspan(span.address-0x8C010000u,span.size))==
                 span.sha256,"atan code/data SHA differs");
+        for(const auto& span:inverse_source_spans)
+            require(digest(std::span<const std::uint8_t>(boot).subspan(span.address-0x8C010000u,span.size))==
+                span.sha256,"inverse-trig code/data SHA differs");
         unsigned cases=0u;
         const auto run=[&](std::uint32_t entry,std::uint32_t x,std::uint32_t y,unsigned mode,std::uint32_t exponent=0u) {
             _mm_setcsr(0x1F80u|((cases&3u)<<13u)|(cases&0x3Fu)|((cases&4u)?0x8040u:0u));
@@ -369,7 +408,71 @@ int main(int argc,char** argv) {
                 native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)}};
             NativePortImmutableWriteGuard guard{protected_output};decline(f,&guard);++cases;
         }
-        std::cout<<"ATAN_MATH_TEST_OK cases="<<cases
+        const auto original_cases=cases;
+        for(const auto& parent:inverse_source_spans) {
+            for(auto mode:{0u,1u,fpscr_fr_mask|fpscr_cause_mask|fpscr_flag_mask,
+                    fpscr_fr_mask|fpscr_cause_mask|fpscr_flag_mask|1u}) {
+                for(auto x:{0u,0x80000000u,1u,0x80000001u,0x3E800000u,0xBE800000u,
+                        0x3EFFFFFFu,0xBEFFFFFFu,0x3F400000u,0xBF400000u,0xBF7FFFFFu,0x3F000000u,0x3F7FFFFFu,
+                        0x3F800000u,0x3F800001u,0xBF800000u,0xBF800001u,0x40000000u,
+                        0x7F800000u,0xFF800000u,0x7F800001u,0x7FC00001u})
+                    run(parent.address,x,0x3E800000u,mode);
+            }
+            for(auto alias:{0u,0x20000000u}) {
+                Fixture native(boot,parent.address,0x3F000000u,0xBF400000u,1u),
+                    reference(boot,parent.address,0x3F000000u,0xBF400000u,1u);
+                for(auto* f:{&native,&reference})f->cpu.r[15]=(stack_top&0x1FFFFFFFu)|alias;
+                if(alias)for(auto* f:{&native,&reference})f->cpu.r[15]|=0x80000000u;
+                compare(native,reference);++cases;
+            }
+        }
+        for(auto entry:{0x8C10CFE8u,0x8C10D038u,0x8C10E5E0u})
+            for(auto mode:{0u,1u})for(auto x:{0u,0x80000000u,0x3F800000u,0xBF800000u,0x7F800000u,0x7FC00001u})
+                for(auto y:{0u,0x80000000u,0x3F800000u,0xBF800000u})run(entry,x,y,mode);
+        for(const auto& parent:inverse_source_spans) {
+            for(unsigned fault=0;fault<3;++fault) {
+                Fixture f(boot,parent.address,0x3F000000u,0x3F800000u,0u);
+                if(fault==0)f.ram->writable_bytes()[parent.address&0xFFFFFFu]^=1u;
+                if(fault==1)f.cpu.r[15]=0x8C000050u;
+                if(fault==2)f.ram->writable_bytes()[0x16017Cu]^=1u;
+                f.observe();decline(f,&f.immutable);++cases;
+            }
+        }
+        for(auto entry:{0x8C10CF48u,0x8C10CF98u,0x8C10CFE8u,0x8C10D038u}) {
+            Fixture f(boot,entry,0x7FC00001u,0u,0u);
+            f.cpu.r[15]=0xAC7AC04Cu;f.observe();decline(f,&f.immutable);++cases;
+        }
+        for(auto entry:{0x8C10CF48u,0x8C10CF98u,0x8C10E4D0u,0x8C10E4ECu})for(auto x:{0x3E800000u,0xBE800000u}) {
+            CpuState outer{.memory=Memory{0u}};outer.write_fpscr(fpscr_dn_mask|1u);
+            const auto ambient=_mm_getcsr();
+            {HostFpuExecutionEpoch epoch(outer);
+                Fixture native(boot,entry,x,0x3F800000u,0u),reference(boot,entry,x,0x3F800000u,0u);
+                compare(native,reference);++cases;
+            }
+            require(_mm_getcsr()==ambient,"inverse parent changed enclosing epoch");
+        }
+        unsigned closed_cases=0;
+        if(sonic::atan_math::closed_memory_enabled()) {
+            std::vector<std::uint32_t> entries{atan_entry,quotient_entry,polynomial_entry,scale_entry};
+            for(const auto& parent:inverse_source_spans)entries.push_back(parent.address);
+            for(auto entry:entries)for(auto mode:{0u,1u})
+              for(auto x:{0u,0x80000000u,1u,0x3EBFFFFFu,0xBF7FFFFFu,0x3F800000u,0x7F800000u,0x7FC00001u}) {
+                Fixture native(boot,entry,x,0xBF800000u,mode,1u),reference(boot,entry,x,0xBF800000u,mode,1u);
+                compare(native,reference,true);++closed_cases;
+            }
+            for(auto entry:entries)for(auto segment:{0u,0xA0000000u}) {
+                Fixture native(boot,entry,0x3F200000u,0x3E000000u,1u,1u),reference(boot,entry,0x3F200000u,0x3E000000u,1u,1u);
+                for(auto* f:{&native,&reference}) {
+                    f->cpu.r[15]=(f->cpu.r[15]&0x1FFFFFFFu)|segment;
+                    if(entry==quotient_entry)f->cpu.r[4]=(f->cpu.r[4]&0x1FFFFFFFu)|segment;
+                }
+                compare(native,reference,true);++closed_cases;
+            }
+            // Changing the observer after registration revokes the capability.
+            Fixture native(boot,atan_entry,0x3F200000u,0u,0u),reference(boot,atan_entry,0x3F200000u,0u,0u);
+            native.observe_closed();compare(native,reference);++closed_cases;
+        }
+        std::cout<<"ATAN_MATH_TEST_OK cases="<<cases<<" original_cases="<<original_cases<<" closed_cases="<<closed_cases
             <<" original_family bytes_constants_sha registers_fpscr_fr ram_stack ordered_sources host_fp declines"
             <<" reference_ftrc_source_corrections="<<corrected_reference_ftrc<<'\n';
         return 0;

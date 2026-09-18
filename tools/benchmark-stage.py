@@ -81,6 +81,12 @@ parser.add_argument('--native-movement', choices=('off','on'), default='off')
 parser.add_argument('--native-collision-world', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-world-sdk', choices=('off','on','installed'), default='installed')
 parser.add_argument('--native-render-hierarchy', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-render-local-proofs', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-render-root-proofs', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-inverse-trig', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-inverse-memory', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-rigid-hierarchy', choices=('off','on','installed'), default='installed')
+parser.add_argument('--native-morph-hierarchy', choices=('off','on','installed'), default='installed')
 parser.add_argument('--capture-frame', type=int, default=-1, help='Private exact-image check, excluded from performance qualification')
 parser.add_argument('--ram-regions', choices=('off','on','installed'), default='installed',
     help='Private shared native RAM prefix comparison; installed keeps product policy')
@@ -184,6 +190,12 @@ env['SARECOMP_NATIVE_MOVEMENT']='1' if args.native_movement=='on' else '0'
 env['SARECOMP_NATIVE_COLLISION_WORLD']='1' if args.native_collision_world=='on' else '0'
 env['SARECOMP_NATIVE_WORLD_SDK']='1' if args.native_world_sdk=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_HIERARCHY']='1' if args.native_render_hierarchy=='on' else '0'
+env['SARECOMP_NATIVE_RENDER_LOCAL_PROOFS']='1' if args.native_render_local_proofs=='on' else '0'
+env['SARECOMP_NATIVE_RENDER_ROOT_PROOFS']='1' if args.native_render_root_proofs=='on' else '0'
+env['SARECOMP_NATIVE_INVERSE_TRIG']='1' if args.native_inverse_trig=='on' else '0'
+env['SARECOMP_NATIVE_INVERSE_MEMORY']='1' if args.native_inverse_memory=='on' else '0'
+env['SARECOMP_NATIVE_RIGID_HIERARCHY']='1' if args.native_rigid_hierarchy=='on' else '0'
+env['SARECOMP_NATIVE_MORPH_HIERARCHY']='1' if args.native_morph_hierarchy=='on' else '0'
 env['SARECOMP_NATIVE_RENDER_CONTEXT']='1' if args.native_render_context=='on' else '0'
 env['SARECOMP_NATIVE_PALETTE_BATCH']='1' if args.native_palette_batch=='on' else '0'
 env['SARECOMP_ASYNC_AUDIO_STATUS']='1' if args.async_audio_status=='on' else '0'
@@ -205,6 +217,12 @@ for name, selection in (
     ('SARECOMP_NATIVE_COLLISION_WORLD', args.native_collision_world),
     ('SARECOMP_NATIVE_WORLD_SDK', args.native_world_sdk),
     ('SARECOMP_NATIVE_RENDER_HIERARCHY', args.native_render_hierarchy),
+    ('SARECOMP_NATIVE_RENDER_LOCAL_PROOFS', args.native_render_local_proofs),
+    ('SARECOMP_NATIVE_RENDER_ROOT_PROOFS', args.native_render_root_proofs),
+    ('SARECOMP_NATIVE_INVERSE_TRIG', args.native_inverse_trig),
+    ('SARECOMP_NATIVE_INVERSE_MEMORY', args.native_inverse_memory),
+    ('SARECOMP_NATIVE_RIGID_HIERARCHY', args.native_rigid_hierarchy),
+    ('SARECOMP_NATIVE_MORPH_HIERARCHY', args.native_morph_hierarchy),
     ('SARECOMP_NATIVE_MODEL_PIPELINE', args.native_model_pipeline),
     ('SARECOMP_NATIVE_PROJECTION_BATCH', args.native_projection_batch),
     ('SARECOMP_NATIVE_CLOSED_MEMORY', args.native_closed_memory),

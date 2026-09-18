@@ -18153,6 +18153,8 @@ void emit_sonic_native_gameplay_probe_sample(
               << " render_hierarchy_internal=" << sonic::render_hierarchy::counts.internal_calls
               << " render_hierarchy_callbacks=" << sonic::render_hierarchy::counts.callbacks
               << " render_hierarchy_resumes=" << sonic::render_hierarchy::counts.resumes
+              << " rigid_hierarchy_calls=" << sonic::render_hierarchy::counts.rigid_calls
+              << " morph_hierarchy_calls=" << sonic::render_hierarchy::counts.morph_calls
               << " collision_fused_cross=" << sonic::collision_memory::counts.fused_cross
               << " collision_fused_length=" << sonic::collision_memory::counts.fused_length
               << " collision_fused_normalize=" << sonic::collision_memory::counts.fused_normalize
@@ -18191,6 +18193,10 @@ void emit_sonic_native_gameplay_probe_sample(
               << " matrix_vector_translation_native_calls=" << probe.matrix_vector_native_calls[3]
               << " matrix_vector_translation_original_calls=" << probe.matrix_vector_original_calls[3]
               << " atan_native_calls=" << probe.atan_native_calls[0]
+              << " inverse_trig_native_calls=" << sonic::atan_math::inverse_calls
+              << " inverse_trig_declined=" << sonic::atan_math::inverse_declined
+              << " inverse_memory_calls=" << sonic::atan_math::closed_memory_calls
+              << " inverse_memory_stores=" << sonic::atan_math::closed_memory_stores
               << " atan_original_calls=" << probe.atan_original_calls[0]
               << " atan_quotient_native_calls=" << probe.atan_native_calls[1]
               << " atan_quotient_original_calls=" << probe.atan_original_calls[1]
@@ -34586,6 +34592,14 @@ static bool sonic_triangle_retained_math_call(void* opaque,
     if (context.cpu!=&cpu || !context.aot.invoke_callback ||
         (entry!=0x8C10D038u && entry!=0x8C10CF98u) || cpu.pc!=entry ||
         context.stop_reason!=NativePortStopReason::None) return false;
+    if(sonic::atan_math::inverse_enabled() && sonic_native_leaf_math_active()) {
+        auto* services=katana_port_generated::runtime_dispatch_detail::active_services;
+        const auto expected=cpu.pr;
+        if(services && sonic::atan_math::try_execute(cpu,services->immutable_write_guard())) {
+            ++sonic::atan_math::inverse_calls;return cpu.pc==expected;
+        }
+        ++sonic::atan_math::inverse_declined;
+    }
     struct Scope final {
         Scope() noexcept {++sonic_native_host_service_depth;}
         ~Scope() {--sonic_native_host_service_depth;}
@@ -34660,6 +34674,14 @@ static bool sonic_candidates_retained_call(void* opaque,
        context.stop_reason!=NativePortStopReason::None ||
        (entry!=0x8C10CF48u && entry!=0x8C10CF98u && entry!=0x8C10D038u &&
         entry!=0x8C639E08u && entry!=0x8C639E9Cu && entry!=0x8C10CD1Cu))return false;
+    if(sonic::atan_math::is_inverse_entry(entry) && sonic::atan_math::inverse_enabled() && sonic_native_leaf_math_active()) {
+        auto* services=katana_port_generated::runtime_dispatch_detail::active_services;
+        const auto expected=cpu.pr;
+        if(services && sonic::atan_math::try_execute(cpu,services->immutable_write_guard())) {
+            ++sonic::atan_math::inverse_calls;return cpu.pc==expected;
+        }
+        ++sonic::atan_math::inverse_declined;
+    }
     struct Scope final {
         Scope() noexcept {++sonic_native_host_service_depth;}
         ~Scope(){--sonic_native_host_service_depth;}

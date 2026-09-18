@@ -11,10 +11,35 @@ author=importlib.util.module_from_spec(spec);spec.loader.exec_module(author)
 def sha(data):return hashlib.sha256(data).hexdigest()
 UNITS={'unit-v8C038802-8C03FF90-0329df60636b0242.cpp': '6e712b4cd2dc88ca28782efc79268ac7a49edac77bcc7cb1d4d38b31d66f4e4b', 'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp': '9a8b8e51de23c7982413a8d2d15ba783be133a0b77a406d656a2769da510e785', 'unit-v8C638FF0-8C639E9C-df982d963eeb3342.cpp': '79ecc1ebbdf3e06c517d5edcc42850c08eb50c7dfe6fe4359c59b0e626472558', 'unit-v8C639F38-8C63B05C-e3ea66f80473641e.cpp': '8716f427e7212908572f5b03d060864aa455c94458a55157135268b2c040b852'}
 UNITS['unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp']='b00ee65998295accfadc0e20866953410c3c42872670f0dae9cc66025c1c943b'
+UNITS['unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp']='c34ed098e7625b5a432263ebf286ae486cb86b534dad0cdb97d4991f2253e45a'
 ROOT_UNITS={'unit-v8C0400A0-8C04124E-c3a8c709f8ba2806.cpp':0x8C040784,
-            'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E}
+            'unit-v8C0412C8-8C0425A0-1c2be1678b040d69.cpp':0x8C041A2E,
+            'unit-v8C036BC0-8C037C3C-aa2f5ddfed3d4270.cpp':0x8C036BC0}
+def verify_original_epochs(text,entry):
+    # Match lexical scopes in the authenticated AOT, keeping adjacent epochs
+    # distinct. Guest annotations come from the unmasked original text.
+    masked=re.sub(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"',lambda m:' '*len(m[0]),text)
+    found=[]
+    for epoch in re.finditer(r'HostFpuExecutionEpoch katana_host_fpu_epoch\(cpu\);',masked):
+        stack=[]
+        for brace in re.finditer('[{}]',masked[:epoch.start()]):
+            if brace[0]=='{':stack.append(brace.start())
+            else:stack.pop()
+        begin=stack[-1];depth=1;end=None
+        for brace in re.finditer('[{}]',masked[begin+1:]):
+            depth+=1 if brace[0]=='{' else -1
+            if not depth:end=begin+1+brace.start();break
+        if end is None:raise ValueError('Unclosed original FPU scope')
+        pcs=[int(m[1],16) for m in re.finditer(r'// katana-guest 0x([A-F0-9]{8})u',text[begin:end])]
+        if not pcs or pcs!=list(range(pcs[0],pcs[-1]+2,2)):raise ValueError('Original FPU scope is not consecutive')
+        found.append((pcs[0],pcs[-1]+2))
+        guard=masked[masked.rfind('if (',0,begin):begin]
+        if ('fpscr_pr_mask' in guard)!=(pcs[0]!=0x8C03FF72):raise ValueError('Original FPU precision guard changed')
+    if tuple(found)!=author.EPOCHS.get(entry,()):raise ValueError(f'Original FPU epoch inventory differs: {entry:08X} {found}')
+
 def local_resumes(text,ram,owner):
     _,entry,begin,end=owner
+    verify_original_epochs(text,entry)
     instructions,delays,calls=author.inspect(ram,entry,begin,end)
     memory=lambda line:re.search(r'\b(?:load|load16|load8|store|store16|fload|fstore)\(',line) is not None
     restart={entry}
@@ -103,22 +128,28 @@ def main():
                 prior=json.loads((a.input.parent/'preparation.json').read_text());rows=[e for e in prior['units'] if e['unit']==root_unit]
                 if (prior['generation']!=generation or prior['mode']!='region' or prior.get('guard_probe',False) or prior.get('extended_regions',False)!=(a.input.parent.name=='region-extended-writes') or len(rows)!=1 or rows[0]['source_sha256']!=sha(original) or rows[0]['output_sha256']!=sha(data)):raise ValueError('RAM provenance')
         out=data.decode().replace('\r\n','\n')
-        start=out.index(f'BlockExit fn_{public_entry:08X}_runtime_entry(CpuState& cpu, BlockExecutionContext& context) {{')
-        boundary=out.index('    static_cast<void>(services);',start)
-        injection="""    if (sonic::render_hierarchy::enabled() && cpu.pc == sonic::render_hierarchy::entry) {
-        const auto outcome=sonic::render_hierarchy::try_dispatch(cpu,*services);
-        if (outcome != sonic::render_hierarchy::Outcome::Declined) {
-            const bool complete=outcome==sonic::render_hierarchy::Outcome::Complete;
-            const auto source=complete?sonic::render_hierarchy::return_site:cpu.pc;
-            runtime_dispatch_detail::active_exit_source={source,source&0x1FFFFFFFu};
-            runtime_dispatch_detail::active_exit_kind=complete?katana::runtime::BlockEndKind::Return:katana::runtime::BlockEndKind::Fallthrough;
-            runtime_dispatch_detail::active_exit_site_class=katana::runtime::DynamicDispatchSiteClass::NotDynamic;
-            return;
+        public_entries=(public_entry,0x8C040880) if public_entry==0x8C040784 else (public_entry,)
+        for public_entry in public_entries:
+            start=out.index(f'BlockExit fn_{public_entry:08X}_runtime_entry(CpuState& cpu, BlockExecutionContext& context) {{')
+            boundary=out.index('    static_cast<void>(services);',start)
+            injection="""    if (sonic::render_hierarchy::enabled() && cpu.pc == sonic::render_hierarchy::entry) {
+            const auto outcome=sonic::render_hierarchy::try_dispatch(cpu,*services);
+            if (outcome != sonic::render_hierarchy::Outcome::Declined) {
+                const bool complete=outcome==sonic::render_hierarchy::Outcome::Complete;
+                const auto source=complete?sonic::render_hierarchy::return_site:cpu.pc;
+                runtime_dispatch_detail::active_exit_source={source,source&0x1FFFFFFFu};
+                runtime_dispatch_detail::active_exit_kind=complete?katana::runtime::BlockEndKind::Return:katana::runtime::BlockEndKind::Fallthrough;
+                runtime_dispatch_detail::active_exit_site_class=katana::runtime::DynamicDispatchSiteClass::NotDynamic;
+                return;
+            }
         }
-    }
-"""
-        injection=injection.replace('sonic::render_hierarchy::entry',f'0x{public_entry:08X}u')
-        out=out[:boundary]+injection+out[boundary:]
+    """
+            injection=injection.replace('sonic::render_hierarchy::entry',f'0x{public_entry:08X}u')
+            if public_entry==0x8C036BC0:
+                injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::rigid_enabled()')
+            if public_entry==0x8C040880:
+                injection=injection.replace('sonic::render_hierarchy::enabled()', 'sonic::render_hierarchy::morph_enabled()')
+            out=out[:boundary]+injection+out[boundary:]
         out='#include "sonic_render_hierarchy.hpp"\n'+out.replace('#include "../include/','#include "')
     else:
         owners={o[1]:o for o in author.OWNERS};definitions={};prefix=None

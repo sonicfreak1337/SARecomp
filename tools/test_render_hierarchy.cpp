@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -33,6 +34,25 @@ struct Services final:PlatformServices {
     bool prefetch(CpuState&,GuestInstructionOrigin,std::uint32_t)override{throw std::runtime_error("PREF");}
 } services;
 
+// The instruction oracle executes original bytes, with the retained AOT's
+// lexical host-FPU boundaries. Separate actual-AOT tests verify this contract.
+#include "hierarchy-epochs.inc"
+void reference_step(CpuState& cpu){
+    for(const auto& scope:original_epochs)if(cpu.pc==scope.begin){
+        const auto mode=cpu.read_fpscr();
+        std::optional<HostFpuExecutionEpoch> epoch;
+        if((mode&(fpscr_exception_enable_mask|fpscr_dn_mask))==fpscr_dn_mask &&
+           (mode&fpscr_rounding_mode_mask)<=1u && (!scope.single || !(mode&fpscr_pr_mask)))epoch.emplace(cpu);
+        for(auto pc=scope.begin;pc<scope.end;pc+=2u){
+            require(cpu.pc==pc,"original epoch stopped being straight-line");
+            (void)execute_dynamic_sh4_block(cpu,services,1u);
+            if(cpu.trap_pending)return;
+        }
+        return;
+    }
+    (void)execute_dynamic_sh4_block(cpu,services,1u);
+}
+
 std::vector<NativePortImmutableRange> ranges(){
     std::vector<NativePortImmutableRange> out;
     for(auto s:family::source_spans())out.push_back({s.address&0x1FFFFFFFu,std::uint32_t(s.bytes.size()),native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)});
@@ -46,11 +66,14 @@ void compare(Fixture&,Fixture&,const char*);
 struct Fixture {
     CpuState cpu{.memory=Memory{0u}};
     std::shared_ptr<LinearMemoryDevice> ram=std::make_shared<LinearMemoryDevice>(0x1000000u);
-    NativePortImmutableWriteGuard immutable{ranges()};
+    NativePortImmutableWriteGuard immutable;
     Fixture* oracle{};
     unsigned steps{},mutation{},callback_index{},stop_after{};
+    bool rigid_test{},morph_test{};
     std::vector<std::pair<std::uint32_t,std::uint32_t>> trace;
-    Fixture(std::span<const std::uint8_t> image,unsigned mode){
+    Fixture(std::span<const std::uint8_t> image,unsigned mode,bool protect_sources=true)
+        :immutable(protect_sources?ranges():std::vector<NativePortImmutableRange>{
+            {0x0C000000u,2u,native_port_immutable_range_mask(NativePortImmutableRangeKind::Executable)}}){
         std::copy(image.begin(),image.end(),ram->writable_bytes().begin());
         cpu.memory.map_region("ram",0x0C000000u,ram,MemoryRegionAccess::ReadWrite);
         cpu.memory.bind_direct_linear_alias_window(0x0C000000u,0x1000000u,*ram);
@@ -80,7 +103,7 @@ struct Fixture {
     bool child(std::uint32_t target){
         trace.emplace_back(target,cpu.pr);++callback_index;
         if(stop_after==callback_index)return false;
-        if(target==callback && callback_index<=2){
+        if((target==callback || ((rigid_test || morph_test) && target==0x8C037098u)) && callback_index<=2){
             if(mutation==1)put(nodes+4,0x8CE41000u);
             if(mutation==2)put(nodes+44,nodes+768);
             if(mutation==3)put(nodes,0x28u);
@@ -91,6 +114,13 @@ struct Fixture {
             if(mutation==8)cpu.write_fpscr(cpu.read_fpscr()|fpscr_sz_mask);
             if(mutation==9)put(0x8C88FDE0u,alternate);
             if(mutation==10)put(0x8C88FE78u,1u);
+            if(mutation==11)put(0x8C04085Cu,get(0x8C04085Cu)^1u);
+            if(mutation==12)put(0x8C041BB0u,get(0x8C041BB0u)^1u);
+            if(mutation==13)put(0x8C63A5DCu,get(0x8C63A5DCu)^1u);
+            if(mutation==14)put(nodes,get(nodes)|16u);
+            if(mutation==15)put(nodes+48,nodes+768);
+            if(mutation==16)cpu.xf[0]=0x40000000u;
+            if(mutation==17){put(nodes+0x1000,0x8CE07000u);put(nodes+0x1004,0x8CE07100u);put(0x8C88FD9Cu,records+512u);}
         }
         cpu.fr[1]^=0x00800000u;cpu.r[0]=target;cpu.t=!cpu.t;cpu.pc=cpu.pr;
         return true;
@@ -107,14 +137,14 @@ struct Fixture {
         while(c.pc!=end && !c.trap_pending){
             require(++f.steps<500000u,"fallback bound");
             if(external(c.pc)){if(!invoke(p,c,c.pc))return false;}
-            else (void)execute_dynamic_sh4_block(c,services,1u);
+            else reference_step(c);
         }
         return !c.trap_pending;
     }
 };
 void advance(Fixture& f){
     while(f.cpu.pc!=returned && !Fixture::external(f.cpu.pc) && !f.cpu.trap_pending){
-        require(++f.steps<500000u,"hierarchy reference bound");(void)execute_dynamic_sh4_block(f.cpu,services,1u);
+        require(++f.steps<500000u,"hierarchy reference bound");reference_step(f.cpu);
     }
 }
 void compare(Fixture& a,Fixture& b,const char* phase){
@@ -209,9 +239,82 @@ void setup_blended(Fixture& f,unsigned variant){
         for(unsigned i=0;i<16;++i)f.put(0x8CE50000u+i*4,i%5==0?0x3F800000u:0u);
     }
 }
+void setup_rigid(Fixture& f,unsigned variant){
+    f.rigid_test=true;f.cpu.pc=family::rigid_entry;
+    for(unsigned i=0;i<8;++i)f.put(nodes+i*256,16u);
+    f.put(nodes,variant<64?variant:0u);f.put(nodes+44,nodes+256);f.put(nodes+48,nodes+512);
+    if(variant<64)return;
+    if(variant<=69){constexpr unsigned changes[]{14,15,2,16,6,8};f.mutation=changes[variant-64];return;}
+    if(variant==70){f.cpu.r[4]|=0x20000000u;f.cpu.r[15]|=0x20000000u;return;}
+    if(variant==71){f.cpu.r[15]+=2;return;}
+    if(variant==72){f.cpu.r[4]=nodes+1;return;}
+    if(variant==73){f.put(nodes+44,0);return;}
+    if(variant==74){f.put(nodes+44,nodes+1);return;}
+    if(variant==75){f.put(0x8C88F5D8u,1);return;}
+    if(variant==76){f.put(nodes,23);f.put(nodes+48,0);f.put(0x8C88F538u,0x8CE60002u);return;}
+    if(variant==77){f.put(0x8C88F538u,0x8CE60002u);return;}
+    if(variant==78){f.put(nodes+4,0);return;}
+    if(variant==79){f.stop_after=1;return;}
+}
+void setup_morph(Fixture& f,unsigned variant){
+    f.morph_test=true;f.cpu.pc=family::morph_entry;
+    const auto channel=variant<32?variant%4:3u;
+    constexpr auto model=nodes+0x1000u,pk=nodes+0x3000u,nk=nodes+0x3100u;
+    constexpr auto p0=nodes+0x4000u,p1=nodes+0x4100u,n0=nodes+0x4200u,n1=nodes+0x4300u,scratch=nodes+0x6000u;
+    f.put(nodes,0x40u);f.put(nodes+4,model);f.vector(nodes+8,0,0,0);
+    f.put(nodes+20,0);f.put(nodes+24,0);f.put(nodes+28,0);f.vector(nodes+32,1,1,1);
+    f.put(nodes+44,0);f.put(nodes+48,0);
+    f.put(model,p0);f.put(model+4,n0);f.put(model+8,2);
+    f.put(pk,0);f.put(pk+4,p0);f.put(pk+8,4);f.put(pk+12,p1);
+    f.put(nk,0);f.put(nk+4,n0);f.put(nk+8,4);f.put(nk+12,n1);
+    f.vector(p0,0,0,0);f.vector(p0+12,4,0,0);f.vector(p1,4,8,12);f.vector(p1+12,8,8,12);
+    f.vector(n0,1,0,0);f.vector(n0+12,0,1,0);f.vector(n1,0,1,0);f.vector(n1+12,0,0,1);
+    f.put(0x8C88FF6Cu,scratch);f.putf(0x8C88FDA8u,1.f);f.put(0x8C88FD9Cu,records);
+    f.put(0x8C88FDB0u,0);f.put(0x8C88FFB4u,0);f.put(0x8C749044u,channel);
+    f.put(0x8C88FD68u,channel==0?0x8C040720u:channel==3?0x8C040760u:0x8C04073Cu);
+    for(unsigned row=0;row<4;++row){
+        const auto r=records+row*(channel==3?16u:8u);
+        if(channel==3){f.put(r,pk);f.put(r+4,nk);f.put(r+8,2);f.put(r+12,2);}
+        else{f.put(r,channel==2?nk:pk);f.put(r+4,2);}
+    }
+    const auto kind=variant/4;
+    if(variant<32){
+        if(kind==1)f.putf(0x8C88FDA8u,4.5f);
+        if(kind==2){f.put(records+(channel==3?8u:4u),1);if(channel==3)f.put(records+12,1);}
+        if(kind==3){f.put(records,0);if(channel==3)f.put(records+4,0);}
+        if(kind==4){f.putf(0x8C88FDA8u,2.f);f.vector(n1,-1,0,0);f.vector(n1+12,0,-1,0);}
+        if(kind==5)f.mutation=17;
+        if(kind==6)f.mutation=6;
+        if(kind==7)f.stop_after=1;
+        return;
+    }
+    if(variant==32)f.put(0x8C88FF6Cu,p0);
+    if(variant==33)f.put(0x8C88FF6Cu,scratch+2);
+    if(variant==34)f.put(pk+4,p0+2);
+    if(variant==35){f.cpu.r[4]|=0x20000000u;f.cpu.r[15]|=0x20000000u;}
+    if(variant==36)f.mutation=8;
+    if(variant==37)f.put(nodes,0xC0u);
+    if(variant==38){
+        f.put(0x8C88FFB4u,callback);f.mutation=2;
+        f.put(nodes+768,0x40u);f.put(nodes+768+4,model);
+    }
+    if(variant==39){
+        for(unsigned i=1;i<3;++i){f.put(nodes+i*256,0x40u);f.put(nodes+i*256+4,model);}
+        f.put(nodes+48,nodes+256);f.put(nodes+256+48,nodes+512);
+    }
+    if(variant==40){f.put(pk+8,0);f.put(nk+8,0);}
+    if(variant==41)f.put(0x8C88FF6Cu,p0+4);
+    if(variant==42)f.put(model+8,1);
+    if(variant==43)f.cpu.r[15]+=2;
+    if(variant==44)f.put(records,0); // positions absent, normals still present
+    if(variant==45)f.put(records+4,0); // normals absent, positions still present
+    if(variant==46){f.put(pk+4,0x8CFFFFF4u);f.vector(0x8CFFFFF4u,0,0,0);}
+    if(variant==47)f.put(0x8C88FF6Cu,0x8CFFFFF4u);
+}
 int main(int argc,char** argv)try{
-    require(argc==2,"render-hierarchy-tests <original-ram>");std::ifstream file(argv[1],std::ios::binary);
+    require(argc==2 || (argc==3 && (std::string(argv[2])=="--rigid-only" || std::string(argv[2])=="--morph-only")),"render-hierarchy-tests <original-ram> [--rigid-only|--morph-only]");std::ifstream file(argv[1],std::ios::binary);
     const std::vector<std::uint8_t> image{std::istreambuf_iterator<char>(file),{}};require(image.size()==0x1000000u,"RAM size");unsigned cases=0;
+    if(argc==2){
     for(unsigned mode:{0u,1u,fpscr_fr_mask})for(unsigned variant=0;variant<30;++variant){
         Fixture a(image,mode),b(image,mode);setup(a,variant);setup(b,variant);a.oracle=&b;
         const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,Fixture::resume});
@@ -245,6 +348,58 @@ int main(int argc,char** argv)try{
         advance(b);compare(a,b,"SDK full owner");
         require(a.cpu.trap_pending?outcome==family::Outcome::Interrupted:outcome==family::Outcome::Complete,"SDK completion");
         ++cases;
+    }
+    for(unsigned kind=0;kind<3;++kind){
+        Fixture f(image,0);
+        if(kind==1){setup_blended(f,0);f.put(0x8C88FDD8u,callback);}
+        else f.put(0x8C88FD6Cu,callback);
+        f.mutation=11+kind;
+        // A foreign call changes source bytes without advancing Memory's map
+        // generation. Parent and future-child proofs must not survive it.
+        struct Probe {Fixture* fixture;std::uint32_t expected;unsigned resumes{};} probe{
+            &f,kind==0?family::entry:kind==1?family::blended_entry:0x8C63A5DCu};
+        const auto invoke=+[](void* p,CpuState& c,std::uint32_t target){return Fixture::invoke(static_cast<Probe*>(p)->fixture,c,target);};
+        const auto resume=+[](void* p,CpuState&,std::uint32_t owner,std::uint32_t){
+            auto& probe=*static_cast<Probe*>(p);++probe.resumes;
+            require(!family::local_sources_enabled() || owner==probe.expected,"source proof survived a nested callback");return false;};
+        const auto result=family::execute(f.cpu,&f.immutable,{&probe,invoke,resume});
+        require(result==family::Outcome::Interrupted && probe.resumes==1,"changed owner entered natively");
+        ++cases;
+    }
+    {
+        Fixture f(image,0,false);
+        f.cpu.pc=0x8C639BB0u;f.cpu.r[4]=0;f.put(0x8C88F538u,0x8C04085Cu);
+        const auto literal=f.get(0x8C04085Cu);
+        const auto resume=+[](void*,CpuState& c,std::uint32_t owner,std::uint32_t){
+            require(owner==0x8C639BB0u && c.pc==0x8C639BD2u,"source-overlap restart frontier");return false;};
+        const auto result=family::execute(f.cpu,&f.immutable,{&f,Fixture::invoke,resume});
+        require(result==family::Outcome::Interrupted && f.get(0x8C04085Cu)==literal &&
+            f.get(0x8C88F5DCu)==2u,"untracked source overwrite or lost earlier store");
+        ++cases;
+    }
+    }
+    if(argc==2 || std::string(argv[2])=="--rigid-only")for(unsigned mode:{0u,1u})for(unsigned variant=mode?64u:0u;variant<80;++variant){
+        Fixture a(image,mode),b(image,mode);setup_rigid(a,variant);setup_rigid(b,variant);a.oracle=&b;
+        const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,Fixture::resume});
+        while(b.cpu.pc!=a.cpu.pc && !b.cpu.trap_pending){advance(b);if(Fixture::external(b.cpu.pc))require(b.child(b.cpu.pc),"rigid original child");}
+        compare(a,b,"rigid hierarchy final");require(a.trace==b.trace,"rigid callback sequence differs");
+        if(a.cpu.trap_pending || variant==79)require(result==family::Outcome::Interrupted,"rigid expected interruption");
+        else require(result==family::Outcome::Complete && a.cpu.pc==returned,"rigid incomplete");
+        std::cout<<"rigid case="<<variant<<" mode="<<mode<<" outcome="<<int(result)<<'\n';++cases;
+    }
+    if(argc==2 || std::string(argv[2])=="--morph-only")for(unsigned mode:{0u,1u})for(unsigned variant=0;variant<48;++variant){
+        Fixture a(image,mode),b(image,mode);setup_morph(a,variant);setup_morph(b,variant);a.oracle=&b;
+        const auto result=family::execute(a.cpu,&a.immutable,{&a,Fixture::invoke,Fixture::resume});
+        while(b.cpu.pc!=a.cpu.pc && !b.cpu.trap_pending){advance(b);if(Fixture::external(b.cpu.pc))require(b.child(b.cpu.pc),"morph original child");}
+        compare(a,b,"morph hierarchy final");require(a.trace==b.trace,"morph callback sequence differs");
+        if(a.cpu.trap_pending || (variant>=28 && variant<32))require(result==family::Outcome::Interrupted,"morph expected interruption");
+        else require(result==family::Outcome::Complete && a.cpu.pc==returned,"morph incomplete");
+        if(variant==3){
+            require(a.get(nodes+0x1000)==nodes+0x4000 && a.get(nodes+0x1004)==nodes+0x4200,"morph model pointers not restored");
+            require(a.get(nodes+0x6000)==0x3F800000u && a.get(nodes+0x6004)==0x40000000u && a.get(nodes+0x6008)==0x40400000u,"morph known position");
+        }
+        if(variant==23)require(a.get(nodes+0x1000)==nodes+0x4000 && a.get(nodes+0x1004)==nodes+0x4200 && a.get(0x8C88FD9Cu)==records+16u,"morph restoration after mutable draw");
+        std::cout<<"morph case="<<variant<<" mode="<<mode<<" outcome="<<int(result)<<'\n';++cases;
     }
     std::cout<<"SONIC_RENDER_HIERARCHY_PASS cases="<<cases<<" visited="<<std::count(family::visited.begin(),family::visited.end(),true)<<'\n';return 0;
 }catch(const std::exception& e){std::cerr<<"SONIC_RENDER_HIERARCHY_FAIL "<<e.what()<<'\n';return 1;}

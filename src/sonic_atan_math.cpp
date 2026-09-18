@@ -1,14 +1,26 @@
 #include "sonic_atan_math.hpp"
 #include "sonic_fpu_body.hpp"
+#include "sonic_scalar_write_view.hpp"
 #include "katana/runtime/block_guards.hpp"
 #include "katana/runtime/fpu.hpp"
 #include "katana/runtime/native_port_aot_runtime.hpp"
 #include <array>
 #include <bit>
 #include <cstring>
+#include <span>
+#include <optional>
+#include <stdexcept>
 namespace sonic::atan_math {
 namespace {
 using namespace katana::runtime;
+struct InverseIdentity {std::uint32_t address;std::span<const std::uint16_t> words;};
+#include "inverse-identities.inc"
+unsigned inverse_depth(std::uint32_t entry) noexcept {
+    switch(entry) {
+#include "inverse-members.inc"
+    default:return 0u;
+    }
+}
 // Exact PAL source and read-only data words. Per-span SHA identities are public.
 constexpr std::array<std::uint16_t,240> atan_words{
     0x2FE6u,0x2FD6u,0xFFFBu,0xFFEBu,0xFFDBu,0xFFCBu,0x4F22u,0x7FF4u,0xE008u,0xF54Cu,0xFF57u,0x53F2u,
@@ -84,13 +96,15 @@ bool admitted(const DirectLinearMemoryGuard& g, bool allow_p0, Range r, unsigned
         g.backing_mask==0x00FFFFFFu;
 }
 } // namespace
+bool is_inverse_entry(std::uint32_t entry) noexcept {return inverse_depth(entry)!=0u;}
 
 bool try_execute(katana::runtime::CpuState& cpu,
                  const katana::runtime::NativePortImmutableWriteGuard* immutable_guard) {
     using namespace katana::runtime;
     static_assert(std::endian::native==std::endian::little);
     const auto entry=cpu.pc, fpscr=cpu.read_fpscr();
-    if ((entry!=atan_entry && entry!=quotient_entry && entry!=polynomial_entry && entry!=scale_entry) ||
+    const auto parent_depth=inverse_depth(entry);
+    if ((!parent_depth && entry!=atan_entry && entry!=quotient_entry && entry!=polynomial_entry && entry!=scale_entry) ||
         !immutable_guard || immutable_guard->write_detected() ||
         !cpu.privileged_mode_inline() || cpu.trap_pending || cpu.sleeping || (cpu.sr&sr_fd_mask) ||
         (fpscr&(fpscr_pr_mask|fpscr_sz_mask|fpscr_exception_enable_mask)) ||
@@ -112,7 +126,15 @@ bool try_execute(katana::runtime::CpuState& cpu,
         !matches(scale_entry,scale_words) ||
         !matches(constants_entry,constants_words) ||
         !matches(coefficients_entry,coefficients_words)) return false;
-    const auto depth=entry==atan_entry?72u:entry==quotient_entry?32u:entry==scale_entry?8u:0u;
+    if(parent_depth) {
+        for(const auto& source:inverse_identities) {
+            const Range span{source.address,static_cast<std::uint32_t>(source.words.size_bytes())};
+            if(!admitted(guard,allow_p0,span) || std::memcmp(guard.read_bytes+(source.address&0xFFFFFFu),source.words.data(),span.size))return false;
+        }
+        constexpr std::array<std::uint32_t,1> negative_pi{0xC0490FDBu};
+        if(!matches(0x8C16017Cu,negative_pi))return false;
+    }
+    const auto depth=parent_depth?parent_depth:entry==atan_entry?72u:entry==quotient_entry?32u:entry==scale_entry?8u:0u;
     const Range stack{cpu.r[15]-depth,depth}, output{cpu.r[4],4u};
     const auto writable=[&](Range span) {
         if (!admitted(guard,allow_p0,span) ||
@@ -120,26 +142,54 @@ bool try_execute(katana::runtime::CpuState& cpu,
             !memory.is_writable_linear_range(span.address&0x1FFFFFFFu,span.size,false)) return false;
         for (const auto& source:source_spans)
             if (overlaps(span,{source.address,source.size})) return false;
+        if(parent_depth) {
+            for(const auto& source:inverse_source_spans)
+                if(overlaps(span,{source.address,source.size}))return false;
+            if(overlaps(span,{0x8C16017Cu,4u}))return false;
+        }
         return true;
     };
     if ((depth && !writable(stack)) ||
         (entry==quotient_entry && (!writable(output) || overlaps(stack,output)))) return false;
-    // Direct SDK FMAC/Float/FTRC/CompareGreater share one original epoch. This
-    // also retains exact incoming MXCSR/TLS on every return, including nesting.
-    // The inner arithmetic context restores its optional nested epoch first.
-    HostFpuExecutionEpoch epoch(cpu);
-    {
-    sonic::fpu_body::NontrappingSingleBody arithmetic(cpu);
+    if(parent_depth && entry<=0x8C10D038u &&
+       (!writable({0x8C7AC048u,4u}) || overlaps(stack,{0x8C7AC048u,4u})))return false;
+    // The complete callback-free family reads only authenticated literals,
+    // fixed constants and its admitted stack. Every output/stack byte was
+    // checked above. Only the registered immutable-only observer pair can
+    // grant this operation-local capability; arbitrary observers keep every
+    // original ordered store event through the ordinary Memory path.
+    DirectLinearMemoryGuard closed;
+    if(closed_memory_enabled()) {
+        const scalar_writes::View view(memory,immutable_guard,false,false,true);
+        const auto candidate=view.closed_region_snapshot();
+        if(candidate && candidate.write_bytes && candidate.write_bytes==guard.read_bytes &&
+           candidate.generation==guard.generation && candidate.physical_base==guard.physical_base &&
+           candidate.physical_span==guard.physical_span && candidate.backing_mask==guard.backing_mask)closed=candidate;
+    }
+    struct ClosedAccounting {
+        Memory& memory;std::uint64_t stores{};
+        ~ClosedAccounting() {
+            auto& counters=const_cast<MemoryPerformanceCounters&>(memory.performance_counters());
+            counters.indexed_region_hits+=stores;counters.unobserved_accesses+=stores;
+            closed_memory_stores+=stores;
+        }
+    } accounting{memory};
+    if(closed)++closed_memory_calls;
+    // Preserve the original basic-block FPU scopes. In particular polynomial
+    // FMAC iterations and every call/delay slot are outside those scopes.
     const auto load32=[&](std::uint32_t address) {
         std::uint32_t value=0;
+        if(closed){std::memcpy(&value,closed.read_bytes+(address&0xFFFFFFu),4u);return value;}
         (void)direct_linear_guard_read_u32(guard,(address&0x1FFFFFFFu)|0x80000000u,value);
         return value;
     };
     const auto store32=[&](std::uint32_t pc,std::uint32_t address,std::uint32_t value,CodeWriteSource source) {
+        if(closed){std::memcpy(closed.write_bytes+(address&0xFFFFFFu),&value,4u);++accounting.stores;return;}
         if (!memory.try_write_direct_linear_u32(address&0x1FFFFFFFu,value,source))
             guest_write_u32_at(cpu,GuestInstructionOrigin{pc,pc,true},address,value,source);
     };
     auto& r=cpu.r;auto& fr=cpu.fr;
+    const auto core=[&](std::uint32_t core_entry) {
     // Static original bodies; labels are guest addresses, not a runtime decoder.
     const auto quotient=[&] {
         store32(0x8C10FAF8u,r[15]-4u,r[14],CodeWriteSource::Cpu);r[15]-=4u; // 8C10FAF8 mov.l r14,@-r15
@@ -172,7 +222,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[0]=0x00000014u; // 8C10FB26 mov #20,r0
         fr[3]=0u; // 8C10FB28 fldi0 fr3
         fr[2]=load32(r[0]+r[15]); // 8C10FB2A fmov @(r0,r15),fr2
-        arithmetic.compare_equal<3u,2u>(); // 8C10FB2C fcmp/eq fr3,fr2
+        sonic::fpu_body::NontrappingSingleBody(cpu).compare_equal<3u,2u>(); // 8C10FB2C fcmp/eq fr3,fr2
         if(!cpu.t) goto L_8C10FB3C; // 8C10FB2E bf 0x8c10fb3c
     L_8C10FB30:;
         r[3]=load32(0x8C10FBE4u); // 8C10FB30 mov.l 0x8c10fbe4,r3
@@ -211,7 +261,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[0]=0x0000000Cu; // 8C10FB62 mov #12,r0
         fr[3]=load32(r[14]); // 8C10FB64 fmov @r14,fr3
         fr[4]=load32(r[6]); // 8C10FB66 fmov @r6,fr4
-        arithmetic.binary<FpuBinaryOperation::Divide,3u,4u>(); // 8C10FB68 fdiv fr3,fr4
+        sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Divide,3u,4u>(); // 8C10FB68 fdiv fr3,fr4
         store32(0x8C10FB6Au,r[0]+r[15],fr[4],CodeWriteSource::Fpu); // 8C10FB6A fmov fr4,@(r0,r15)
         r[1]=load32(r[15]+12u); // 8C10FB6C mov.l @(12,r15),r1
         store32(0x8C10FB6Eu,r[15],r[1],CodeWriteSource::Cpu); // 8C10FB6E mov.l r1,@r15
@@ -244,7 +294,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         fr[1]=load32(r[0]); // 8C10FBA2 fmov @r0,fr1
         {
             // 8C10FBA4 bra 0x8c10fbaa
-            arithmetic.binary<FpuBinaryOperation::Add,1u,3u>(); // 8C10FBA6 delay: fadd fr1,fr3
+            sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Add,1u,3u>(); // 8C10FBA6 delay: fadd fr1,fr3
             goto L_8C10FBAA;
         }
     L_8C10FBA8:;
@@ -264,12 +314,16 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[1]=load32(0x8C10FBF0u); // 8C10FBBA mov.l 0x8c10fbf0,r1
         cpu.fpul=r[1]; // 8C10FBBC lds r1,fpul
         fr[2]=cpu.fpul; // 8C10FBBE fsts fpul,fr2
-        arithmetic.binary<FpuBinaryOperation::Add,2u,3u>(); // 8C10FBC0 fadd fr2,fr3
+        sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Add,2u,3u>(); // 8C10FBC0 fadd fr2,fr3
     L_8C10FBC2:;
         fr[2]=load32(r[14]); // 8C10FBC2 fmov @r14,fr2
         fr[1]=load32(r[6]); // 8C10FBC4 fmov @r6,fr1
-        arithmetic.binary<FpuBinaryOperation::Multiply,2u,3u>(); // 8C10FBC6 fmul fr2,fr3
-        arithmetic.binary<FpuBinaryOperation::Subtract,3u,1u>(); // 8C10FBC8 fsub fr3,fr1
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Multiply,2u,3u>(); // 8C10FBC6 fmul fr2,fr3
+            arithmetic.binary<FpuBinaryOperation::Subtract,3u,1u>(); // 8C10FBC8 fsub fr3,fr1
+        }
         store32(0x8C10FBCAu,r[7],fr[1],CodeWriteSource::Fpu); // 8C10FBCA fmov fr1,@r7
         r[2]=load32(r[7]); // 8C10FBCC mov.l @r7,r2
         r[3]=load32(r[15]+8u); // 8C10FBCE mov.l @(8,r15),r3
@@ -285,8 +339,12 @@ bool try_execute(katana::runtime::CpuState& cpu,
         }
     };
     const auto polynomial=[&] {
-        fr[6]=fr[4]; // 8C10FAD4 fmov fr4,fr6
-        arithmetic.binary<FpuBinaryOperation::Multiply,4u,6u>(); // 8C10FAD6 fmul fr4,fr6
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            fr[6]=fr[4]; // 8C10FAD4 fmov fr4,fr6
+            arithmetic.binary<FpuBinaryOperation::Multiply,4u,6u>(); // 8C10FAD6 fmul fr4,fr6
+        }
         r[5]=load32(0x8C10FAF4u); // 8C10FAD8 mov.l 0x8c10faf4,r5
         r[4]=0x00000005u; // 8C10FADA mov #5,r4
         fr[5]=load32(r[5]);r[5]+=4u; // 8C10FADC fmov @r5+,fr5
@@ -305,7 +363,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         fr[6]=fr[5]; // 8C10FAEE fmov fr5,fr6
         {
             const auto target=cpu.pr; // 8C10FAF0 rts 
-            arithmetic.binary<FpuBinaryOperation::Multiply,6u,0u>(); // 8C10FAF2 delay: fmul fr6,fr0
+            sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Multiply,6u,0u>(); // 8C10FAF2 delay: fmul fr6,fr0
             cpu.pc=target;return;
         }
     };
@@ -452,7 +510,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[4]=0x00000008u; // 8C10EEE2 mov #8,r4
     L_8C10EEE4:;
         fr[3]=0u; // 8C10EEE4 fldi0 fr3
-        arithmetic.compare_equal<3u,5u>(); // 8C10EEE6 fcmp/eq fr3,fr5
+        sonic::fpu_body::NontrappingSingleBody(cpu).compare_equal<3u,5u>(); // 8C10EEE6 fcmp/eq fr3,fr5
         r[7]=0x00000004u; // 8C10EEE8 mov #4,r7
         {
             const bool take=!cpu.t; // 8C10EEEA bf/s 0x8c10eef2
@@ -478,7 +536,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
             goto L_8C10EF0A;
         }
     L_8C10EF04:;
-        arithmetic.compare_equal<5u,5u>(); // 8C10EF04 fcmp/eq fr5,fr5
+        sonic::fpu_body::NontrappingSingleBody(cpu).compare_equal<5u,5u>(); // 8C10EF04 fcmp/eq fr5,fr5
         if(cpu.t) goto L_8C10EF0A; // 8C10EF06 bt 0x8c10ef0a
         r[4]|=r[6]; // 8C10EF08 or r6,r4
     L_8C10EF0A:;
@@ -565,7 +623,7 @@ bool try_execute(katana::runtime::CpuState& cpu,
             goto L_8C10EF8C;
         }
     L_8C10EF6E:;
-        arithmetic.compare_equal<3u,5u>(); // 8C10EF6E fcmp/eq fr3,fr5
+        sonic::fpu_body::NontrappingSingleBody(cpu).compare_equal<3u,5u>(); // 8C10EF6E fcmp/eq fr3,fr5
         if(!cpu.t) goto L_8C10EF7C; // 8C10EF70 bf 0x8c10ef7c
         cpu.t=(r[13]&r[13])==0u; // 8C10EF72 tst r13,r13
         if(cpu.t) goto L_8C10EF78; // 8C10EF74 bt 0x8c10ef78
@@ -580,11 +638,15 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[2]=load32(0x8C10F074u); // 8C10EF7C mov.l 0x8c10f074,r2
         fr[3]=load32(r[15]); // 8C10EF7E fmov @r15,fr3
         fr[2]=load32(r[2]); // 8C10EF80 fmov @r2,fr2
-        arithmetic.binary<FpuBinaryOperation::Add,3u,5u>(); // 8C10EF82 fadd fr3,fr5
-        fr[14]=fr[4]; // 8C10EF84 fmov fr4,fr14
-        arithmetic.binary<FpuBinaryOperation::Add,3u,2u>(); // 8C10EF86 fadd fr3,fr2
-        fr[15]=fr[2]; // 8C10EF88 fmov fr2,fr15
-        arithmetic.binary<FpuBinaryOperation::Divide,5u,15u>(); // 8C10EF8A fdiv fr5,fr15
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,3u,5u>(); // 8C10EF82 fadd fr3,fr5
+            fr[14]=fr[4]; // 8C10EF84 fmov fr4,fr14
+            arithmetic.binary<FpuBinaryOperation::Add,3u,2u>(); // 8C10EF86 fadd fr3,fr2
+            fr[15]=fr[2]; // 8C10EF88 fmov fr2,fr15
+            arithmetic.binary<FpuBinaryOperation::Divide,5u,15u>(); // 8C10EF8A fdiv fr5,fr15
+        }
     L_8C10EF8C:;
         r[3]=load32(0x8C10F078u); // 8C10EF8C mov.l 0x8c10f078,r3
         r[4]=r[15]; // 8C10EF8E mov r15,r4
@@ -636,17 +698,25 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[2]=load32(0x8C10F084u); // 8C10EFCE mov.l 0x8c10f084,r2
         fr[2]=load32(r[1]); // 8C10EFD0 fmov @r1,fr2
         fr[3]=load32(r[2]); // 8C10EFD2 fmov @r2,fr3
-        arithmetic.binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10EFD4 fadd fr15,fr2
+        sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10EFD4 fadd fr15,fr2
         r[3]=load32(0x8C10F08Cu); // 8C10EFD6 mov.l 0x8c10f08c,r3
-        arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10EFD8 fadd fr3,fr14
-        fr[12]=fr[2]; // 8C10EFDA fmov fr2,fr12
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10EFD8 fadd fr3,fr14
+            fr[12]=fr[2]; // 8C10EFDA fmov fr2,fr12
+        }
         {
             cpu.pr=0x8C10EFE0u; // 8C10EFDC jsr @r3
             fr[4]=fr[15]; // 8C10EFDE delay: fmov fr15,fr4
             scale();
         }
-        arithmetic.binary<FpuBinaryOperation::Add,0u,13u>(); // 8C10EFE0 fadd fr0,fr13
-        arithmetic.binary<FpuBinaryOperation::Divide,13u,12u>(); // 8C10EFE2 fdiv fr13,fr12
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,0u,13u>(); // 8C10EFE0 fadd fr0,fr13
+            arithmetic.binary<FpuBinaryOperation::Divide,13u,12u>(); // 8C10EFE2 fdiv fr13,fr12
+        }
         {
             // 8C10EFE4 bra 0x8c10f032
             fr[4]=fr[12]; // 8C10EFE6 delay: fmov fr12,fr4
@@ -658,17 +728,25 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[2]=load32(0x8C10F090u); // 8C10EFEC mov.l 0x8c10f090,r2
         fr[2]=load32(r[1]); // 8C10EFEE fmov @r1,fr2
         fr[3]=load32(r[2]); // 8C10EFF0 fmov @r2,fr3
-        arithmetic.binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10EFF2 fadd fr15,fr2
+        sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10EFF2 fadd fr15,fr2
         r[3]=load32(0x8C10F08Cu); // 8C10EFF4 mov.l 0x8c10f08c,r3
-        arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10EFF6 fadd fr3,fr14
-        fr[12]=fr[2]; // 8C10EFF8 fmov fr2,fr12
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10EFF6 fadd fr3,fr14
+            fr[12]=fr[2]; // 8C10EFF8 fmov fr2,fr12
+        }
         {
             cpu.pr=0x8C10EFFEu; // 8C10EFFA jsr @r3
             fr[4]=fr[15]; // 8C10EFFC delay: fmov fr15,fr4
             scale();
         }
-        arithmetic.binary<FpuBinaryOperation::Add,0u,13u>(); // 8C10EFFE fadd fr0,fr13
-        arithmetic.binary<FpuBinaryOperation::Divide,13u,12u>(); // 8C10F000 fdiv fr13,fr12
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,0u,13u>(); // 8C10EFFE fadd fr0,fr13
+            arithmetic.binary<FpuBinaryOperation::Divide,13u,12u>(); // 8C10F000 fdiv fr13,fr12
+        }
         {
             // 8C10F002 bra 0x8c10f032
             fr[4]=fr[12]; // 8C10F004 delay: fmov fr12,fr4
@@ -680,35 +758,51 @@ bool try_execute(katana::runtime::CpuState& cpu,
         r[2]=load32(0x8C10F098u); // 8C10F00A mov.l 0x8c10f098,r2
         fr[2]=load32(r[1]); // 8C10F00C fmov @r1,fr2
         fr[0]=load32(r[3]); // 8C10F00E fmov @r3,fr0
-        fr[1]=fr[15]; // 8C10F010 fmov fr15,fr1
-        arithmetic.binary<FpuBinaryOperation::Add,2u,1u>(); // 8C10F012 fadd fr2,fr1
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            fr[1]=fr[15]; // 8C10F010 fmov fr15,fr1
+            arithmetic.binary<FpuBinaryOperation::Add,2u,1u>(); // 8C10F012 fadd fr2,fr1
+        }
         fr[3]=load32(r[2]); // 8C10F014 fmov @r2,fr3
-        fpu_multiply_accumulate(cpu,15u,13u); // 8C10F016 fmac fr0,fr15,fr13
-        arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10F018 fadd fr3,fr14
-        fr[4]=fr[1]; // 8C10F01A fmov fr1,fr4
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            fpu_multiply_accumulate(cpu,15u,13u); // 8C10F016 fmac fr0,fr15,fr13
+            arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10F018 fadd fr3,fr14
+            fr[4]=fr[1]; // 8C10F01A fmov fr1,fr4
+        }
         {
             // 8C10F01C bra 0x8c10f032
-            arithmetic.binary<FpuBinaryOperation::Divide,13u,4u>(); // 8C10F01E delay: fdiv fr13,fr4
+            sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Divide,13u,4u>(); // 8C10F01E delay: fdiv fr13,fr4
             goto L_8C10F032;
         }
     L_8C10F020:;
         r[1]=load32(0x8C10F074u); // 8C10F020 mov.l 0x8c10f074,r1
-        arithmetic.binary<FpuBinaryOperation::Add,15u,13u>(); // 8C10F022 fadd fr15,fr13
+        sonic::fpu_body::NontrappingSingleBody(cpu).binary<FpuBinaryOperation::Add,15u,13u>(); // 8C10F022 fadd fr15,fr13
         r[2]=load32(0x8C10F06Cu); // 8C10F024 mov.l 0x8c10f06c,r2
         fr[2]=load32(r[1]); // 8C10F026 fmov @r1,fr2
         fr[3]=load32(r[2]); // 8C10F028 fmov @r2,fr3
-        arithmetic.binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10F02A fadd fr15,fr2
-        arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10F02C fadd fr3,fr14
-        fr[4]=fr[2]; // 8C10F02E fmov fr2,fr4
-        arithmetic.binary<FpuBinaryOperation::Divide,13u,4u>(); // 8C10F030 fdiv fr13,fr4
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            arithmetic.binary<FpuBinaryOperation::Add,15u,2u>(); // 8C10F02A fadd fr15,fr2
+            arithmetic.binary<FpuBinaryOperation::Add,3u,14u>(); // 8C10F02C fadd fr3,fr14
+            fr[4]=fr[2]; // 8C10F02E fmov fr2,fr4
+            arithmetic.binary<FpuBinaryOperation::Divide,13u,4u>(); // 8C10F030 fdiv fr13,fr4
+        }
     L_8C10F032:;
         {
             cpu.pr=0x8C10F036u; // 8C10F032 jsr @r14
             ; // 8C10F034 delay: nop 
             polynomial();
         }
-        fr[5]=fr[14]; // 8C10F036 fmov fr14,fr5
-        arithmetic.binary<FpuBinaryOperation::Add,0u,5u>(); // 8C10F038 fadd fr0,fr5
+        {
+            HostFpuExecutionEpoch epoch(cpu);
+            sonic::fpu_body::NontrappingSingleBody arithmetic(cpu,epoch);
+            fr[5]=fr[14]; // 8C10F036 fmov fr14,fr5
+            arithmetic.binary<FpuBinaryOperation::Add,0u,5u>(); // 8C10F038 fadd fr0,fr5
+        }
     L_8C10F03A:;
         cpu.t=(r[13]&r[13])==0u; // 8C10F03A tst r13,r13
         if(cpu.t) goto L_8C10F040; // 8C10F03C bt 0x8c10f040
@@ -729,12 +823,33 @@ bool try_execute(katana::runtime::CpuState& cpu,
             cpu.pc=target;return;
         }
     };
-    switch(entry) {
+    switch(core_entry) {
     case atan_entry:atan();break;
     case quotient_entry:quotient();break;
     case polynomial_entry:polynomial();break;
     case scale_entry:scale();break;
     }
+    };
+    if(!parent_depth)core(entry);
+    else {
+        const auto parents=[&](auto&& self,std::uint32_t owner)->bool {
+            if(!is_inverse_entry(owner)) {
+                if(owner!=atan_entry && owner!=scale_entry)throw std::logic_error("inverse-trig child contract");
+                core(owner);return true;
+            }
+            // Only the two reviewed asin basic blocks own arithmetic epochs.
+            // Wrappers, divides in delay slots, and the acos return do not.
+            std::optional<HostFpuExecutionEpoch> epoch;
+            const auto load=load32;
+            const auto store=store32;
+            const auto set_t=[&](bool value){cpu.t=value;};
+            const auto call=[&](std::uint32_t target){self(self,target);};
+            switch(owner) {
+#include "inverse-bodies.inc"
+            default:throw std::logic_error("inverse-trig owner contract");
+            }
+        };
+        parents(parents,entry);
     }
     return true;
 }

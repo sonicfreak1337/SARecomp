@@ -493,6 +493,52 @@ movie aspect and title simulation cadence intact. Do not stretch the final
   settings and diagnostic ON/OFF switches. Delete that automation after
   delivery. This authorizes the next patch; the previous Sep17 v2 remains.
 
+- The complete 39-owner render/motion group now defaults ON in both timing
+  modes, following scoped-proof revision H. See the final section of
+  `docs/native-render-hierarchy-20260917.md`: 310 exact CPU/RAM + 19 real-AOT
+  cases on each platform, and matched Linux Gamma/Sky/Lost endpoint states.
+  Execution CPU/update changes -8.48%/+0.37%/-6.93%; images/s -0.19%/-1.20%/
+  +7.24%. Sky is neutral and these are not Deck FPS. Reuse proofs only within
+  one root operation and revoke them at every foreign callback. Preserve exact
+  source-write rejection and original partial-fault continuations. Do not
+  repeat unchanged pairs. Revision E's Lost World result overlapped a build
+  and is excluded. Inverse-trig qualification is recorded below.
+
+- The complete seven-parent inverse-trig group now defaults ON, together with
+  its four existing children. See `docs/native-inverse-trig-20260918.md`:
+  1,319 exact instruction cases and 92 actual-AOT cases pass on both platforms.
+  An existing old-child host-FPU-scope mismatch was reproduced and corrected
+  without relaxing assertions. Preserve the exact original local epochs.
+  Matched Linux Gamma/Sky/Lost pairs with the other native groups active save
+  6.39%/6.01%/2.47% execution CPU per update; images change +0.19%/+0.04%/+4.53%.
+  All 16 selected endpoints and 68 updates match. These are VM measurements,
+  not Deck FPS. Global/per-feature OFF and diagnostics keep original owners.
+  Do not repeat unchanged component or gameplay comparisons. The subsequent
+  complete rigid/render-family qualification is recorded below.
+
+- The corrected complete 40-owner render family now includes the rigid tree
+  by default after the matched three-scene revision-C Linux comparison. See
+  `docs/native-rigid-hierarchy-20260918.md`: Gamma/Sky/Lost execution CPU per
+  update changes -10.62%/-3.63%/-1.32%, images -0.76%/+0.57%/+2.04%, all 16
+  endpoints and 68 updates match. The isolated revision-D rigid addition had
+  regressed Lost World and must not be confused with this complete-family
+  policy. Root admission now checks only owners actually entered; all source
+  proofs are still revoked across foreign callbacks. Static range coalescing
+  reduces 211 checks to 118 with proven identical byte coverage and unchanged
+  generated bodies; it is included in the final net comparison, not C's hash.
+  The additional 14-owner morph group remains private-OFF: it passes 502 total
+  exact / 33 actual-AOT cases on both platforms but the two reviewed discovery
+  windows have zero morph calls. Do not infer a speedup or repeat zero-call runs.
+  See `docs/native-morph-hierarchy-20260918.md`. The inverse-trig closed-memory
+  extension remains private-OFF after matched Gamma/Lost comparisons: execution
+  CPU -1.94%/+0.26%, images -0.61%/-0.85%. Its 1,518 exact and 158 actual-AOT
+  cases pass on each platform, but there is no useful whole-frame gain. Do not
+  repeat these unchanged pairs. The complete qualified groups with that extra
+  extension OFF save 13.37% execution CPU/update in the preliminary matched
+  Gamma comparison against delivered Sep17 v2; images gain 1.77%. This is not
+  a Deck FPS claim. The final package/installed checks are recorded separately
+  in `docs/cpu-update-native-groups-20260918.md`.
+
 - The user currently uses the PC: all tests hidden and muted using
   KATANA_PORT_BACKGROUND_TEST=1; no focus, keyboard/mouse injection or visible
   game window. Obtain visual evidence through native frame capture instead.
