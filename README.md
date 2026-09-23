@@ -17,6 +17,9 @@
 
 ---
 
+**Development disclosure:** AI tools were used as coding assistants and for documentation during
+the development of this port. If you are not okay with this - simply don't play it. Thank you for your attention.
+
 Sonic Adventure Recompiled is an unofficial native PC port of the Dreamcast
 version of **Sonic Adventure**, powered by **KatanaRecomp**. It preserves the
 original adventure while adding widescreen support, modern camera controls, native
@@ -153,9 +156,6 @@ Playing a release build does not require building the project.
 **Original game created by SEGA, 1998, 1999.**<br>
 **Port created by SoNiCFReaK, 2026.**<br>
 **Powered by KatanaRecomp.**
-
-**Development disclosure:** AI tools were used as coding assistants during
-the development of this port.
 
 Additional software and license notices are documented under
 [third-party dependencies](third_party/README.md) and included with the packages.
