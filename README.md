@@ -20,6 +20,8 @@
 **Development disclosure:** AI tools were used as coding assistants and for documentation during
 the development of this port. If you are not okay with this - simply don't play it. Thank you for your attention.
 
+**24.09.2026 Development is currently halted due to RL stuff happening. So Updates may take a little while.**
+
 Sonic Adventure Recompiled is an unofficial native PC port of the Dreamcast
 version of **Sonic Adventure**, powered by **KatanaRecomp**. It preserves the
 original adventure while adding widescreen support, modern camera controls, native
