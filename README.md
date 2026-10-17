@@ -52,7 +52,7 @@ choose the installer for your platform and follow the on-screen setup.
 **Platform plans:** until the current ports reach **1.0**, development is focused
 exclusively on **Windows, Linux and Steam Deck**. Additional ports, including
 macOS, Android and ARM64 handhelds, will only be considered after 1.0.
-This is not a promise that those ports will be released.
+**This is not a promise that those ports will be released.**
 
 Keep the `.gdi` and **all of its track files together**, with the filenames
 referenced by the descriptor. Extract archives before selecting the game files.
