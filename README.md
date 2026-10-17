@@ -49,6 +49,11 @@ choose the installer for your platform and follow the on-screen setup.
 | Linux | Linux AppImage (`.AppImage`) | Keep it in a permanent folder, make it executable and run it as your normal user. No `sudo` is needed. |
 | Steam Deck | Steam Deck AppImage (`.AppImage`) | Run setup in **Desktop Mode**, add the AppImage to Steam, then play only in **Gaming Mode**. Do not force Proton. |
 
+**Platform plans:** until the current ports reach **1.0**, development is focused
+exclusively on **Windows, Linux and Steam Deck**. Additional ports, including
+macOS, Android and ARM64 handhelds, will only be considered after 1.0.
+This is not a promise that those ports will be released.
+
 Keep the `.gdi` and **all of its track files together**, with the filenames
 referenced by the descriptor. Extract archives before selecting the game files.
 
