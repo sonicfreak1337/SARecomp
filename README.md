@@ -139,10 +139,14 @@ for the source disc files, temporary extraction and update backups.
 - **Widescreen cutscenes:** some scenes and effects can expose framing issues
   outside the original 4:3 area. This is confirmed in **Tails' first cutscene**.
   Original 4:3 remains available as a workaround, but the game will still work, it just looks a bit wonky.
-- **Egg Carrier:** a reported crash when changing the ship's shape after
-  Gamma's Main Cabin cutscene remains under investigation.
-- **Scripted movement:** some demos and automated stage sequences can miss
-  their intended path with Recompiled timing. This remains under investigation.
+- **Egg Carrier ([#11](https://github.com/sonicfreak1337/SARecomp/issues/11)):**
+  Sonic can crash when changing the ship's shape in the Main Cabin after
+  defeating Gamma. This is not fixed in 0.51; fresh crash reports from the
+  current version will help track it down.
+- **Scripted movement ([#15](https://github.com/sonicfreak1337/SARecomp/issues/15)):**
+  some demos and automated stage sequences can miss their intended path with
+  Recompiled timing. This is not fixed in 0.51. Try Original timing for now;
+  please report if the same sections still go wrong there.
 - **Stability:** bugs and isolated crashes may still occur. Please report
   reproducible problems so they can be investigated.
 
