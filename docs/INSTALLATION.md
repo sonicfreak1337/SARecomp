@@ -39,9 +39,13 @@ are decisive; do not edit or substitute files to bypass a failed verification.
 ## Get the right package
 
 Use the Windows, Linux or Steam Deck **player installer** from
-[v0.50.0-beta.1](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1).
+[v0.51.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0).
 
 Automatically generated source-code ZIPs are not installers.
+
+Linux and Steam Deck use native `.AppImage` packages in 0.51. Keep the AppImage
+in a permanent folder: it contains the runtime, while imported game content,
+saves and settings remain in your user data folders. No Proton or sudo is needed.
 
 ## Windows
 
@@ -64,16 +68,19 @@ Mint has not yet been tested separately. Linux installer checks use our Linux VM
 Requires **x86-64 Linux**, **glibc 2.31+**, **X11/XWayland** and a working
 **Vulkan 1.3** driver. Wine, Proton and a Vulkan SDK are not required to play.
 
-1. Download the **Linux installer** (`.run`).
+1. Download the **Linux AppImage** (`.AppImage`) into a permanent folder.
 2. In its file properties, enable the executable permission, then run it.
-   Alternatively, open a terminal in the download folder and enter `sh `
-   followed by the installer filename.
+   Alternatively, run `chmod +x SonicAdventureRecompiled-0.51.0-Linux.AppImage` in a terminal.
 3. Run setup as your normal user, **without sudo**. Select the supported `.gdi`.
-4. Launch **Sonic Adventure Recompiled** from the applications menu or desktop.
+4. Launch the AppImage again to play, or use the shortcut created by setup.
+
+If FUSE is unavailable, launch with
+`./SonicAdventureRecompiled-0.51.0-Linux.AppImage --appimage-extract-and-run`.
+Use `./SonicAdventureRecompiled-0.51.0-Linux.AppImage --setup` to reopen setup.
 
 ## Steam Deck
 
-Install in **Desktop Mode**, using the **Steam Deck installer** (`.run`).
+Install in **Desktop Mode**, using the **Steam Deck AppImage** (`.AppImage`).
 No administrator or sudo password is needed.
 
 > [!WARNING]
@@ -81,12 +88,12 @@ No administrator or sudo password is needed.
 > Desktop Mode can freeze the Steam Deck. Desktop Mode is for installation;
 > return to Gaming Mode before starting the game.
 
-1. Download and extract the installer package and your game files.
-2. Right-click the `.run`, open **Properties → Permissions**, enable
+1. Keep the AppImage in a permanent folder and extract your game files.
+2. Right-click the `.AppImage`, open **Properties → Permissions**, enable
    **Is executable**, then run it.
 3. Complete setup and select the supported `.gdi`.
 4. In Steam, choose **Games → Add a Non-Steam Game to My Library** and select
-   the installed **Sonic Adventure Recompiled** application.
+   the **Steam Deck AppImage** in that folder.
 5. Return to Gaming Mode and launch it from your library. Leave
    **Force the use of a specific Steam Play compatibility tool** disabled.
 
@@ -105,6 +112,15 @@ performance improvements are planned.
 Reinstalling preserves existing saves and settings. Close the game before
 running setup. Backups and save-profile management are available in
 **Options → Profiles**.
+
+When updating from 0.50 to 0.51, keep your existing game content and user data
+folders. Windows setup retains the existing installation's saves and settings.
+On Linux and Deck, the AppImage uses the same standard data locations as the
+previous `.run` installer, including both Story and Chao progress. Launch the
+new AppImage and update existing desktop or Steam shortcuts to point to it.
+For later updates, replace the AppImage in its permanent folder and update
+shortcuts if its filename changes. Do not delete your data folders as part of
+an update.
 
 ## Troubleshooting
 

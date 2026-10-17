@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1">Download Beta 1</a> &nbsp;·&nbsp;
+  <a href="https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0">Download 0.51</a> &nbsp;·&nbsp;
   <a href="#installation">Installation</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#known-issues">Known issues</a> &nbsp;·&nbsp;
@@ -20,7 +20,7 @@
 **Development disclosure:** AI tools were used as coding assistants and for documentation during
 the development of this port. If you are not okay with this - simply don't play it. Thank you for your attention.
 
-**24.09.2026 Development is currently halted due to RL stuff happening. So Updates may take a little while.**
+**24.09.2026 Development is currently slowed down due to RL stuff happening. So Updates may take a little while.**
 
 Sonic Adventure Recompiled is an unofficial native PC port of the Dreamcast
 version of **Sonic Adventure**, powered by **KatanaRecomp**. It preserves the
@@ -33,21 +33,21 @@ Original gameplay files are installed from your disc data, not supplied in the
 player installer. See [supported game files](docs/INSTALLATION.md#supported-game-files).
 
 > [!NOTE]
-> **First release — work in progress.** This is a beta release.
+> **Still a work in progress.** This is a beta release.
 > **The game is fully playable**, with all seven stories playable from start to
 > finish. Further work focuses on polish, compatibility and performance.
 
 ## Installation
 
-Download **[v0.50.0-beta.1](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.50.0-beta.1)**,
+Download **[v0.51.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0)**,
 choose the installer for your platform and follow the on-screen setup.
 **Setup is in English.** In-game text and voice languages can be changed in Options.
 
 | Platform | Package | Getting started |
 | --- | --- | --- |
 | Windows | Windows installer (`.exe`) | Run setup, select your `.gdi`, then launch **Sonic Adventure Recompiled**. |
-| Linux | Linux installer (`.run`) | Make it executable and run it as your normal user. No `sudo` is needed. |
-| Steam Deck | Steam Deck installer (`.run`) | Install in **Desktop Mode**, then add the installed game to Steam. Use Gaming Mode to play; do not force Proton. |
+| Linux | Linux AppImage (`.AppImage`) | Keep it in a permanent folder, make it executable and run it as your normal user. No `sudo` is needed. |
+| Steam Deck | Steam Deck AppImage (`.AppImage`) | Run setup in **Desktop Mode**, add the AppImage to Steam, then play only in **Gaming Mode**. Do not force Proton. |
 
 Keep the `.gdi` and **all of its track files together**, with the filenames
 referenced by the descriptor. Extract archives before selecting the game files.
@@ -57,6 +57,19 @@ referenced by the descriptor. Extract archives before selecting the game files.
 Player installers, checksums and installation instructions are on the
 [Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
 GitHub's source-code ZIPs are not player installers.
+
+### New in 0.51
+
+- Native AppImage packages for Linux and Steam Deck, replacing the `.run` installers.
+- Broader controller support through SDL gamepad mappings, including controllers
+  beyond the Xbox and PlayStation families.
+- Windows setup offers installation-folder selection and an optional portable
+  mode that keeps the game and its user data together.
+- Clearer Windows setup failures and more useful opt-in crash diagnostics.
+
+Updates retain Story and Chao progress and your explicit settings. Keep your
+existing data folders when switching from 0.50; the AppImage uses the same
+standard Linux storage locations. See [saves and reinstalling](docs/INSTALLATION.md#saves-and-reinstalling).
 
 ## Features
 
@@ -126,6 +139,10 @@ for the source disc files, temporary extraction and update backups.
 - **Widescreen cutscenes:** some scenes and effects can expose framing issues
   outside the original 4:3 area. This is confirmed in **Tails' first cutscene**.
   Original 4:3 remains available as a workaround, but the game will still work, it just looks a bit wonky.
+- **Egg Carrier:** a reported crash when changing the ship's shape after
+  Gamma's Main Cabin cutscene remains under investigation.
+- **Scripted movement:** some demos and automated stage sequences can miss
+  their intended path with Recompiled timing. This remains under investigation.
 - **Stability:** bugs and isolated crashes may still occur. Please report
   reproducible problems so they can be investigated.
 
