@@ -39,7 +39,7 @@ are decisive; do not edit or substitute files to bypass a failed verification.
 ## Get the right package
 
 Use the Windows, Linux or Steam Deck **player installer** from
-[v0.51.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0).
+[v0.52.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0).
 
 Automatically generated source-code ZIPs are not installers.
 
@@ -70,13 +70,13 @@ Requires **x86-64 Linux**, **glibc 2.31+**, **X11/XWayland** and a working
 
 1. Download the **Linux AppImage** (`.AppImage`) into a permanent folder.
 2. In its file properties, enable the executable permission, then run it.
-   Alternatively, run `chmod +x SonicAdventureRecompiled-0.51.0-Linux.AppImage` in a terminal.
+   Alternatively, run `chmod +x SonicAdventureRecompiled-0.52.0-Linux.AppImage` in a terminal.
 3. Run setup as your normal user, **without sudo**. Select the supported `.gdi`.
 4. Launch the AppImage again to play, or use the shortcut created by setup.
 
 If FUSE is unavailable, launch with
-`./SonicAdventureRecompiled-0.51.0-Linux.AppImage --appimage-extract-and-run`.
-Use `./SonicAdventureRecompiled-0.51.0-Linux.AppImage --setup` to reopen setup.
+`./SonicAdventureRecompiled-0.52.0-Linux.AppImage --appimage-extract-and-run`.
+Use `./SonicAdventureRecompiled-0.52.0-Linux.AppImage --setup` to reopen setup.
 
 ## Steam Deck
 

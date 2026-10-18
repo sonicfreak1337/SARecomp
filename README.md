@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0">Download 0.51</a> &nbsp;·&nbsp;
+  <a href="https://github.com/sonicfreak1337/SARecomp/releases/latest">Downloads</a> &nbsp;·&nbsp;
   <a href="#installation">Installation</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#known-issues">Known issues</a> &nbsp;·&nbsp;
@@ -39,7 +39,7 @@ player installer. See [supported game files](docs/INSTALLATION.md#supported-game
 
 ## Installation
 
-Download **[v0.51.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.51.0)**,
+Download **[v0.52.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0)**,
 choose the installer for your platform and follow the on-screen setup.
 **Setup is in English.** In-game text and voice languages can be changed in Options.
 
@@ -62,6 +62,12 @@ referenced by the descriptor. Extract archives before selecting the game files.
 Player installers, checksums and installation instructions are on the
 [Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
 GitHub's source-code ZIPs are not player installers.
+
+### New in 0.52
+
+- Fix Linux / Steam Deck startup after the intro and restore native level loading.
+- Import standard Flycast VMU `.bin` saves through **Options → Profiles → Import save**.
+  Import includes available Story and Chao data, shows a preview and backs up the current profile before replacement.
 
 ### New in 0.51
 
@@ -149,9 +155,10 @@ for the source disc files, temporary extraction and update backups.
   defeating Gamma. This is not fixed in 0.51; fresh crash reports from the
   current version will help track it down.
 - **Scripted movement ([#15](https://github.com/sonicfreak1337/SARecomp/issues/15)):**
-  some demos and automated stage sequences can miss their intended path with
-  Recompiled timing. This is not fixed in 0.51. Try Original timing for now;
-  please report if the same sections still go wrong there.
+  some demos and automated stage sequences can miss their intended path in
+  both timing modes. This remains under investigation.
+- **Windows setup ([#14](https://github.com/sonicfreak1337/SARecomp/issues/14)):**
+  startup failures reported on some Windows systems remain unresolved.
 - **Stability:** bugs and isolated crashes may still occur. Please report
   reproducible problems so they can be investigated.
 
