@@ -38,8 +38,8 @@ are decisive; do not edit or substitute files to bypass a failed verification.
 
 ## Get the right package
 
-Use the Windows, Linux or Steam Deck **player installer** from
-[v0.52.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0).
+Use the **player installer** for your platform: [v0.52.1 for Linux / Steam Deck](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.1),
+or [v0.52.0 for Windows](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0).
 
 Automatically generated source-code ZIPs are not installers.
 
@@ -70,13 +70,13 @@ Requires **x86-64 Linux**, **glibc 2.31+**, **X11/XWayland** and a working
 
 1. Download the **Linux AppImage** (`.AppImage`) into a permanent folder.
 2. In its file properties, enable the executable permission, then run it.
-   Alternatively, run `chmod +x SonicAdventureRecompiled-0.52.0-Linux.AppImage` in a terminal.
+   Alternatively, run `chmod +x SonicAdventureRecompiled-0.52.1-Linux.AppImage` in a terminal.
 3. Run setup as your normal user, **without sudo**. Select the supported `.gdi`.
 4. Launch the AppImage again to play, or use the shortcut created by setup.
 
 If FUSE is unavailable, launch with
-`./SonicAdventureRecompiled-0.52.0-Linux.AppImage --appimage-extract-and-run`.
-Use `./SonicAdventureRecompiled-0.52.0-Linux.AppImage --setup` to reopen setup.
+`./SonicAdventureRecompiled-0.52.1-Linux.AppImage --appimage-extract-and-run`.
+Use `./SonicAdventureRecompiled-0.52.1-Linux.AppImage --setup` to reopen setup.
 
 ## Steam Deck
 
@@ -123,6 +123,8 @@ shortcuts if its filename changes. Do not delete your data folders as part of
 an update.
 
 ## Troubleshooting
+
+- **Linux failure code 4 at the SEGA splash:** this report remains under investigation. Export the diagnostic report and its `.crash.log` when offered; the number alone does not identify the cause.
 
 - **Disc rejected:** check the PAL revision, all three tracks, filenames,
   extraction and hashes above. Setup does not support patched or modified tracks.

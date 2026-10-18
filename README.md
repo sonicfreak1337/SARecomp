@@ -39,8 +39,9 @@ player installer. See [supported game files](docs/INSTALLATION.md#supported-game
 
 ## Installation
 
-Download **[v0.52.0](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0)**,
-choose the installer for your platform and follow the on-screen setup.
+Download **[v0.52.1 for Linux / Steam Deck](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.1)**
+or **[v0.52.0 for Windows](https://github.com/sonicfreak1337/SARecomp/releases/tag/v0.52.0)**
+and follow the on-screen setup.
 **Setup is in English.** In-game text and voice languages can be changed in Options.
 
 | Platform | Package | Getting started |
@@ -52,7 +53,7 @@ choose the installer for your platform and follow the on-screen setup.
 **Platform plans:** until the current ports reach **1.0**, development is focused
 exclusively on **Windows, Linux and Steam Deck**. Additional ports, including
 macOS, Android and ARM64 handhelds, will only be considered after 1.0.
-**This is not a promise that those ports will be released.**
+This is not a promise that those ports will be released.
 
 Keep the `.gdi` and **all of its track files together**, with the filenames
 referenced by the descriptor. Extract archives before selecting the game files.
@@ -62,6 +63,11 @@ referenced by the descriptor. Extract archives before selecting the game files.
 Player installers, checksums and installation instructions are on the
 [Releases page](https://github.com/sonicfreak1337/SARecomp/releases).
 GitHub's source-code ZIPs are not player installers.
+
+### Fixed in 0.52.1 (Linux / Steam Deck)
+
+- Fix the crash after Sonic's opening cutscene when entering the Chaos 0 encounter.
+- Restore execution-boundary corrections missing from the Linux / Steam Deck build.
 
 ### New in 0.52
 
@@ -140,6 +146,9 @@ for the source disc files, temporary extraction and update backups.
 
 ## Known issues
 
+- **Linux startup ([#3](https://github.com/sonicfreak1337/SARecomp/issues/3)):**
+  a reported crash at the SEGA splash screen with failure code 4 remains under investigation.
+
 - **Steam Deck launch mode:** starting the game in Desktop Mode can freeze
   the Steam Deck. **Install in Desktop Mode, but always launch the game through
   Steam Gaming Mode.**
@@ -184,6 +193,7 @@ Save backups can also be created from **Options → Profiles**.
 
 **How do I build or contribute?**<br>
 See [development setup](docs/DEVELOPMENT.md) and [contributing](CONTRIBUTING.md).
+The [code guide](docs/CODE_GUIDE.md) maps feature ownership and source modding entry points.
 Playing a release build does not require building the project.
 
 ## Credits
