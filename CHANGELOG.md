@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.52.0 — 2026-10-18
+
+### Added
+
+- Import international Sonic Adventure saves from standard Flycast VMU `.bin` files through Options → Profiles. Import includes Story and available Chao data, shows a preview and backs up the current profile before replacing it.
+
+- Added more debug tools.
+
+### Fixed
+
+- #3: Fix Linux and Steam Deck crashing when the intro ends or is skipped before the title screen.
+
+- Restore native level startup on Linux and Steam Deck.
+
+### Changed
+
+- Withdraw the broken 0.51.0 Linux and Steam Deck AppImages.
+
 ## 0.51.0 — 2026-10-17
 
 ### Fixed
